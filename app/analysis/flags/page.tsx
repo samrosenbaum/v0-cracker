@@ -2,17 +2,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { AnalysisFlagsDashboard } from "@/components/analysis-review/analysis-flags-dashboard"
-import { LucideAlertCircle, LucideRefreshCw, LucideFileText } from "lucide-react"
+import { LucideArrowLeft, LucideAlertCircle, LucideRefreshCw, LucideFileText } from "lucide-react"
+import Link from "next/link"
 
 export default function AnalysisFlagsPage() {
   return (
-    <div className="container mx-auto py-6">
-      <h1 className="mb-6 text-2xl font-bold">Analysis Flags & Review Items</h1>
-      <AnalysisFlagsDashboard />
+    <div className="container py-8">
+      <Link href="/analysis" className="flex items-center text-sm mb-6 hover:underline">
+        <LucideArrowLeft className="mr-2 h-4 w-4" />
+        Back to Analysis
+      </Link>
 
       <div className="flex flex-col gap-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
+            <h1 className="text-3xl font-bold tracking-tight">Analysis Flags & Review Items</h1>
             <p className="text-muted-foreground mt-2">
               AI-identified potential suspects, evidence for re-examination, and inconsistencies requiring review
             </p>
@@ -38,7 +42,7 @@ export default function AnalysisFlagsPage() {
           </TabsList>
 
           <TabsContent value="flags" className="mt-6">
-            {/* AnalysisFlagsDashboard is already included above */}
+            <AnalysisFlagsDashboard />
           </TabsContent>
 
           <TabsContent value="insights" className="mt-6">
