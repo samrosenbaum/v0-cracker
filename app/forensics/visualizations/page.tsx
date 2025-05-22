@@ -1,10 +1,12 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Button } from "@/components/ui/button"
 import { DNAProfileComparison } from "@/components/dna-visualizations/dna-profile-comparison"
 import { GeneticNetworkGraph } from "@/components/dna-visualizations/genetic-network-graph"
 import { FamilialRelationshipTree } from "@/components/dna-visualizations/familial-relationship-tree"
 import { DNAStatisticsDashboard } from "@/components/dna-visualizations/dna-statistics-dashboard"
-import { LucideArrowLeft, LucideDna } from "lucide-react"
+import { DNAEvidenceTimeline } from "@/components/dna-visualizations/dna-evidence-timeline"
+import { LucideArrowLeft, LucideDna, LucideCalendar } from "lucide-react"
 import Link from "next/link"
 
 export default function ForensicVisualizationsPage() {
@@ -25,13 +27,45 @@ export default function ForensicVisualizationsPage() {
           </div>
         </div>
 
-        <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+        <Tabs defaultValue="timeline" className="w-full">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="timeline">Timeline</TabsTrigger>
             <TabsTrigger value="profile">Profile Comparison</TabsTrigger>
             <TabsTrigger value="network">Network Analysis</TabsTrigger>
             <TabsTrigger value="familial">Familial Relationships</TabsTrigger>
             <TabsTrigger value="statistics">Statistics Dashboard</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="timeline" className="mt-6">
+            <div className="grid gap-6">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <LucideCalendar className="h-5 w-5 text-primary" />
+                    <CardTitle>DNA Evidence Timeline</CardTitle>
+                  </div>
+                  <CardDescription>
+                    Chronological visualization of DNA evidence collection, processing, and analysis
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="mb-6">
+                    The DNA evidence timeline provides a comprehensive chronological view of all activities related to
+                    DNA evidence in a case. This visualization helps investigators track the complete chain of custody,
+                    processing steps, and analysis results over time.
+                  </p>
+
+                  <DNAEvidenceTimeline />
+
+                  <div className="mt-4 flex justify-end">
+                    <Link href="/forensics/visualizations/timeline">
+                      <Button>View Full Timeline</Button>
+                    </Link>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
 
           <TabsContent value="profile" className="mt-6">
             <div className="grid gap-6">
