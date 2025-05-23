@@ -38,6 +38,12 @@
     "@radix-ui/react-toggle": "1.1.1",
     "@radix-ui/react-toggle-group": "1.1.1",
     "@radix-ui/react-tooltip": "1.1.6",
+<<<<<<< HEAD
+=======
+    "@supabase/auth-ui-react": "^0.4.7",
+    "@supabase/auth-ui-shared": "^0.1.8",
+    "@supabase/supabase-js": "^2.49.8",
+>>>>>>> 526dca4 (Add AI graph structure output (entities, events, links))
     "ai": "latest",
     "autoprefixer": "^10.4.20",
     "chart.js": "latest",
@@ -71,4 +77,8 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5"
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 526dca4 (Add AI graph structure output (entities, events, links))
