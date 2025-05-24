@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -352,44 +351,4 @@ export default function AnalysisFlagsPage() {
       </div>
     </div>
   )
-=======
-'use client';
-
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
-export default function FlagsPage() {
-  const router = useRouter();
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/login');
-        return;
-      }
-      setUser(user);
-      setLoading(false);
-    };
-    checkAuth();
-  }, [router]);
-
-  if (loading) return <p className="p-6 text-center">Loading flags...</p>;
-
-  return (
-    <div className="p-6 max-w-3xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">AI Flags & Alerts</h1>
-      <p className="text-gray-700">This is where your AI-generated warnings, alerts, or analysis flags will appear.</p>
-      {/* You can map your Supabase data here */}
-    </div>
-  );
->>>>>>> 526dca4 (Add AI graph structure output (entities, events, links))
 }
