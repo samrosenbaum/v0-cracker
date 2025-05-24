@@ -7,7 +7,7 @@ import { AnalysisFlagsDashboard } from "@/components/analysis-review/analysis-fl
 import { LucideArrowLeft, LucideAlertCircle, LucideRefreshCw, LucideFileText, LucideUpload } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import SuspectGraph from "@/components/analysis-visuals/SuspectGraph"; 
+import SuspectGraph from "@/components/analysis-visuals/Suspect.Graph"; 
 
 
 export default function AnalysisFlagsPage() {
