@@ -1,11 +1,18 @@
+"use client";
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { AnalysisFlagsDashboard } from "@/components/analysis-review/analysis-flags-dashboard";
 import { LucideArrowLeft, LucideAlertCircle, LucideRefreshCw, LucideFileText, LucideUpload } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
+import SuspectGraph from "@/components/visualizations/suspect-graph"; // adjust path if needed
+
 
 export default function AnalysisFlagsPage() {
+    const [parsedText, setParsedText] = useState("");
+    const [analysisResults, setAnalysisResults] = useState(null);
   return (
     <div className="container py-8">
       <Link href="/analysis" className="flex items-center text-sm mb-6 hover:underline">
@@ -15,28 +22,58 @@ export default function AnalysisFlagsPage() {
 
       <div className="flex flex-col gap-6">
         {/* File Upload Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Upload a Case File</CardTitle>
-            <CardDescription>
-              Upload documents, notes, or reports for the AI to analyze. Supported formats: PDF, DOCX, TXT.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form className="flex flex-col gap-4" action="/api/upload" method="POST" encType="multipart/form-data">
-              <input
-                type="file"
-                name="file"
-                accept=".pdf,.doc,.docx,.txt"
-                className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-primary file:text-white hover:file:bg-primary/90"
-              />
-              <Button type="submit" className="flex items-center gap-2">
-                <LucideUpload className="h-4 w-4" />
-                Analyze File
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+  <Card>
+  <CardHeader>
+    <CardTitle>Upload a Case File</CardTitle>
+    <CardDescription>
+      Upload a PDF, DOCX, or TXT file for AI analysis. The content will be extracted and previewed below.
+    </CardDescription>
+  </CardHeader>
+  <CardContent>
+    <form
+      onSubmit={async (e) => {
+  e.preventDefault();
+  const form = e.currentTarget;
+  const formData = new FormData(form);
+
+  const res = await fetch("/api/upload", {
+    method: "POST",
+    body: formData,
+  });
+  const result = await res.json();
+  setParsedText(result.content || "No content found");
+
+  // Now analyze
+  const analyzeRes = await fetch("/api/process", {
+    method: "POST",
+    body: formData,
+  });
+  const analyzeJson = await analyzeRes.json();
+  setAnalysisResults(analyzeJson.analysis);
+}}
+      className="flex flex-col gap-4"
+    >
+      <input
+        type="file"
+        name="file"
+        accept=".pdf,.doc,.docx,.txt"
+        required
+        className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-primary file:text-white hover:file:bg-primary/90"
+      />
+      <Button type="submit" className="flex items-center gap-2">
+        <LucideUpload className="h-4 w-4" />
+        Analyze File
+      </Button>
+    </form>
+    {parsedText && (
+      <div className="mt-6 border p-4 rounded bg-background text-sm whitespace-pre-wrap">
+        <h3 className="text-md font-semibold mb-2">Parsed File Preview</h3>
+        {parsedText}
+      </div>
+    )}
+  </CardContent>
+</Card>
+
 
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -376,6 +413,17 @@ export default function AnalysisFlagsPage() {
           </Card>
         </div>
       </div>
+      {analysisResults?.suspects?.length > 0 && (
+  <Card>
+    <CardHeader>
+      <CardTitle>Suspect Graph</CardTitle>
+      <CardDescription>Visual representation of suspect confidence and motive scores</CardDescription>
+    </CardHeader>
+    <CardContent>
+      <SuspectGraph suspects={analysisResults.suspects} />
+    </CardContent>
+  </Card>
+)}
     </div>
   );
 }
