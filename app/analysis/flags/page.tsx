@@ -9,10 +9,12 @@ import Link from "next/link";
 import { useState } from "react";
 import SuspectGraph from "@/components/analysis-visuals/SuspectGraph"; 
 
-
 export default function AnalysisFlagsPage() {
-    const [parsedText, setParsedText] = useState("");
-    const [analysisResults, setAnalysisResults] = useState(null);
+  const [parsedText, setParsedText] = useState("");
+  const [analysisResults, setAnalysisResults] = useState(null);
+  const [caseId, setCaseId] = useState("case-001");
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  
   return (
     <div className="container py-8">
       <Link href="/analysis" className="flex items-center text-sm mb-6 hover:underline">
@@ -22,58 +24,77 @@ export default function AnalysisFlagsPage() {
 
       <div className="flex flex-col gap-6">
         {/* File Upload Card */}
-  <Card>
-  <CardHeader>
-    <CardTitle>Upload a Case File</CardTitle>
-    <CardDescription>
-      Upload a PDF, DOCX, or TXT file for AI analysis. The content will be extracted and previewed below.
-    </CardDescription>
-  </CardHeader>
-  <CardContent>
-    <form
-      onSubmit={async (e) => {
-  e.preventDefault();
-  const form = e.currentTarget;
-  const formData = new FormData(form);
+        <Card>
+          <CardHeader>
+            <CardTitle>Upload a Case File</CardTitle>
+            <CardDescription>
+              Upload a PDF, DOCX, or TXT file for AI analysis. The content will be extracted and previewed below.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                
+                try {
+                  const formData = new FormData();
+                  selectedFiles.forEach((file) => formData.append("files", file));
+                  formData.append("caseId", caseId);
 
-  const res = await fetch("/api/upload", {
-    method: "POST",
-    body: formData,
-  });
-  const result = await res.json();
-  setParsedText(result.content || "No content found");
+                  // Upload and parse files
+                  const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
+                  const uploadJson = await uploadRes.json();
+                  setParsedText(uploadJson.content || "No content parsed.");
 
-  // Now analyze
-  const analyzeRes = await fetch("/api/process", {
-    method: "POST",
-    body: formData,
-  });
-  const analyzeJson = await analyzeRes.json();
-  setAnalysisResults(analyzeJson.analysis);
-}}
-      className="flex flex-col gap-4"
-    >
-      <input
-        type="file"
-        name="file"
-        accept=".pdf,.doc,.docx,.txt"
-        required
-        className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-primary file:text-white hover:file:bg-primary/90"
-      />
-      <Button type="submit" className="flex items-center gap-2">
-        <LucideUpload className="h-4 w-4" />
-        Analyze File
-      </Button>
-    </form>
-    {parsedText && (
-      <div className="mt-6 border p-4 rounded bg-background text-sm whitespace-pre-wrap">
-        <h3 className="text-md font-semibold mb-2">Parsed File Preview</h3>
-        {parsedText}
-      </div>
-    )}
-  </CardContent>
-</Card>
+                  // Process and analyze
+                  const processRes = await fetch("/api/process", { method: "POST", body: formData });
+                  const processJson = await processRes.json();
+                  setAnalysisResults(processJson.analysis);
+                } catch (error) {
+                  console.error("Analysis failed:", error);
+                  // Add proper error handling here
+                }
+              }}
+              className="flex flex-col gap-4"
+            >
+              <input
+                type="file"
+                multiple
+                accept=".pdf,.doc,.docx,.txt"
+                onChange={(e) => setSelectedFiles(Array.from(e.target.files || []))}
+                className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-primary file:text-white hover:file:bg-primary/90"
+              />
 
+              <input
+                type="text"
+                placeholder="Enter Case ID"
+                value={caseId}
+                onChange={(e) => setCaseId(e.target.value)}
+                className="border px-3 py-2 text-sm rounded"
+              />
+
+              <Button type="submit" className="flex items-center gap-2" disabled={selectedFiles.length === 0}>
+                <LucideUpload className="h-4 w-4" />
+                Analyze Case
+              </Button>
+            </form>
+
+            {selectedFiles.length > 0 && (
+              <ul className="text-sm text-muted-foreground mt-2">
+                {selectedFiles.map((file, i) => (
+                  <li key={i}>📄 {file.name}</li>
+                ))}
+              </ul>
+            )}
+
+            {parsedText && (
+              <div className="mt-6 border p-4 rounded bg-background text-sm whitespace-pre-wrap">
+                <h3 className="text-md font-semibold mb-2">Parsed File Preview</h3>
+                {parsedText}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -412,18 +433,20 @@ export default function AnalysisFlagsPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Suspect Graph */}
+        {analysisResults?.suspects?.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Suspect Graph</CardTitle>
+              <CardDescription>Visual representation of suspect confidence and motive scores</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <SuspectGraph suspects={analysisResults.suspects} />
+            </CardContent>
+          </Card>
+        )}
       </div>
-      {analysisResults?.suspects?.length > 0 && (
-  <Card>
-    <CardHeader>
-      <CardTitle>Suspect Graph</CardTitle>
-      <CardDescription>Visual representation of suspect confidence and motive scores</CardDescription>
-    </CardHeader>
-    <CardContent>
-      <SuspectGraph suspects={analysisResults.suspects} />
-    </CardContent>
-  </Card>
-)}
     </div>
   );
 }
