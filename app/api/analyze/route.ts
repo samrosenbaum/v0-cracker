@@ -1,247 +1,285 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { generateText } from "ai";
-import { openai } from "@ai-sdk/openai";
 
-// Configuration
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const ALLOWED_FILE_TYPES = [
-  'text/plain',
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-];
+export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
+  console.log("🚀 API route hit - PDF analysis with pdfjs-dist");
+  
   try {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return NextResponse.json({ 
+        error: "AI service not configured" 
+      }, { status: 500 });
+    }
+
     const formData = await req.formData();
     const files = formData.getAll("files") as File[];
     const caseId = (formData.get("caseId") as string) || "unknown";
+    
+    console.log(`✅ Found ${files.length} files`);
 
     if (files.length === 0) {
       return NextResponse.json({ error: "No files provided" }, { status: 400 });
     }
 
-    // Validate files
+    const extractedTexts = [];
+    
     for (const file of files) {
-      if (file.size > MAX_FILE_SIZE) {
-        return NextResponse.json({ 
-          error: `File ${file.name} exceeds maximum size of ${MAX_FILE_SIZE / 1024 / 1024}MB` 
-        }, { status: 400 });
-      }
+      console.log(`🔍 Processing file: ${file.name}, type: ${file.type}`);
+      let text = "";
       
-      if (!ALLOWED_FILE_TYPES.includes(file.type)) {
-        return NextResponse.json({ 
-          error: `File type ${file.type} not allowed for file ${file.name}` 
-        }, { status: 400 });
+      try {
+        if (file.type === 'application/pdf') {
+          console.log("📄 Processing PDF with pdf2json...");
+          
+          try {
+            // Import pdf2json
+            const PDFParser = (await import('pdf2json')).default;
+            const pdfParser = new PDFParser();
+            
+            // Get PDF data
+            const arrayBuffer = await file.arrayBuffer();
+            const pdfData = Buffer.from(arrayBuffer);
+            
+            console.log(`📄 PDF buffer size: ${pdfData.length} bytes`);
+            
+            // Parse PDF
+            const pdfText = await new Promise<string>((resolve, reject) => {
+              pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
+                try {
+                  const text = decodeURIComponent(
+                    pdfData.Pages
+                      .map((page: any) => 
+                        page.Texts
+                          .map((text: any) => 
+                            text.R
+                              .map((r: any) => r.T)
+                              .join(' ')
+                          )
+                          .join(' ')
+                      )
+                      .join(' ')
+                  );
+                  resolve(text);
+                } catch (err) {
+                  reject(err);
+                }
+              });
+              
+              pdfParser.on('pdfParser_dataError', (errData: any) => {
+                reject(new Error(`PDF parsing error: ${errData.parserError}`));
+              });
+              
+              pdfParser.parseBuffer(pdfData);
+            });
+            
+            text = pdfText.trim();
+            console.log(`📄 Total extracted text length: ${text.length}`);
+            console.log(`📄 First 200 chars: "${text.substring(0, 200)}"`);
+            
+            if (!text || text.length < 10) {
+              text = `[PDF FILE: ${file.name} - PDF processed but no readable text found]`;
+            }
+            
+          } catch (pdfError: unknown) {
+            console.error(`❌ PDF processing error:`, pdfError);
+            const errorMessage = pdfError instanceof Error ? pdfError.message : 'Unknown PDF processing error';
+            text = `[PDF FILE: ${file.name} - PDF processing failed: ${errorMessage}]`;
+          }
+          
+        } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+          console.log("📝 Processing DOCX...");
+          try {
+            const mammoth = await import('mammoth');
+            const arrayBuffer = await file.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const result = await mammoth.extractRawText({ buffer });
+            text = result.value?.trim() || `[DOCX FILE: ${file.name} - No text found]`;
+            console.log(`📝 DOCX text length: ${text.length}`);
+          } catch (docxError: unknown) {
+            console.error(`❌ DOCX error:`, docxError);
+            const errorMessage = docxError instanceof Error ? docxError.message : 'Unknown DOCX processing error';
+            text = `[DOCX FILE: ${file.name} - Processing failed: ${errorMessage}]`;
+          }
+          
+        } else {
+          console.log("📝 Processing text file...");
+          text = await file.text();
+          console.log(`📝 Text file length: ${text.length}`);
+        }
+        
+        extractedTexts.push({
+          name: file.name,
+          text: text,
+          type: file.type
+        });
+        
+      } catch (error: unknown) {
+        console.error(`❌ Error processing ${file.name}:`, error);
+        extractedTexts.push({
+          name: file.name,
+          text: `[ERROR: Could not process ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}]`,
+          type: file.type
+        });
       }
     }
 
-    const extractedTexts = await Promise.all(
-      files.map(async (file) => ({
-        name: file.name,
-        text: await file.text(),
-        type: file.type
-      }))
-    );
-
     const combinedText = extractedTexts
-      .map(f => `--- ${f.name} (${f.type}) ---\n${f.text}`)
+      .map(f => `--- ${f.name} ---\n${f.text}`)
       .join("\n\n");
 
-    const systemPrompt = `
-You are Detective Sarah Chen, a veteran cold case investigator with 25+ years of experience solving complex homicides and missing persons cases. You have personally solved over 150 cold cases using advanced analytical techniques.
+    console.log(`📝 Combined text length: ${combinedText.length}`);
+    console.log(`📝 Combined preview: "${combinedText.substring(0, 300)}"`);
 
-CRITICAL ANALYSIS PRIORITIES (in order of importance):
-1. TIMELINE INCONSISTENCIES - Look for gaps, conflicts, impossible sequences
-2. WITNESS CONTRADICTIONS - Compare all statements for inconsistencies  
-3. EVIDENCE CHAIN GAPS - Identify missing or unanalyzed evidence
-4. SUSPECT BEHAVIORAL PATTERNS - Profile potential perpetrators
-5. MOTIVE-MEANS-OPPORTUNITY ANALYSIS - Classic investigative triad
-6. OVERLOOKED CONNECTIONS - People, places, events investigators may have missed
+    // Check if we have meaningful text (excluding error messages)
+    const meaningfulText = combinedText.replace(/\[.*?FILE:.*?\]/g, '').trim();
+    if (meaningfulText.length < 20) {
+      return NextResponse.json({
+        success: false,
+        error: "No readable text content found",
+        debug: {
+          extractedTexts: extractedTexts.map(f => ({
+            name: f.name,
+            textLength: f.text.length,
+            preview: f.text.substring(0, 200)
+          })),
+          combinedLength: combinedText.length,
+          meaningfulLength: meaningfulText.length
+        }
+      }, { status: 400 });
+    }
 
-ANALYSIS METHODOLOGY:
-- Apply the Reid Technique for statement analysis
-- Use the FBI's Behavioral Analysis Unit profiling methods
-- Follow NCAVC (National Center for Analysis of Violent Crime) protocols
-- Cross-reference against VICAP pattern indicators
+    console.log("🤖 Starting Claude analysis...");
+    
+    const systemPrompt = `You are Detective Sarah Chen, a veteran cold case investigator. Analyze the case materials and identify suspects, evidence, and leads.
 
-For EVERY finding you identify, you MUST provide:
-- Confidence Score (0-100): How certain are you this is significant?
-- Evidence Strength (0-100): How strong is the supporting evidence?
-- Urgency Level: CRITICAL/HIGH/MEDIUM/LOW
-- Specific Action Required: Exactly what should investigators do next?
-- Risk Assessment: Could this lead to case breakthrough?
+Case ID: ${caseId}
+Documents: ${extractedTexts.length}
 
-SUSPECT IDENTIFICATION CRITERIA:
-- Access to victim (geographic/temporal proximity)
-- Means to commit the crime (physical capability, tools, knowledge)
-- Motive (personal, financial, psychological)
-- Opportunity window analysis
-- Behavioral indicators from crime scene
-- Connection patterns to victim or location
-
-TIMELINE ANALYSIS - Flag these RED FLAGS:
-- Gaps longer than 30 minutes during critical periods
-- Witness statements that contradict phone/digital records
-- Alibis that cannot be independently verified
-- Movement patterns that don't make logical sense
-- Multiple witnesses placing same person in different locations
-
-STATEMENT ANALYSIS - Look for DECEPTION INDICATORS:
-- Inconsistent details between multiple interviews
-- Overly specific details about irrelevant information
-- Missing details about critical time periods
-- Emotional responses that don't match content
-- Changes in linguistic patterns during critical topics
-
-Case Information:
-- Case ID: ${caseId}
-- Documents Analyzed: ${extractedTexts.length}
-- File Types: ${extractedTexts.map(f => f.type).join(", ")}
-- Analysis Date: ${new Date().toISOString()}
-
-CASE MATERIALS TO ANALYZE:
+CASE MATERIALS:
 ${combinedText}
 
-RETURN ONLY VALID JSON in this EXACT format:
-
+Return valid JSON only:
 {
   "suspects": [
     {
-      "name": "Full name of suspect",
-      "relevance": 85,
-      "confidence": 92,
-      "evidenceStrength": 78,
-      "connections": ["Connection 1", "Connection 2"],
-      "motiveScore": 80,
-      "meansScore": 90,
-      "opportunityScore": 85,
-      "notes": "Detailed explanation of why this person is a suspect",
-      "recommendedActions": ["Specific action 1", "Specific action 2"],
-      "urgencyLevel": "HIGH",
-      "riskFactors": ["Risk factor 1", "Risk factor 2"]
+      "name": "Person name",
+      "relevance": 90,
+      "confidence": 85,
+      "connections": ["How they connect to case"],
+      "notes": "Why they are suspicious",
+      "recommendedActions": ["Specific investigative action"],
+      "urgencyLevel": "HIGH"
     }
   ],
   "findings": [
     {
-      "id": "FINDING-001",
-      "title": "Specific finding title",
-      "description": "Detailed description of what was found",
-      "category": "timeline|witness|evidence|behavioral|connection",
-      "confidence": 88,
-      "evidenceStrength": 82,
+      "id": "F001", 
+      "title": "Finding title",
+      "description": "What was discovered",
+      "category": "evidence",
+      "confidence": 90,
       "priority": "CRITICAL",
-      "supportingEvidence": ["Evidence item 1", "Evidence item 2"],
-      "investigativeAction": "Specific action investigators should take",
-      "potentialImpact": "How this could affect the case",
-      "urgencyLevel": "HIGH"
+      "supportingEvidence": ["Supporting evidence"],
+      "investigativeAction": "Action to take"
     }
   ],
   "connections": [
     {
-      "type": "case|person|location|method|timeline",
-      "description": "Description of the connection",
-      "confidence": 75,
-      "relatedCases": ["Case ID if applicable"],
-      "significance": "Why this connection matters",
-      "recommendedAction": "What to do about this connection"
+      "type": "person",
+      "description": "Connection description", 
+      "confidence": 80,
+      "significance": "Why this matters"
     }
   ],
   "recommendations": [
     {
-      "priority": "CRITICAL",
-      "action": "Specific action to take",
-      "rationale": "Why this action is recommended",
-      "expectedOutcome": "What this might reveal",
-      "resources": "What resources are needed",
-      "timeline": "How quickly this should be done",
-      "riskLevel": "HIGH|MEDIUM|LOW"
+      "priority": "HIGH",
+      "action": "Recommended action",
+      "rationale": "Why recommended",
+      "timeline": "When to complete"
     }
-  ],
-  "timelineAnalysis": {
-    "criticalGaps": [
-      {
-        "startTime": "Time gap starts",
-        "endTime": "Time gap ends", 
-        "duration": "Length of gap",
-        "significance": "Why this gap matters",
-        "peopleInvolved": ["Person 1", "Person 2"],
-        "recommendedAction": "How to investigate this gap"
-      }
-    ],
-    "contradictions": [
-      {
-        "description": "What contradicts what",
-        "sources": ["Source 1", "Source 2"],
-        "significance": "Impact on case",
-        "resolution": "How to resolve this contradiction"
-      }
-    ]
-  },
-  "statementAnalysis": {
-    "credibilityScores": [
-      {
-        "person": "Person name",
-        "credibilityScore": 65,
-        "redFlags": ["Red flag 1", "Red flag 2"],
-        "recommendation": "How to handle this person's statements"
-      }
-    ],
-    "inconsistencies": [
-      {
-        "person": "Person with inconsistent statements",
-        "inconsistency": "Description of inconsistency",
-        "impact": "How this affects the investigation"
-      }
-    ]
-  }
+  ]
 }`;
 
-    const { text: aiResponse } = await generateText({
-      model: openai("gpt-4o"),
-      prompt: systemPrompt,
-      maxTokens: 4000, // Add token limit to prevent excessive responses
-    });
-
-    let parsedResults;
     try {
-      // Clean response in case there's extra text before/after JSON
-      const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
-      const jsonString = jsonMatch ? jsonMatch[0] : aiResponse;
-      parsedResults = JSON.parse(jsonString);
-    } catch (e) {
-      console.error("❌ JSON parse error:", e);
-      console.error("🔍 Raw AI response:\n", aiResponse);
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-      // Return a structured error response
-      parsedResults = {
-        error: "Failed to parse AI response as valid JSON",
-        raw: aiResponse,
-        suspects: [],
-        findings: [],
-        connections: [],
-        recommendations: [],
-        timelineAnalysis: { criticalGaps: [], contradictions: [] },
-        statementAnalysis: { credibilityScores: [], inconsistencies: [] }
-      };
+      const response = await client.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 4000,
+        temperature: 0.3,
+        messages: [{ role: 'user', content: systemPrompt }]
+      });
+
+      const aiResponse = response.content[0]?.type === 'text' ? response.content[0].text : '';
+      console.log(`✅ Claude responded: ${aiResponse.length} chars`);
+
+      // Parse AI response
+      let parsedResults;
+      try {
+        const cleanResponse = aiResponse.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+        const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/);
+        const jsonString = jsonMatch ? jsonMatch[0] : cleanResponse;
+        
+        parsedResults = JSON.parse(jsonString);
+        
+        // Ensure arrays exist
+        parsedResults.suspects = parsedResults.suspects || [];
+        parsedResults.findings = parsedResults.findings || [];
+        parsedResults.connections = parsedResults.connections || [];
+        parsedResults.recommendations = parsedResults.recommendations || [];
+        
+        console.log("✅ Successfully parsed AI response");
+        
+      } catch (parseError) {
+        console.error("❌ Parse error:", parseError);
+        parsedResults = {
+          error: "Could not parse AI response",
+          suspects: [],
+          findings: [{
+            id: "PARSE_ERROR",
+            title: "AI Response Parse Error",
+            description: "AI analysis completed but response could not be parsed",
+            category: "system",
+            confidence: 0,
+            priority: "LOW",
+            supportingEvidence: ["Raw AI response available"],
+            investigativeAction: "Manual review required"
+          }],
+          connections: [],
+          recommendations: []
+        };
+      }
+
+      return NextResponse.json({
+        success: true,
+        caseId,
+        analysis: parsedResults,
+        filesAnalyzed: extractedTexts.map(f => ({
+          name: f.name,
+          type: f.type,
+          textLength: f.text.length,
+          preview: f.text.substring(0, 200) + (f.text.length > 200 ? "..." : "")
+        })),
+        aiModel: "claude-3-5-sonnet-20241022",
+        processingTime: new Date().toISOString()
+      });
+
+    } catch (aiError) {
+      console.error("🚨 AI Error:", aiError);
+      return NextResponse.json({ 
+        error: "AI analysis failed",
+        details: aiError instanceof Error ? aiError.message : "Unknown error"
+      }, { status: 500 });
     }
 
-    return NextResponse.json({
-      success: true,
-      caseId,
-      filesAnalyzed: extractedTexts.map(f => ({ name: f.name, type: f.type, size: f.text.length })),
-      analysis: parsedResults
-    });
-
   } catch (error) {
-    console.error("🚨 Unexpected error in analysis route:", error);
-    
-    // Provide more specific error information
-    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-    
+    console.error("🚨 System Error:", error);
     return NextResponse.json({ 
-      error: "Internal server error",
-      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
+      error: "System error",
+      details: error instanceof Error ? error.message : "Unknown error"
     }, { status: 500 });
   }
 }

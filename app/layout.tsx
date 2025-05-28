@@ -2,28 +2,31 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
+import { MainNav } from "./components/nav"
 
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "ColdCaseAI - AI-Powered Cold Case Analysis",
-  description:
-    "Upload case files and let our AI analyze patterns, connections, and potential suspects that may have been overlooked in complex investigations.",
-    generator: "v0.dev"
+  title: "Case Analysis Platform",
+  description: "AI-powered case analysis and evidence management",
 }
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode
-}>) {
+}) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
+    <html lang="en" suppressHydrationWarning>
+      <body className={inter.className} suppressHydrationWarning>
+        <header className="border-b">
+          <div className="flex h-16 items-center">
+            <MainNav />
+          </div>
+        </header>
+        <main>
           {children}
-        </ThemeProvider>
+        </main>
       </body>
     </html>
   )

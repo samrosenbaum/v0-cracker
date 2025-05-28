@@ -74,7 +74,7 @@ export default function CaseDetailPage() {
     formData.append("caseId", id as string);
     formData.append("files", file);
 
-    const res = await fetch("/api/process", {
+    const res = await fetch("/api/analyze", {
       method: "POST",
       body: formData
     });

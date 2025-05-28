@@ -16,15 +16,35 @@ export default function AnalysisPage() {
     e.preventDefault()
     const form = e.currentTarget
     const formData = new FormData(form)
+    
+    // Get the file and add it properly
+    const fileInput = form.querySelector('input[type="file"]') as HTMLInputElement
+    if (fileInput.files?.length) {
+      formData.append("files", fileInput.files[0])
+      formData.append("caseId", "CASE-" + Date.now())
+    }
+    
     setUploading(true)
 
-    const res = await fetch("/api/upload", {
-      method: "POST",
-      body: formData,
-    })
+    try {
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        body: formData,
+      })
 
-    const result = await res.json()
-    setParsedText(result.content || "No content found")
+      const result = await res.json()
+      console.log("Analysis result:", result)
+      
+      if (result.success) {
+        setParsedText(JSON.stringify(result.analysis, null, 2))
+      } else {
+        setParsedText(result.error || "Analysis failed")
+      }
+    } catch (error) {
+      console.error("Upload error:", error)
+      setParsedText("Error occurred during analysis")
+    }
+    
     setUploading(false)
   }
 
@@ -127,8 +147,124 @@ export default function AnalysisPage() {
           </CardContent>
         </Card>
 
-        {/* --- Rest of your tabs and findings layout goes here --- */}
-        {/* You don’t need to change the rest unless you want to style or link parsed data to findings */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Case Analysis: {caseDetails.title}</h1>
+            <p className="text-muted-foreground mt-2">
+              AI-powered analysis of case files and evidence patterns
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">{caseDetails.status}</Badge>
+            <span className="text-sm text-muted-foreground">
+              Last updated: {caseDetails.lastUpdated}
+            </span>
+          </div>
+        </div>
+
+        <Tabs defaultValue="suspects" className="w-full">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="suspects">Potential Suspects</TabsTrigger>
+            <TabsTrigger value="findings">Key Findings</TabsTrigger>
+            <TabsTrigger value="timeline">Timeline Analysis</TabsTrigger>
+            <TabsTrigger value="evidence">Evidence Review</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="suspects" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Potential Suspects</CardTitle>
+                <CardDescription>
+                  AI-identified persons of interest based on case file analysis
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {potentialSuspects.map((suspect) => (
+                    <div key={suspect.id} className="border rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <LucideUser className="h-5 w-5 text-primary" />
+                          <h3 className="font-semibold">{suspect.name}</h3>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={suspect.relevance > 80 ? "destructive" : "secondary"}>
+                            {suspect.relevance}% relevance
+                          </Badge>
+                          <span className="text-sm text-muted-foreground">
+                            {suspect.connections} connections
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{suspect.notes}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="findings" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Key Findings</CardTitle>
+                <CardDescription>
+                  Important patterns and inconsistencies discovered through AI analysis
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {keyFindings.map((finding) => (
+                    <div key={finding.id} className="border rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <LucideAlertCircle className="h-5 w-5 text-primary" />
+                          <h3 className="font-semibold">{finding.title}</h3>
+                        </div>
+                        <Badge variant={finding.priority === "High" ? "destructive" : "secondary"}>
+                          {finding.priority} Priority
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{finding.description}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="timeline" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Timeline Analysis</CardTitle>
+                <CardDescription>
+                  Chronological analysis of events and identified gaps
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-center text-muted-foreground py-12">
+                  Timeline analysis will be displayed here once case files are processed.
+                </p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="evidence" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Evidence Review</CardTitle>
+                <CardDescription>
+                  Physical and digital evidence analysis results
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-center text-muted-foreground py-12">
+                  Evidence analysis will be displayed here once case files are processed.
+                </p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   )
