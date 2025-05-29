@@ -2,7 +2,7 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
-import { MainNav } from "./components/nav"
+import { MainNav } from "@/components/nav"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -19,12 +19,14 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className} suppressHydrationWarning>
-        <header className="border-b">
-          <div className="flex h-16 items-center">
-            <MainNav />
+        <header className="border-b sticky top-0 bg-background z-50">
+          <div className="container mx-auto px-4">
+            <div className="flex h-16 items-center justify-between">
+              <MainNav />
+            </div>
           </div>
         </header>
-        <main>
+        <main className="container mx-auto px-4 py-6">
           {children}
         </main>
       </body>

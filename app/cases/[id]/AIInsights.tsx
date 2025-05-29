@@ -40,9 +40,10 @@ export default function AIInsights({ data }: { data: any }) {
           <ul className="space-y-2">
             {data.connections.map((c: any, i: number) => (
               <li key={i} className="border p-2 rounded bg-white shadow-sm">
-                <p><strong>Case ID:</strong> {c.caseId}</p>
+                <p><strong>Type:</strong> {c.type}</p>
                 <p className="text-sm text-gray-700">{c.description}</p>
                 <p className="text-xs text-gray-500">Confidence: {c.confidence}%</p>
+                {c.significance && <p className="text-xs text-gray-500">Significance: {c.significance}</p>}
               </li>
             ))}
           </ul>
@@ -52,9 +53,30 @@ export default function AIInsights({ data }: { data: any }) {
       {data.recommendations?.length > 0 && (
         <section>
           <h3 className="text-lg font-semibold mb-2">✅ Recommendations</h3>
-          <ul className="list-disc list-inside text-sm text-gray-800">
-            {data.recommendations.map((r: string, i: number) => (
-              <li key={i}>{r}</li>
+          <ul className="space-y-2">
+            {data.recommendations.map((r: any, i: number) => (
+              <li key={i} className="border p-2 rounded bg-white shadow-sm">
+                <div><strong>Priority:</strong> {r.priority}</div>
+                <div><strong>Action:</strong> {r.action}</div>
+                <div><strong>Rationale:</strong> {r.rationale}</div>
+                <div><strong>Timeline:</strong> {r.timeline}</div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {data.overlookedLeads?.length > 0 && (
+        <section>
+          <h3 className="text-lg font-semibold mb-2">🚩 Overlooked Leads</h3>
+          <ul className="space-y-2">
+            {data.overlookedLeads.map((lead: any, i: number) => (
+              <li key={i} className="border p-2 rounded bg-white shadow-sm">
+                <div><strong>Type:</strong> {lead.type}</div>
+                <div><strong>Description:</strong> {lead.description}</div>
+                <div><strong>Recommended Action:</strong> {lead.recommendedAction}</div>
+                <div><strong>Rationale:</strong> {lead.rationale}</div>
+              </li>
             ))}
           </ul>
         </section>

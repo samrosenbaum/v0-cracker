@@ -9,6 +9,18 @@ import { RecentCases } from "@/components/recent-cases"
 import { LucideFileSearch, LucideUpload, LucideUsers, LucideBarChart2 } from "lucide-react"
 
 export default function Home() {
+  const [cases, setCases] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchCases = async () => {
+      const { data, error } = await supabase.from('cases').select('*').order('created_at', { ascending: false });
+      setCases(data || []);
+      setLoading(false);
+    };
+    fetchCases();
+  }, []);
+
   return (
     <div className="container mx-auto p-6">
       <div className="mb-8">
@@ -70,10 +82,10 @@ export default function Home() {
       {/* Stats and Recent Cases */}
       <div className="grid gap-6 md:grid-cols-2">
         <div>
-          <DashboardStats />
+          <DashboardStats cases={cases} loading={loading} />
         </div>
         <div>
-          <RecentCases />
+          <RecentCases cases={cases} loading={loading} />
         </div>
       </div>
     </div>

@@ -1,6 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { createClient } from '@supabase/supabase-js';
 
 export const runtime = 'nodejs';
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function POST(req: NextRequest) {
   console.log("🚀 API route hit - PDF analysis with pdfjs-dist");
@@ -327,25 +334,63 @@ IMPORTANT:
         }, { status: 500 });
       }
 
-      return NextResponse.json({
-        success: true,
-        caseId,
-        analysis: parsedResults,
-        filesAnalyzed: extractedTexts.map(f => ({
-          name: f.name,
-          type: f.type,
-          textLength: f.text.length,
-          preview: f.text.substring(0, 200) + (f.text.length > 200 ? "..." : "")
-        })),
-        aiModel: "claude-3-haiku-20240307",
-        processingTime: new Date().toISOString()
-      });
+      // After successful AI analysis and parsing
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          return NextResponse.json({ error: "User not authenticated" }, { status: 401 });
+        }
 
-    } catch (aiError) {
-      console.error("🚨 AI Error:", aiError);
+        // Store analysis results in Supabase
+        const { data: analysisData, error: analysisError } = await supabase
+          .from('case_analysis')
+          .insert([{
+            case_id: caseId,
+            analysis_type: 'ai_analysis',
+            analysis_data: parsedResults,
+            confidence_score: Math.max(
+              ...parsedResults.findings.map((f: any) => f.confidence || 0),
+              ...parsedResults.suspects.map((s: any) => s.confidence || 0),
+              ...parsedResults.connections.map((c: any) => c.confidence || 0)
+            ),
+            user_id: user.id
+          }])
+          .select()
+          .single();
+
+        if (analysisError) {
+          console.error("Error storing analysis:", analysisError);
+          // Continue with the response even if storage fails
+        }
+
+        return NextResponse.json({
+          success: true,
+          caseId,
+          analysis: parsedResults,
+          analysisId: analysisData?.id,
+          filesAnalyzed: extractedTexts.map(f => ({
+            name: f.name,
+            type: f.type,
+            textLength: f.text.length,
+            preview: f.text.substring(0, 200) + (f.text.length > 200 ? "..." : "")
+          })),
+          aiModel: "claude-3-haiku-20240307",
+          processingTime: new Date().toISOString()
+        });
+
+      } catch (aiError) {
+        console.error("🚨 AI Error:", aiError);
+        return NextResponse.json({ 
+          error: "AI analysis failed",
+          details: aiError instanceof Error ? aiError.message : "Unknown error"
+        }, { status: 500 });
+      }
+
+    } catch (error) {
+      console.error("🚨 System Error:", error);
       return NextResponse.json({ 
-        error: "AI analysis failed",
-        details: aiError instanceof Error ? aiError.message : "Unknown error"
+        error: "System error",
+        details: error instanceof Error ? error.message : "Unknown error"
       }, { status: 500 });
     }
 

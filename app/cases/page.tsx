@@ -1,53 +1,34 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { LucideSearch, LucideFilter, LucideArrowUpDown } from "lucide-react"
+import { supabase } from "@/lib/supabaseClient"
 
 export default function CasesPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [sortBy, setSortBy] = useState("date") // date, priority, status
   const [filterStatus, setFilterStatus] = useState("all") // all, active, closed
+  const [cases, setCases] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
-  // Mock data - replace with real API call
-  const cases = [
-    {
-      id: "CASE-001",
-      title: "Burglary at 456 Oak Street",
-      status: "Active",
-      priority: "High",
-      lastUpdated: "2024-03-15",
-      description: "Residential burglary with evidence of forced entry",
-      assignedTo: "Det. Sarah Chen"
-    },
-    {
-      id: "CASE-002",
-      title: "Missing Person - John Smith",
-      status: "Active",
-      priority: "Critical",
-      lastUpdated: "2024-03-14",
-      description: "34-year-old male, last seen downtown",
-      assignedTo: "Det. Mike Johnson"
-    },
-    {
-      id: "CASE-003",
-      title: "Vehicle Theft - Blue Honda",
-      status: "Closed",
-      priority: "Medium",
-      lastUpdated: "2024-03-10",
-      description: "2015 Honda Civic recovered, suspect in custody",
-      assignedTo: "Det. Sarah Chen"
-    }
-  ]
+  useEffect(() => {
+    const fetchCases = async () => {
+      const { data, error } = await supabase.from('cases').select('*').order('created_at', { ascending: false });
+      setCases(data || []);
+      setLoading(false);
+    };
+    fetchCases();
+  }, []);
 
   const filteredCases = cases.filter(case_ => {
-    const matchesSearch = case_.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         case_.description.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = filterStatus === "all" || case_.status.toLowerCase() === filterStatus.toLowerCase()
+    const matchesSearch = (case_.title?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+                         (case_.description?.toLowerCase() || "").includes(searchTerm.toLowerCase())
+    const matchesStatus = filterStatus === "all" || (case_.status?.toLowerCase() === filterStatus.toLowerCase())
     return matchesSearch && matchesStatus
   })
 
@@ -58,8 +39,8 @@ export default function CasesPage() {
           <h1 className="text-3xl font-bold">Cases Overview</h1>
           <p className="text-muted-foreground">Manage and track investigation cases</p>
         </div>
-        <Link href="/case-analysis">
-          <Button>New Case Analysis</Button>
+        <Link href="/cases/new">
+          <Button>New Case</Button>
         </Link>
       </div>
 
@@ -96,32 +77,38 @@ export default function CasesPage() {
 
       {/* Cases List */}
       <div className="space-y-4">
-        {filteredCases.map(case_ => (
-          <Link href={`/cases/${case_.id}`} key={case_.id}>
-            <Card className="hover:bg-accent transition-colors cursor-pointer">
-              <CardContent className="p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-lg font-semibold">{case_.title}</h3>
-                    <p className="text-sm text-muted-foreground">{case_.description}</p>
+        {loading ? (
+          <div>Loading...</div>
+        ) : filteredCases.length === 0 ? (
+          <div>No cases found. Click "New Case" to create your first case.</div>
+        ) : (
+          filteredCases.map(case_ => (
+            <Link href={`/cases/${case_.id}`} key={case_.id}>
+              <Card className="hover:bg-accent transition-colors cursor-pointer">
+                <CardContent className="p-6">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold">{case_.title}</h3>
+                      <p className="text-sm text-muted-foreground">{case_.description}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Badge variant={case_.status === "Active" ? "default" : "secondary"}>
+                        {case_.status}
+                      </Badge>
+                      <Badge variant={case_.priority === "Critical" ? "destructive" : "outline"}>
+                        {case_.priority}
+                      </Badge>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Badge variant={case_.status === "Active" ? "default" : "secondary"}>
-                      {case_.status}
-                    </Badge>
-                    <Badge variant={case_.priority === "Critical" ? "destructive" : "outline"}>
-                      {case_.priority}
-                    </Badge>
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>Assigned to: {case_.assignedTo || "-"}</span>
+                    <span>Last updated: {case_.lastUpdated || case_.created_at?.slice(0,10) || "-"}</span>
                   </div>
-                </div>
-                <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>Assigned to: {case_.assignedTo}</span>
-                  <span>Last updated: {case_.lastUpdated}</span>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
+                </CardContent>
+              </Card>
+            </Link>
+          ))
+        )}
       </div>
     </div>
   )
