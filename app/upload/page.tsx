@@ -71,6 +71,15 @@ export default function UploadPage() {
             throw new Error(`Upload failed for ${file.name}`)
           }
 
+          const contentType = response.headers.get("content-type");
+          let result;
+          if (contentType && contentType.includes("application/json")) {
+            result = await response.json();
+          } else {
+            const text = await response.text();
+            throw new Error("Non-JSON response: " + text);
+          }
+
           setUploadProgress(prev => ({
             ...prev,
             [file.name]: 100

@@ -25,11 +25,18 @@ export default function UploadTest() {
         body: formData
       })
       
-      const data = await response.json()
+      const contentType = response.headers.get("content-type");
+      let data;
+      if (contentType && contentType.includes("application/json")) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        throw new Error("Non-JSON response: " + text);
+      }
       setResult(JSON.stringify(data, null, 2))
       
     } catch (error) {
-      setResult("Error: " + error.message)
+      setResult("Error: " + (error instanceof Error ? error.message : error))
     }
     
     setLoading(false)

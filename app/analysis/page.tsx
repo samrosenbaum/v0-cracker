@@ -32,7 +32,15 @@ export default function AnalysisPage() {
         body: formData,
       })
 
-      const result = await res.json()
+      const contentType = res.headers.get("content-type");
+      let result;
+      if (contentType && contentType.includes("application/json")) {
+        result = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error("Non-JSON response: " + text);
+      }
+
       console.log("Analysis result:", result)
       
       if (result.success) {
@@ -42,7 +50,7 @@ export default function AnalysisPage() {
       }
     } catch (error) {
       console.error("Upload error:", error)
-      setParsedText("Error occurred during analysis")
+      setParsedText("Error occurred during analysis: " + (error instanceof Error ? error.message : error))
     }
     
     setUploading(false)

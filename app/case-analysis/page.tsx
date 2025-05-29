@@ -38,11 +38,15 @@ export default function CaseAnalysis() {
         body: formData,
       })
 
-      if (!response.ok) {
-        throw new Error('Analysis failed')
+      const contentType = response.headers.get("content-type");
+      let result;
+      if (contentType && contentType.includes("application/json")) {
+        result = await response.json();
+      } else {
+        const text = await response.text();
+        throw new Error("Non-JSON response: " + text);
       }
 
-      const result = await response.json()
       console.log('Analysis result:', result)
       setAnalysis(result.analysis)
     } catch (err) {

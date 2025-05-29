@@ -11,7 +11,7 @@ import SuspectGraph from "@/components/analysis-visuals/SuspectGraph";
 
 export default function AnalysisFlagsPage() {
   const [parsedText, setParsedText] = useState("");
-  const [analysisResults, setAnalysisResults] = useState(null);
+  const [analysisResults, setAnalysisResults] = useState<any>(null);
   const [caseId, setCaseId] = useState("case-001");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
@@ -42,7 +42,14 @@ export default function AnalysisFlagsPage() {
                 setParsedText(uploadJson.content || "No content parsed");
 
                 const processRes = await fetch("/api/analyze", { method: "POST", body: formData });
-                const processJson = await processRes.json();
+                let processJson;
+                const contentType = processRes.headers.get("content-type");
+                if (contentType && contentType.includes("application/json")) {
+                  processJson = await processRes.json();
+                } else {
+                  const text = await processRes.text();
+                  throw new Error("Non-JSON response: " + text);
+                }
                 setAnalysisResults(processJson.analysis);
               }}
               className="flex flex-col gap-4"

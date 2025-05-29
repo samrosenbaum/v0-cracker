@@ -79,7 +79,15 @@ export default function CaseDetailPage() {
       body: formData
     });
 
-    const result = await res.json();
+    const contentType = res.headers.get("content-type");
+    let result;
+    if (contentType && contentType.includes("application/json")) {
+      result = await res.json();
+    } else {
+      const text = await res.text();
+      throw new Error("Non-JSON response: " + text);
+    }
+
     setStatus(
       result.analysis
         ? JSON.stringify(result.analysis, null, 2)
