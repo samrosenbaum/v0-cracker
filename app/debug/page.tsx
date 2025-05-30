@@ -1,14 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export default function DebugPage() {
   const [cases, setCases] = useState<any[]>([]);
@@ -57,15 +52,16 @@ export default function DebugPage() {
   };
 
   const loadAnalyses = async () => {
-    const { data, error } = await supabase
-      .from('case_analyses')
+    const { data: analyses, error } = await supabase
+      .from('case_analysis')
       .select('*')
+      .eq('user_id', user.id)
       .order('created_at', { ascending: false });
     
     if (error) {
       console.error('Analyses error:', error);
     } else {
-      setAnalyses(data || []);
+      setAnalyses(analyses || []);
     }
   };
 

@@ -1,13 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabaseClient';
 import { useRouter } from 'next/navigation';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export default function NewCasePage() {
   const [title, setTitle] = useState('');
@@ -22,6 +17,7 @@ export default function NewCasePage() {
   const [assignedDetective, setAssignedDetective] = useState('');
   const [tags, setTags] = useState('');
   const [formStatus, setFormStatus] = useState('');
+  const [aiPrompt, setAiPrompt] = useState('');
   const router = useRouter();
 
   const handleSubmit = async (e: any) => {
@@ -47,7 +43,8 @@ export default function NewCasePage() {
         priority,
         assigned_detective: assignedDetective,
         tags: tags ? tags.split(',').map(t => t.trim()) : [],
-        user_id: user.id
+        user_id: user.id,
+        ai_prompt: aiPrompt,
       }])
       .select()
       .single();
@@ -142,6 +139,12 @@ export default function NewCasePage() {
           placeholder="Description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+          className="w-full border p-2 rounded"
+        />
+        <textarea
+          placeholder="Optional: AI Prompt for this case (e.g. 'Look for body location clues')"
+          value={aiPrompt}
+          onChange={e => setAiPrompt(e.target.value)}
           className="w-full border p-2 rounded"
         />
         <button

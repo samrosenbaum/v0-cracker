@@ -3,16 +3,43 @@ import { createClient } from '@supabase/supabase-js';
 
 export const runtime = 'nodejs';
 
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 export async function POST(req: NextRequest) {
   console.log("🚀 API route hit - PDF analysis with pdfjs-dist");
   
+  // Extract access token from Authorization header
+  const authHeader = req.headers.get("authorization");
+  console.log("Auth header:", {
+    present: !!authHeader,
+    value: authHeader ? `${authHeader.substring(0, 20)}...` : null
+  });
+  
+  const token = authHeader?.replace("Bearer ", "");
+  console.log("Token:", {
+    present: !!token,
+    length: token?.length
+  });
+
+  // Initialize Supabase client with user context
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { global: { headers: { Authorization: `Bearer ${token}` } } }
+  );
+
   try {
+    // Verify user authentication
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    console.log("User verification:", {
+      hasUser: !!user,
+      userError,
+      userId: user?.id
+    });
+
+    if (!user) {
+      console.error("Authentication failed:", userError);
+      return NextResponse.json({ error: "User not authenticated" }, { status: 401 });
+    }
+
     if (!process.env.ANTHROPIC_API_KEY) {
       return NextResponse.json({ 
         error: "AI service not configured" 
@@ -22,6 +49,19 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const files = formData.getAll("files") as File[];
     const caseId = (formData.get("caseId") as string) || "unknown";
+    
+    // Fetch the case-specific AI prompt
+    let aiPrompt = "";
+    if (caseId && caseId !== "unknown") {
+      const { data: caseData, error: caseError } = await supabase
+        .from('cases')
+        .select('ai_prompt')
+        .eq('id', caseId)
+        .single();
+      if (!caseError && caseData?.ai_prompt) {
+        aiPrompt = caseData.ai_prompt;
+      }
+    }
     
     console.log(`✅ Found ${files.length} files`);
 
@@ -171,6 +211,11 @@ export async function POST(req: NextRequest) {
         console.warn(`⚠️ Combined text truncated from ${combinedText.length} to ${MAX_CHARS} characters.`);
       }
 
+      // Compose the prompt for the AI
+      const userPrompt = aiPrompt?.trim()
+        ? aiPrompt.trim() + "\n\n" // Use the case-specific prompt, then add the rest
+        : "";
+
       const response = await client.messages.create({
         model: 'claude-3-haiku-20240307',
         max_tokens: 4000,
@@ -178,6 +223,7 @@ export async function POST(req: NextRequest) {
         messages: [{
           role: 'user',
           content: `
+${userPrompt}
 Respond with ONLY valid JSON. Do not include any explanation, markdown, or extra text.
 
 You may be given: DNA reports, interview transcripts, detective notes, timelines, autopsy reports, lab results, and other case materials. Consider all sources for overlooked clues, patterns, or inconsistencies.

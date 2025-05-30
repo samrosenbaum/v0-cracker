@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { LucideUpload, LucideFile, LucideX, LucideCheck } from "lucide-react"
+import { supabase } from "@/lib/supabaseClient"
 
 export default function UploadPage() {
   const [files, setFiles] = useState<File[]>([])
@@ -56,19 +57,42 @@ export default function UploadPage() {
     setUploadStatus(initialStatus)
 
     try {
+      // Get the current session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      console.log("Session check:", {
+        hasSession: !!session,
+        sessionError,
+        accessToken: session?.access_token ? "present" : "missing"
+      })
+
+      if (!session) {
+        throw new Error("You must be logged in to upload files")
+      }
+
       for (const file of files) {
         const formData = new FormData()
         formData.append('files', file)
         formData.append('caseId', caseId || new Date().toISOString())
 
         try {
+          console.log("Sending request with token:", {
+            tokenPresent: !!session.access_token,
+            tokenLength: session.access_token?.length
+          })
+
           const response = await fetch('/api/analyze', {
             method: 'POST',
             body: formData,
+            headers: {
+              "Authorization": `Bearer ${session.access_token}`
+            }
           })
 
           if (!response.ok) {
-            throw new Error(`Upload failed for ${file.name}`)
+            const errorText = await response.text();
+            console.error(`Upload failed for ${file.name}:`, errorText);
+            throw new Error(`Upload failed for ${file.name}: ${errorText}`);
           }
 
           const contentType = response.headers.get("content-type");
@@ -97,6 +121,15 @@ export default function UploadPage() {
           }))
         }
       }
+    } catch (error) {
+      console.error("Authentication error:", error)
+      // Handle authentication error
+      setUploadStatus(prev => 
+        Object.keys(prev).reduce((acc, key) => ({
+          ...acc,
+          [key]: 'error'
+        }), {})
+      )
     } finally {
       setUploading(false)
     }

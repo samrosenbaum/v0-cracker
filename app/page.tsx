@@ -7,10 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DashboardStats } from "@/components/dashboard-stats"
 import { RecentCases } from "@/components/recent-cases"
 import { LucideFileSearch, LucideUpload, LucideUsers, LucideBarChart2 } from "lucide-react"
+import { useRouter } from 'next/navigation';
 
 export default function Home() {
   const [cases, setCases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const router = useRouter();
 
   useEffect(() => {
     const fetchCases = async () => {
@@ -20,6 +23,42 @@ export default function Home() {
     };
     fetchCases();
   }, []);
+
+  const handleSubmit = async (e: any) => {
+    e.preventDefault();
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('cases')
+      .insert([{
+        title,
+        description,
+        case_number: caseNumber,
+        incident_date: incidentDate || null,
+        location,
+        jurisdiction,
+        case_type: caseType,
+        status,
+        priority,
+        assigned_detective: assignedDetective,
+        tags: tags ? tags.split(',').map(t => t.trim()) : [],
+        user_id: user.id,
+        ai_prompt: aiPrompt,
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      setFormStatus(`Error: ${error.message}`);
+    } else {
+      router.push(`/cases/${data.id}`);
+    }
+  };
 
   return (
     <div className="container mx-auto p-6">
@@ -88,6 +127,13 @@ export default function Home() {
           <RecentCases cases={cases} loading={loading} />
         </div>
       </div>
+
+      {caseData?.ai_prompt && (
+        <div className="mb-4 p-3 bg-yellow-50 border-l-4 border-yellow-400 rounded">
+          <strong>Case AI Prompt:</strong>
+          <div className="text-sm mt-1 whitespace-pre-line">{caseData.ai_prompt}</div>
+        </div>
+      )}
     </div>
   )
 }
