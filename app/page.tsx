@@ -127,13 +127,6 @@ export default function Home() {
           <RecentCases cases={cases} loading={loading} />
         </div>
       </div>
-
-      {caseData?.ai_prompt && (
-        <div className="mb-4 p-3 bg-yellow-50 border-l-4 border-yellow-400 rounded">
-          <strong>Case AI Prompt:</strong>
-          <div className="text-sm mt-1 whitespace-pre-line">{caseData.ai_prompt}</div>
-        </div>
-      )}
     </div>
   )
 }

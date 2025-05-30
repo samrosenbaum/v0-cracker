@@ -1,5 +1,8 @@
 'use client';
 
+import { Timeline, TimelineItem } from 'react-vertical-timeline-component';
+import 'react-vertical-timeline-component/style.min.css';
+
 export default function AIInsights({ data }: { data: any }) {
   if (!data) return null;
   if (data.error) return <p className="text-red-600">{data.error}</p>;
@@ -79,6 +82,27 @@ export default function AIInsights({ data }: { data: any }) {
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {data.findings?.some(f => f.timeline) && (
+        <section>
+          <h3 className="text-lg font-semibold mb-2">🕒 Timeline of Key Events</h3>
+          <Timeline>
+            {data.findings
+              .filter(f => f.timeline)
+              .map((f, i) => (
+                <TimelineItem
+                  key={i}
+                  date={f.timeline.date || ''}
+                  icon={<span>⏱️</span>}
+                >
+                  <h4>{f.title}</h4>
+                  <p>{f.description}</p>
+                  <p className="text-xs text-gray-500">{f.timeline.details}</p>
+                </TimelineItem>
+              ))}
+          </Timeline>
         </section>
       )}
     </div>
