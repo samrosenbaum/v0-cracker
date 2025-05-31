@@ -25,15 +25,31 @@ export default function AIInsights({ data }: { data: any }) {
 
       {data.findings?.length > 0 && (
         <section>
-          <h3 className="text-lg font-semibold mb-2">🔎 Key Findings</h3>
-          <ul className="space-y-2">
-            {data.findings.map((f: any, i: number) => (
-              <li key={i} className="border p-2 rounded bg-white shadow-sm">
-                <p><strong>{f.title}</strong> ({f.priority})</p>
-                <p className="text-sm text-gray-700">{f.description}</p>
-              </li>
-            ))}
-          </ul>
+          <h3 className="text-lg font-semibold mb-2">🧾 Evidence Table</h3>
+          <div className="overflow-x-auto">
+            <table className="min-w-full border text-sm">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="p-2 border">Title</th>
+                  <th className="p-2 border">Category</th>
+                  <th className="p-2 border">Confidence</th>
+                  <th className="p-2 border">Priority</th>
+                  <th className="p-2 border">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.findings.map((f: any, i: number) => (
+                  <tr key={i} className={f.priority === "CRITICAL" ? "bg-red-50" : ""}>
+                    <td className="p-2 border">{f.title}</td>
+                    <td className="p-2 border">{f.category}</td>
+                    <td className="p-2 border">{f.confidence}</td>
+                    <td className="p-2 border">{f.priority}</td>
+                    <td className="p-2 border">{f.investigativeAction}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
 

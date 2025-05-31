@@ -5,6 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import FileUploader from './FileUploader';
 import AIInsights from './AIInsights';
+import Timeline from "@/components/Timeline";
+import NetworkGraph from "@/components/NetworkGraph";
 
 export default function CaseDetailPage() {
   const { id } = useParams();
@@ -132,6 +134,22 @@ export default function CaseDetailPage() {
     }
   };
 
+  const timelineEvents = analyses.flatMap(a =>
+    (a.analysis_data?.timeline || []).map((e: any) => ({
+      date: e.date,
+      description: e.description,
+      type: e.type || "event",
+    }))
+  );
+
+  const suspects = analyses.flatMap(a =>
+    (a.analysis_data?.suspects || []).map((s: any) => ({
+      name: s.name,
+      connections: s.connections || [],
+      role: s.role || "Suspect",
+    }))
+  );
+
   return (
     <div className="p-6 max-w-3xl mx-auto">
       {caseData ? (
@@ -199,7 +217,9 @@ export default function CaseDetailPage() {
             <p className="mt-4 text-sm text-gray-600 whitespace-pre-wrap">{status}</p>
           </div>
 
-          {/* Analyses Dashboard */}
+          <Timeline events={timelineEvents} />
+          <NetworkGraph suspects={suspects} />
+
           <div className="mt-10">
             <h2 className="text-xl font-bold mb-2">Case Analyses</h2>
             {analyses.length === 0 ? (
@@ -223,11 +243,10 @@ export default function CaseDetailPage() {
               </div>
             )}
 
-            {/* Show selected analysis details */}
-            {selectedAnalysis && (
+            {(selectedAnalysis || aiResult) && (
               <div className="mt-6">
                 <h3 className="text-lg font-semibold mb-2">Analysis Details</h3>
-                <AIInsights data={selectedAnalysis.analysis_data} />
+                <AIInsights data={selectedAnalysis?.analysis_data || aiResult} />
               </div>
             )}
           </div>
