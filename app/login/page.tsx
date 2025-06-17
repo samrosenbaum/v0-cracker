@@ -69,10 +69,13 @@ export default function LoginPage() {
           appearance={{ theme: ThemeSupa }}
           theme="light"
           providers={[]}
-          redirectTo={`${window.location.origin}/`}
+          redirectTo={`${typeof window !== 'undefined' ? window.location.origin : ''}/`}
         />
       </div>
-      
+
+      {/* Magic Link Login */}
+      <MagicLinkForm />
+
       {/* Debug info */}
       <div className="mt-8 p-4 bg-gray-100 rounded text-sm">
         <p><strong>Debug Info:</strong></p>
@@ -80,5 +83,47 @@ export default function LoginPage() {
         <p>Supabase Key: {process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing'}</p>
       </div>
     </main>
+  );
+}
+
+// Add this component at the bottom of your file (outside LoginPage)
+function MagicLinkForm() {
+  const [email, setEmail] = useState('');
+  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleMagicLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage('');
+    const { error } = await supabase.auth.signInWithOtp({ email });
+    if (error) {
+      setMessage('Error sending magic link: ' + error.message);
+    } else {
+      setMessage('Check your email for the magic link!');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <form onSubmit={handleMagicLink} className="w-full max-w-md mt-8 space-y-4">
+      <h2 className="text-lg font-semibold">Or, get a magic link</h2>
+      <input
+        type="email"
+        placeholder="Your email"
+        value={email}
+        onChange={e => setEmail(e.target.value)}
+        required
+        className="w-full border p-2 rounded"
+      />
+      <button
+        type="submit"
+        className="w-full bg-blue-600 text-white py-2 rounded"
+        disabled={loading}
+      >
+        {loading ? 'Sending...' : 'Send Magic Link'}
+      </button>
+      {message && <p className="mt-2 text-center text-sm">{message}</p>}
+    </form>
   );
 }

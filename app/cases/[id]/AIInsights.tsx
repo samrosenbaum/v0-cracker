@@ -2,10 +2,16 @@
 
 import { Timeline, TimelineItem } from 'react-vertical-timeline-component';
 import 'react-vertical-timeline-component/style.min.css';
+import dynamic from 'next/dynamic';
+const ForceGraph2D = dynamic(
+  () => import('react-force-graph-2d'),
+  { ssr: false }
+);
 
 export default function AIInsights({ data }: { data: any }) {
   if (!data) return null;
   if (data.error) return <p className="text-red-600">{data.error}</p>;
+  
 
   return (
     <div className="mt-6 space-y-4">
@@ -119,6 +125,32 @@ export default function AIInsights({ data }: { data: any }) {
                 </TimelineItem>
               ))}
           </Timeline>
+        </section>
+      )}
+
+      {data.suspects && data.connections && (
+        <section>
+          <h3 className="text-lg font-semibold mb-2">🌐 Network View</h3>
+          <ForceGraph2D
+            graphData={{
+              nodes: data.suspects.map((s: any) => ({
+                id: s.id,
+                name: s.name,
+                status: s.status,
+                priority: s.priority,
+              })),
+              links: data.connections.map((c: any) => ({
+                source: c.source,
+                target: c.target,
+                label: c.type,
+              })),
+            }}
+            nodeLabel="name"
+            nodeAutoColorBy="status"
+            linkLabel="label"
+            width={600}
+            height={350}
+          />
         </section>
       )}
     </div>

@@ -266,9 +266,14 @@ export default function AnalysisPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-center text-muted-foreground py-12">
-                  Evidence analysis will be displayed here once case files are processed.
-                </p>
+                <div className="flex flex-col items-center justify-center py-12">
+                  <p className="text-center text-muted-foreground mb-4">
+                    View detailed evidence analysis and timeline
+                  </p>
+                  <Link href="/forensics/evidence">
+                    <Button>View Evidence Dashboard</Button>
+                  </Link>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

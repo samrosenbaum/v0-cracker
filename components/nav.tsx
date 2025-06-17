@@ -29,7 +29,7 @@ export function MainNav() {
         Cases
       </Link>
       <Link
-        href="/evidence"
+        href="/forensics/evidence"
         className="text-sm font-medium transition-colors hover:text-primary"
       >
         Evidence

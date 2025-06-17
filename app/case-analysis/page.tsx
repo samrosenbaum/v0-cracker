@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { LucideUpload, LucideFileText, LucideUsers, LucideAlertTriangle } from "lucide-react"
+import SuspectNetworkGraph from "@/components/analysis-visuals/SuspectNetworkGraph"
 
 type Analysis = {
   id: string
@@ -24,6 +25,7 @@ export default function CaseAnalysis() {
   const [uploading, setUploading] = useState(false)
   const [files, setFiles] = useState<FileList | null>(null)
   const [caseId, setCaseId] = useState("")
+  const [bulkAnalyzing, setBulkAnalyzing] = useState(false)
 
   // Fetch analyses for the logged-in user
   useEffect(() => {
@@ -96,6 +98,50 @@ export default function CaseAnalysis() {
     }
   }
 
+  const handleBulkAnalysis = async () => {
+    if (!caseId) return;
+    
+    setBulkAnalyzing(true);
+    setError(null);
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const formData = new FormData();
+      formData.append("caseId", caseId);
+      formData.append("bulkAnalysis", "true");
+      
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to analyze case');
+      }
+
+      const data = await response.json();
+      
+      // Refresh analyses after bulk analysis
+      const { data: updatedAnalyses, error: fetchError } = await supabase
+        .from('case_analysis')
+        .select('*')
+        .eq('user_id', session?.user?.id)
+        .order('created_at', { ascending: false });
+
+      if (fetchError) throw fetchError;
+      setAnalyses(updatedAnalyses || []);
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setBulkAnalyzing(false);
+    }
+  };
+
   return (
     <div className="container mx-auto p-6 max-w-6xl">
       <h1 className="text-3xl font-bold mb-2">Case Analyses</h1>
@@ -123,10 +169,21 @@ export default function CaseAnalysis() {
             className="block w-full text-sm border rounded p-2"
           />
         </div>
-        <Button type="submit" disabled={uploading} className="h-10">
-          <LucideUpload className="mr-2 h-4 w-4" />
-          {uploading ? "Analyzing..." : "Analyze Files"}
-        </Button>
+        <div className="flex gap-2">
+          <Button type="submit" disabled={uploading} className="h-10">
+            <LucideUpload className="mr-2 h-4 w-4" />
+            {uploading ? "Analyzing..." : "Analyze Files"}
+          </Button>
+          {caseId && (
+            <Button 
+              onClick={handleBulkAnalysis} 
+              disabled={bulkAnalyzing} 
+              className="h-10 bg-blue-600 hover:bg-blue-700"
+            >
+              {bulkAnalyzing ? "Analyzing All..." : "Analyze All Files"}
+            </Button>
+          )}
+        </div>
       </form>
 
       {error && <div className="text-red-500 mb-4">{error}</div>}
@@ -187,16 +244,57 @@ export default function CaseAnalysis() {
                 <LucideUsers className="mr-2 h-5 w-5" /> Suspects
               </h2>
               {selected.analysis_data?.suspects?.length ? (
-                <ul className="mb-4">
-                  {selected.analysis_data.suspects.map((s: any, i: number) => (
-                    <li key={i} className="mb-2 border rounded p-2">
-                      <div className="font-semibold">{s.name}</div>
-                      <div className="text-xs text-muted-foreground">{s.notes}</div>
-                      <div className="text-xs">Confidence: {s.confidence}%</div>
-                    </li>
-                  ))}
-                </ul>
-              ) : <div className="text-muted-foreground mb-4">No suspects found.</div>}
+                <SuspectNetworkGraph
+                  suspects={selected.analysis_data.suspects
+                    .map((s: any) => ({
+                      id: s.id || `suspect-${Math.random().toString(36).substr(2, 9)}`,
+                      name: s.name,
+                      role: s.role,
+                      confidence: s.confidence,
+                      connections: s.connections || [],
+                      location: s.location,
+                      evidence: s.evidence || [],
+                      notes: s.notes,
+                      status: s.status || "active",
+                      priority: s.priority || "medium"
+                    }))
+                    .reduce((unique: any[], suspect: {
+                      id: string;
+                      name: string;
+                      role?: string;
+                      confidence?: number;
+                      connections: string[];
+                      location?: string;
+                      evidence: string[];
+                      notes?: string;
+                      status: string;
+                      priority: string;
+                    }) => {
+                      // Check if we already have a suspect with this name
+                      const existingIndex = unique.findIndex(s => s.name === suspect.name);
+                      if (existingIndex === -1) {
+                        // If not, add the new suspect
+                        unique.push(suspect);
+                      } else {
+                        // If we do, merge the data, keeping the higher confidence score and combining connections/evidence
+                        const existing = unique[existingIndex];
+                        unique[existingIndex] = {
+                          ...existing,
+                          confidence: Math.max(existing.confidence || 0, suspect.confidence || 0),
+                          connections: Array.from(new Set([...(existing.connections || []), ...(suspect.connections || [])])),
+                          evidence: Array.from(new Set([...(existing.evidence || []), ...(suspect.evidence || [])])),
+                          notes: existing.notes || suspect.notes,
+                          status: existing.status || suspect.status,
+                          priority: existing.priority || suspect.priority
+                        };
+                      }
+                      return unique;
+                    }, [])}
+                  caseId={selected.case_id}
+                />
+              ) : (
+                <div className="text-muted-foreground mb-4">No suspects found.</div>
+              )}
 
               {/* Findings */}
               <h2 className="font-semibold mt-4 mb-2 flex items-center">
@@ -212,7 +310,9 @@ export default function CaseAnalysis() {
                     </li>
                   ))}
                 </ul>
-              ) : <div className="text-muted-foreground mb-4">No findings found.</div>}
+              ) : (
+                <div className="text-muted-foreground mb-4">No findings found.</div>
+              )}
 
               {/* Recommendations */}
               <h2 className="font-semibold mt-4 mb-2 flex items-center">
@@ -228,7 +328,9 @@ export default function CaseAnalysis() {
                     </li>
                   ))}
                 </ul>
-              ) : <div className="text-muted-foreground mb-4">No recommendations found.</div>}
+              ) : (
+                <div className="text-muted-foreground mb-4">No recommendations found.</div>
+              )}
             </CardContent>
           </Card>
         </div>

@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const files = formData.getAll("files") as File[];
     const caseId = (formData.get("caseId") as string) || "unknown";
+    const isBulkAnalysis = formData.get("bulkAnalysis") === "true";
     
     // Fetch the case-specific AI prompt
     let aiPrompt = "";
@@ -62,16 +63,41 @@ export async function POST(req: NextRequest) {
         aiPrompt = caseData.ai_prompt;
       }
     }
-    
-    console.log(`✅ Found ${files.length} files`);
 
-    if (files.length === 0) {
+    // If this is a bulk analysis, fetch all existing files for this case
+    let allFiles = [...files];
+    if (isBulkAnalysis && caseId !== "unknown") {
+      const folderPath = `${user.id}/${caseId}`;
+      const { data: existingFiles, error: listError } = await supabase.storage
+        .from('case-files')
+        .list(folderPath);
+
+      if (!listError && existingFiles) {
+        // Download and process each existing file
+        for (const file of existingFiles) {
+          const { data: urlData } = await supabase.storage
+            .from('case-files')
+            .createSignedUrl(`${folderPath}/${file.name}`, 60);
+
+          if (urlData?.signedUrl) {
+            const fileRes = await fetch(urlData.signedUrl);
+            const blob = await fileRes.blob();
+            const existingFile = new File([blob], file.name, { type: blob.type });
+            allFiles.push(existingFile);
+          }
+        }
+      }
+    }
+    
+    console.log(`✅ Found ${allFiles.length} files to analyze`);
+
+    if (allFiles.length === 0) {
       return NextResponse.json({ error: "No files provided" }, { status: 400 });
     }
 
     const extractedTexts = [];
     
-    for (const file of files) {
+    for (const file of allFiles) {
       console.log(`🔍 Processing file: ${file.name}, type: ${file.type}`);
       let text = "";
       
@@ -161,7 +187,7 @@ export async function POST(req: NextRequest) {
           type: file.type
         });
         
-      } catch (error: unknown) {
+      } catch (error) {
         console.error(`❌ Error processing ${file.name}:`, error);
         extractedTexts.push({
           name: file.name,
@@ -215,6 +241,8 @@ export async function POST(req: NextRequest) {
       const userPrompt = aiPrompt?.trim()
         ? aiPrompt.trim() + "\n\n" // Use the case-specific prompt, then add the rest
         : "";
+
+      console.log("Prompt sent to AI:", userPrompt);
 
       const response = await client.messages.create({
         model: 'claude-3-haiku-20240307',
@@ -342,6 +370,7 @@ IMPORTANT:
 
       const aiResponse = response.content[0]?.type === 'text' ? response.content[0].text : '';
       console.log(`✅ Claude responded: ${aiResponse.length} chars`);
+      console.log('Raw AI response:', aiResponse);
       
       // Parse AI response
       let parsedResults;
@@ -387,19 +416,20 @@ IMPORTANT:
           return NextResponse.json({ error: "User not authenticated" }, { status: 401 });
         }
 
-        // Store analysis results in Supabase
+        // Store analysis results in Supabase, including the used prompt
         const { data: analysisData, error: analysisError } = await supabase
           .from('case_analysis')
           .insert([{
             case_id: caseId,
-            analysis_type: 'ai_analysis',
+            analysis_type: isBulkAnalysis ? 'bulk_analysis' : 'ai_analysis',
             analysis_data: parsedResults,
             confidence_score: Math.max(
               ...parsedResults.findings.map((f: any) => f.confidence || 0),
               ...parsedResults.suspects.map((s: any) => s.confidence || 0),
               ...parsedResults.connections.map((c: any) => c.confidence || 0)
             ),
-            user_id: user.id
+            user_id: user.id,
+            used_prompt: userPrompt
           }])
           .select()
           .single();
@@ -408,6 +438,21 @@ IMPORTANT:
           console.error("Error storing analysis:", analysisError);
           // Continue with the response even if storage fails
         }
+
+        // Robust extraction of suspects and timeline events
+        let suspects: Suspect[] = [];
+        let timelineEvents: TimelineEvent[] = [];
+
+        if (Array.isArray(parsedResults.data)) {
+          if (parsedResults.data.length && parsedResults.data[0].date) {
+            timelineEvents = parsedResults.data as TimelineEvent[];
+          }
+        } else if (parsedResults.data && 'suspects' in parsedResults.data) {
+          suspects = (parsedResults.data as { suspects: Suspect[] }).suspects || [];
+        }
+
+        console.log('Final suspects for visualization:', suspects);
+        console.log('Final timeline events for visualization:', timelineEvents);
 
         return NextResponse.json({
           success: true,
