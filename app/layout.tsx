@@ -2,13 +2,13 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
-import { MainNav } from "@/components/nav"
+import MainNavigation from '@/components/MainNavigation'
 
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Case Analysis Platform",
-  description: "AI-powered case analysis and evidence management",
+  title: "ColdCase AI - Forensic Analysis Platform",
+  description: "AI-powered cold case analysis and investigation platform",
 }
 
 export default function RootLayout({
@@ -19,14 +19,8 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className} suppressHydrationWarning>
-        <header className="border-b sticky top-0 bg-background z-50">
-          <div className="container mx-auto px-4">
-            <div className="flex h-16 items-center justify-between">
-              <MainNav />
-            </div>
-          </div>
-        </header>
-        <main className="container mx-auto px-4 py-6">
+        <MainNavigation />
+        <main className="min-h-screen bg-gray-50">
           {children}
         </main>
       </body>

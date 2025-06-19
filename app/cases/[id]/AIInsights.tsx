@@ -1,8 +1,10 @@
 'use client';
 
-import { Timeline, TimelineItem } from 'react-vertical-timeline-component';
+import { Timeline as VerticalTimeline, TimelineItem } from 'react-vertical-timeline-component';
 import 'react-vertical-timeline-component/style.min.css';
+import Timeline from '@/components/Timeline'; // Add your custom Timeline
 import dynamic from 'next/dynamic';
+
 const ForceGraph2D = dynamic(
   () => import('react-force-graph-2d'),
   { ssr: false }
@@ -110,49 +112,80 @@ export default function AIInsights({ data }: { data: any }) {
       {data.findings?.some(f => f.timeline) && (
         <section>
           <h3 className="text-lg font-semibold mb-2">🕒 Timeline of Key Events</h3>
-          <Timeline>
-            {data.findings
+          <Timeline events={
+            data.findings
               .filter(f => f.timeline)
-              .map((f, i) => (
-                <TimelineItem
-                  key={i}
-                  date={f.timeline.date || ''}
-                  icon={<span>⏱️</span>}
-                >
-                  <h4>{f.title}</h4>
-                  <p>{f.description}</p>
-                  <p className="text-xs text-gray-500">{f.timeline.details}</p>
-                </TimelineItem>
-              ))}
-          </Timeline>
+              .map(f => ({
+                date: f.timeline?.date || f.timeline || new Date().toISOString(),
+                description: f.description || f.title || '',
+                type: f.category || 'event'
+              }))
+          } />
         </section>
       )}
 
-      {data.suspects && data.connections && (
-        <section>
-          <h3 className="text-lg font-semibold mb-2">🌐 Network View</h3>
-          <ForceGraph2D
-            graphData={{
-              nodes: data.suspects.map((s: any) => ({
-                id: s.id,
-                name: s.name,
-                status: s.status,
-                priority: s.priority,
-              })),
-              links: data.connections.map((c: any) => ({
-                source: c.source,
-                target: c.target,
-                label: c.type,
-              })),
-            }}
-            nodeLabel="name"
-            nodeAutoColorBy="status"
-            linkLabel="label"
-            width={600}
-            height={350}
-          />
-        </section>
-      )}
+      {data.suspects?.length > 0 && data.connections?.length > 0 && (() => {
+        // Create valid nodes
+        const validNodes = data.suspects
+          .filter((s: any) => s && s.id && s.name) // Filter out invalid nodes
+          .map((s: any) => ({
+            id: String(s.id), // Ensure ID is a string
+            name: s.name,
+            status: s.status || 'unknown',
+            priority: s.priority || 'low',
+          }));
+
+        // Get all valid node IDs for reference checking
+        const validNodeIds = new Set(validNodes.map(n => n.id));
+
+        // Create valid links
+        const validLinks = data.connections
+          .filter((c: any) => {
+            // Check if connection object exists and has required properties
+            if (!c || !c.source || !c.target) return false;
+            
+            // Convert to strings and check if both nodes exist
+            const sourceId = String(c.source);
+            const targetId = String(c.target);
+            
+            return validNodeIds.has(sourceId) && validNodeIds.has(targetId);
+          })
+          .map((c: any) => ({
+            source: String(c.source),
+            target: String(c.target),
+            label: c.type || 'connection',
+          }));
+
+        console.log('Valid nodes:', validNodes);
+        console.log('Valid links:', validLinks);
+
+        // Only render if we have both nodes and links
+        if (validNodes.length === 0) {
+          return (
+            <section>
+              <h3 className="text-lg font-semibold mb-2">🌐 Network View</h3>
+              <p className="text-gray-500">No valid suspects found for network visualization.</p>
+            </section>
+          );
+        }
+
+        return (
+          <section>
+            <h3 className="text-lg font-semibold mb-2">🌐 Network View</h3>
+            <ForceGraph2D
+              graphData={{
+                nodes: validNodes,
+                links: validLinks,
+              }}
+              nodeLabel="name"
+              nodeAutoColorBy="status"
+              linkLabel="label"
+              width={600}
+              height={350}
+            />
+          </section>
+        );
+      })()}
     </div>
   );
 }

@@ -237,157 +237,194 @@ export async function POST(req: NextRequest) {
         console.warn(`⚠️ Combined text truncated from ${combinedText.length} to ${MAX_CHARS} characters.`);
       }
 
-      // Compose the prompt for the AI
-      const userPrompt = aiPrompt?.trim()
-        ? aiPrompt.trim() + "\n\n" // Use the case-specific prompt, then add the rest
-        : "";
+      // Keep your sophisticated forensic analysis prompt but fix the JSON formatting issue
+      const systemPrompt = `COLD CASE ANALYSIS SYSTEM
 
-      console.log("Prompt sent to AI:", userPrompt);
+You are an expert forensic analyst using advanced investigative methodologies. Analyze police files to identify overlooked clues, patterns, connections, and viable investigative leads in cold cases.
+
+ANALYSIS FRAMEWORK:
+
+PRIMARY METHODOLOGIES:
+- Reid Technique: Statement analysis for deception detection
+- FBI Behavioral Analysis Unit: Offender profiling and behavioral indicators
+- NCAVC Protocols: Violent crime analysis standards
+- VICAP Integration: Pattern recognition across cases
+- Locard's Exchange Principle: Physical evidence transfer analysis
+- Geographic Profiling: Spatial relationship analysis
+
+SUSPECT ANALYSIS CRITERIA:
+OPPORTUNITY TRIAD:
+1. Access: Geographic/temporal proximity to victim
+2. Means: Physical capability, tools, specialized knowledge
+3. Motive: Personal grievance, financial gain, psychological factors
+
+BEHAVIORAL INDICATORS:
+- Crime scene organization level (organized/disorganized)
+- Signature behaviors vs. MO elements
+- Escalation patterns in behavior
+- Post-offense behavior changes
+- Digital footprint anomalies
+
+CRITICAL RED FLAGS:
+TIMELINE DISCREPANCIES:
+- Critical Gap: Unaccounted periods >30 minutes during key timeframes
+- Digital vs. Witness: Phone/GPS data contradicting statements
+- Alibi Integrity: Unverifiable or circular alibi chains
+
+DECEPTION INDICATORS:
+- Consistency Failures: Details changing across interviews
+- Information Asymmetry: Over-detailed irrelevant info, vague critical details
+- Memory Gaps: Suspicious amnesia during crucial periods
+- Emotional Incongruence: Inappropriate emotional responses
+
+EVIDENCE ANOMALIES:
+- Chain of Custody: Gaps or irregularities in evidence handling
+- Testing Gaps: Collected evidence never analyzed
+- Missing Items: Referenced but unlocated evidence
+
+CRITICAL: You MUST respond with ONLY a valid JSON object. No explanations, no markdown formatting, no text before or after the JSON. Start your response with { and end with }.`;
+
+      const userPrompt = aiPrompt?.trim() ? `${aiPrompt.trim()}\n\n` : "";
+
+      console.log("System prompt length:", systemPrompt.length);
+      console.log("User prompt:", userPrompt);
 
       const response = await client.messages.create({
         model: 'claude-3-haiku-20240307',
         max_tokens: 4000,
-        temperature: 0.3,
+        temperature: 0.1, // Lower temperature for more consistent JSON
+        system: systemPrompt,
         messages: [{
           role: 'user',
-          content: `
-${userPrompt}
-Respond with ONLY valid JSON. Do not include any explanation, markdown, or extra text.
+          content: `${userPrompt}
 
-You may be given: DNA reports, interview transcripts, detective notes, timelines, autopsy reports, lab results, and other case materials. Consider all sources for overlooked clues, patterns, or inconsistencies.
+MISSION: Analyze these police files using forensic methodology to identify overlooked clues, patterns, connections, and viable investigative leads.
 
-ANALYSIS METHODOLOGY:
-- Apply the Reid Technique for statement analysis
-- Use the FBI's Behavioral Analysis Unit profiling methods
-- Follow NCAVC (National Center for Analysis of Violent Crime) protocols
-- Cross-reference against VICAP pattern indicators
+REQUIRED METRICS (For Every Finding):
+- confidenceScore: 0-100
+- evidenceStrength: 0-100
+- urgencyLevel: CRITICAL/HIGH/MEDIUM/LOW
+- specificAction: Detailed investigative step
+- investigativePriority: 1-10
 
-For EVERY finding you identify, you MUST provide:
-- Confidence Score (0-100): How certain are you this is significant?
-- Evidence Strength (0-100): How strong is the supporting evidence?
-- Urgency Level: CRITICAL/HIGH/MEDIUM/LOW
-- Specific Action Required: Exactly what should investigators do next?
-- Risk Assessment: Could this lead to case breakthrough?
+ANALYSIS PRIORITIES:
+1. CRITICAL: Life safety, active threat, statute limitations
+2. HIGH: Strong evidence potential, key witness availability
+3. MEDIUM: Pattern confirmation, secondary evidence
+4. LOW: Background information, administrative tasks
 
-SUSPECT IDENTIFICATION CRITERIA:
-- Access to victim (geographic/temporal proximity)
-- Means to commit the crime (physical capability, tools, knowledge)
-- Motive (personal, financial, psychological)
-- Opportunity window analysis
-- Behavioral indicators from crime scene
-- Connection patterns to victim or location
-
-TIMELINE ANALYSIS - Flag these RED FLAGS:
-- Gaps longer than 30 minutes during critical periods
-- Witness statements that contradict phone/digital records
-- Alibis that cannot be independently verified
-- Movement patterns that don't make logical sense
-- Multiple witnesses placing same person in different locations
-
-STATEMENT ANALYSIS - Look for DECEPTION INDICATORS:
-- Inconsistent details between multiple interviews
-- Overly specific details about irrelevant information
-- Missing details about critical time periods
-- Emotional responses that don't match content
-- Changes in linguistic patterns during critical topics
-
-Identify any patterns across the materials (e.g., repeated names, locations, or behaviors) and flag any discrepancies in statements, timelines, or evidence. Highlight when a suspect has changed their story or when a timeline does not make sense.
-
-Cross-reference all materials. If a suspect is mentioned in multiple documents, or if evidence is referenced but not tested, flag this for review.
-
-Additionally, include a section "overlookedLeads" with an array of objects, each describing a clue, suspect, or piece of evidence that may have been missed or deserves re-examination. For each, provide:
-- type: (e.g., suspect, evidence, timeline, statement)
-- description: What was overlooked or should be revisited
-- recommendedAction: What law enforcement should do next
-- rationale: Why this is important
+Execute comprehensive analysis following forensic framework. Identify every potential lead that could advance the investigation.
 
 Case ID: ${caseId}
 Documents: ${extractedTexts.length}
-${truncated ? '\nNOTE: The case materials were truncated due to length.\n' : ''}
+${truncated ? 'NOTE: Case materials were truncated due to length.\n' : ''}
+
 CASE MATERIALS:
 ${truncatedText}
 
-The JSON should have this structure:
+RESPOND WITH ONLY THIS JSON STRUCTURE:
 {
+  "caseAssessment": {
+    "overallRisk": "CRITICAL|HIGH|MEDIUM|LOW",
+    "breakthroughPotential": 0-100,
+    "investigativePriority": 1-10
+  },
   "suspects": [
     {
-      "name": "Person name",
-      "relevance": 90,
-      "confidence": 85,
-      "connections": ["How they connect to case"],
-      "notes": "Why they are suspicious",
-      "recommendedActions": ["Specific investigative action"],
-      "urgencyLevel": "HIGH"
+      "id": "S001",
+      "name": "Name",
+      "urgencyLevel": "CRITICAL|HIGH|MEDIUM|LOW", 
+      "connections": ["connection1"],
+      "redFlags": ["flag1"],
+      "recommendedActions": ["action1"],
+      "notes": "notes",
+      "confidence": 0-100
     }
   ],
   "findings": [
     {
-      "id": "F001", 
-      "title": "Finding title",
-      "description": "What was discovered",
-      "category": "evidence",
-      "confidence": 90,
-      "priority": "CRITICAL",
-      "supportingEvidence": ["Supporting evidence"],
-      "investigativeAction": "Action to take"
+      "id": "F001",
+      "title": "Finding title", 
+      "description": "Description",
+      "category": "suspect|evidence|timeline|statement|pattern",
+      "priority": "CRITICAL|HIGH|MEDIUM|LOW",
+      "confidenceScore": 0-100,
+      "evidenceStrength": 0-100,
+      "supportingEvidence": ["evidence1"],
+      "actionRequired": "action",
+      "timeline": "IMMEDIATE|1-WEEK|1-MONTH|LONG-TERM"
     }
   ],
   "connections": [
     {
-      "type": "person",
-      "description": "Connection description", 
-      "confidence": 80,
-      "significance": "Why this matters"
-    }
-  ],
-  "recommendations": [
-    {
-      "priority": "HIGH",
-      "action": "Recommended action",
-      "rationale": "Why recommended",
-      "timeline": "When to complete"
+      "id": "C001",
+      "type": "type",
+      "entities": ["entity1", "entity2"],
+      "description": "description",
+      "significance": "significance", 
+      "confidence": 0-100
     }
   ],
   "overlookedLeads": [
     {
-      "type": "suspect|evidence|timeline|statement",
-      "description": "What was overlooked or should be revisited",
-      "recommendedAction": "What law enforcement should do next",
-      "rationale": "Why this is important"
+      "type": "suspect|evidence|timeline|statement|digital|financial",
+      "description": "description",
+      "recommendedAction": "action",
+      "rationale": "rationale",
+      "urgency": "CRITICAL|HIGH|MEDIUM|LOW",
+      "resources": "resources needed"
+    }
+  ],
+  "recommendations": [
+    {
+      "action": "action",
+      "priority": "CRITICAL|HIGH|MEDIUM|LOW", 
+      "timeline": "timeline",
+      "rationale": "rationale",
+      "resources": "resources"
     }
   ]
-}
-
-IMPORTANT:
-- Output ONLY the JSON object.
-- DO NOT include any commentary, explanation, or markdown.
-- Do NOT wrap the JSON in triple backticks or any markdown formatting.
-- Ensure the JSON is valid and parsable. Do not leave trailing commas or use single quotes.
-- If you cannot answer, return an empty JSON object with the correct structure.
-`
+}`
         }]
       });
 
       const aiResponse = response.content[0]?.type === 'text' ? response.content[0].text : '';
       console.log(`✅ Claude responded: ${aiResponse.length} chars`);
-      console.log('Raw AI response:', aiResponse);
+      console.log('Raw AI response (first 500 chars):', aiResponse.substring(0, 500));
       
-      // Parse AI response
+      // More robust JSON parsing
       let parsedResults;
       try {
-        // Find the first JSON object in the response
-        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-          console.error('No JSON object found in response:', aiResponse);
-          throw new Error('No JSON object found in response');
+        // Clean the response - remove any markdown formatting or extra text
+        let cleanedResponse = aiResponse.trim();
+        
+        // Remove markdown code blocks if present
+        if (cleanedResponse.startsWith('```json')) {
+          cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        } else if (cleanedResponse.startsWith('```')) {
+          cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
         }
-        const jsonString = jsonMatch[0].trim();
-        console.log('Attempting to parse JSON:', jsonString);
+        
+        // Find JSON object boundaries more carefully
+        const firstBrace = cleanedResponse.indexOf('{');
+        const lastBrace = cleanedResponse.lastIndexOf('}');
+        
+        if (firstBrace === -1 || lastBrace === -1 || firstBrace >= lastBrace) {
+          throw new Error('No complete JSON object found in response');
+        }
+        
+        const jsonString = cleanedResponse.substring(firstBrace, lastBrace + 1);
+        console.log('Extracted JSON string (first 200 chars):', jsonString.substring(0, 200));
 
         parsedResults = JSON.parse(jsonString);
 
-        // Ensure arrays exist and are valid
+        // Validate and ensure all required fields exist with defaults
         parsedResults = {
+          caseAssessment: parsedResults.caseAssessment || {
+            overallRisk: "MEDIUM",
+            breakthroughPotential: 50,
+            investigativePriority: 5
+          },
           suspects: Array.isArray(parsedResults.suspects) ? parsedResults.suspects : [],
           findings: Array.isArray(parsedResults.findings) ? parsedResults.findings : [],
           connections: Array.isArray(parsedResults.connections) ? parsedResults.connections : [],
@@ -395,39 +432,60 @@ IMPORTANT:
           overlookedLeads: Array.isArray(parsedResults.overlookedLeads) ? parsedResults.overlookedLeads : []
         };
 
-        console.log("✅ Successfully parsed AI response:", JSON.stringify(parsedResults, null, 2));
+        console.log("✅ Successfully parsed AI response");
+        console.log("Parsed structure:", {
+          suspects: parsedResults.suspects.length,
+          findings: parsedResults.findings.length,
+          connections: parsedResults.connections.length,
+          recommendations: parsedResults.recommendations.length,
+          overlookedLeads: parsedResults.overlookedLeads.length
+        });
+        
       } catch (parseError) {
         console.error("❌ Parse error:", parseError);
-        console.error("Failed to parse response:", aiResponse);
+        console.error("Failed to parse response (first 1000 chars):", aiResponse.substring(0, 1000));
+        
+        // Return a structured error response with more debugging info
         return NextResponse.json({
           success: false,
           error: "Failed to parse AI response",
           details: parseError instanceof Error ? parseError.message : "Unknown parsing error",
           debug: {
-            rawResponse: aiResponse
+            responseLength: aiResponse.length,
+            responsePreview: aiResponse.substring(0, 500),
+            firstBraceIndex: aiResponse.indexOf('{'),
+            lastBraceIndex: aiResponse.lastIndexOf('}'),
+            containsJson: aiResponse.includes('{') && aiResponse.includes('}'),
+            startsWithMarkdown: aiResponse.trim().startsWith('```')
           }
         }, { status: 500 });
       }
 
-      // After successful AI analysis and parsing
+      // Store analysis results in Supabase
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
           return NextResponse.json({ error: "User not authenticated" }, { status: 401 });
         }
 
-        // Store analysis results in Supabase, including the used prompt
+        // Calculate overall confidence score
+        const confidenceScores = [
+          ...parsedResults.findings.map((f: any) => f.confidenceScore || 0),
+          ...parsedResults.suspects.map((s: any) => s.confidence || 0),
+          ...parsedResults.connections.map((c: any) => c.confidence || 0)
+        ];
+        
+        const overallConfidence = confidenceScores.length > 0 
+          ? Math.round(confidenceScores.reduce((a, b) => a + b, 0) / confidenceScores.length)
+          : 50;
+
         const { data: analysisData, error: analysisError } = await supabase
           .from('case_analysis')
           .insert([{
             case_id: caseId,
             analysis_type: isBulkAnalysis ? 'bulk_analysis' : 'ai_analysis',
             analysis_data: parsedResults,
-            confidence_score: Math.max(
-              ...parsedResults.findings.map((f: any) => f.confidence || 0),
-              ...parsedResults.suspects.map((s: any) => s.confidence || 0),
-              ...parsedResults.connections.map((c: any) => c.confidence || 0)
-            ),
+            confidence_score: overallConfidence,
             user_id: user.id,
             used_prompt: userPrompt
           }])
@@ -438,21 +496,6 @@ IMPORTANT:
           console.error("Error storing analysis:", analysisError);
           // Continue with the response even if storage fails
         }
-
-        // Robust extraction of suspects and timeline events
-        let suspects: Suspect[] = [];
-        let timelineEvents: TimelineEvent[] = [];
-
-        if (Array.isArray(parsedResults.data)) {
-          if (parsedResults.data.length && parsedResults.data[0].date) {
-            timelineEvents = parsedResults.data as TimelineEvent[];
-          }
-        } else if (parsedResults.data && 'suspects' in parsedResults.data) {
-          suspects = (parsedResults.data as { suspects: Suspect[] }).suspects || [];
-        }
-
-        console.log('Final suspects for visualization:', suspects);
-        console.log('Final timeline events for visualization:', timelineEvents);
 
         return NextResponse.json({
           success: true,
@@ -466,22 +509,34 @@ IMPORTANT:
             preview: f.text.substring(0, 200) + (f.text.length > 200 ? "..." : "")
           })),
           aiModel: "claude-3-haiku-20240307",
-          processingTime: new Date().toISOString()
+          processingTime: new Date().toISOString(),
+          confidenceScore: overallConfidence
         });
 
-      } catch (aiError) {
-        console.error("🚨 AI Error:", aiError);
-        return NextResponse.json({ 
-          error: "AI analysis failed",
-          details: aiError instanceof Error ? aiError.message : "Unknown error"
-        }, { status: 500 });
+      } catch (storageError) {
+        console.error("🚨 Storage Error:", storageError);
+        // Return the analysis even if storage fails
+        return NextResponse.json({
+          success: true,
+          caseId,
+          analysis: parsedResults,
+          filesAnalyzed: extractedTexts.map(f => ({
+            name: f.name,
+            type: f.type,
+            textLength: f.text.length,
+            preview: f.text.substring(0, 200) + (f.text.length > 200 ? "..." : "")
+          })),
+          aiModel: "claude-3-haiku-20240307",
+          processingTime: new Date().toISOString(),
+          warning: "Analysis completed but storage failed"
+        });
       }
 
-    } catch (error) {
-      console.error("🚨 System Error:", error);
+    } catch (aiError) {
+      console.error("🚨 AI Error:", aiError);
       return NextResponse.json({ 
-        error: "System error",
-        details: error instanceof Error ? error.message : "Unknown error"
+        error: "AI analysis failed",
+        details: aiError instanceof Error ? aiError.message : "Unknown error"
       }, { status: 500 });
     }
 
