@@ -1,13 +1,16 @@
 "use client";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { supabase } from '@/lib/supabaseClient';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   LucideArrowLeft, 
-  LucideAlertCircle, 
   LucideFlag, 
   LucideCheckCircle, 
   LucideXCircle,
@@ -16,39 +19,58 @@ import {
   LucideRefreshCw,
   LucideClock,
   LucideTarget,
-  LucideShield
-} from "lucide-react";
-import Link from "next/link";
-import { useState, useEffect } from "react";
-import { supabase } from '@/lib/supabaseClient';
-import { useRouter } from 'next/navigation';
+  LucideShield,
+  LucideAlertCircle,
+  LucideEye,
+  LucideMessageSquare,
+  LucideLoader2,
+  LucideFilter
+} from 'lucide-react';
 
-interface AnalysisFlag {
+interface QualityFlag {
   id: string;
-  type: 'quality' | 'confidence' | 'inconsistency' | 'missing_data' | 'bias';
+  analysis_id: string;
+  case_id: string;
+  type: 'low_confidence' | 'no_suspects' | 'missing_data' | 'inconsistency' | 'incomplete_analysis';
   severity: 'low' | 'medium' | 'high' | 'critical';
   title: string;
   description: string;
-  affectedFindings: string[];
   recommendation: string;
+  affected_findings: string[];
   status: 'active' | 'reviewed' | 'resolved' | 'dismissed';
-  createdAt: string;
-  caseId: string;
-  analysisId: string;
+  created_at: string;
+  reviewed_by?: string;
+  reviewed_at?: string;
+  resolution_notes?: string;
+  // Joined data
+  case_name?: string;
+  analysis_type?: string;
+  confidence_score?: number;
 }
 
-export default function AnalysisFlagsPage() {
-  const [flags, setFlags] = useState<AnalysisFlag[]>([]);
-  const [analyses, setAnalyses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedSeverity, setSelectedSeverity] = useState<string>('all');
-  const [selectedStatus, setSelectedStatus] = useState<string>('active');
-  const [user, setUser] = useState<any>(null);
+export default function QualityControlPage() {
   const router = useRouter();
+  const [user, setUser] = useState<any>(null);
+  const [flags, setFlags] = useState<QualityFlag[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedFlag, setSelectedFlag] = useState<QualityFlag | null>(null);
+  const [resolutionNotes, setResolutionNotes] = useState('');
+  const [processing, setProcessing] = useState<string | null>(null);
+  const [filters, setFilters] = useState({
+    severity: 'all',
+    status: 'active',
+    type: 'all'
+  });
 
   useEffect(() => {
     checkAuthAndLoadData();
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      loadFlags();
+    }
+  }, [user, filters]);
 
   const checkAuthAndLoadData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -57,133 +79,92 @@ export default function AnalysisFlagsPage() {
       return;
     }
     setUser(user);
-    await loadAnalysesAndFlags(user.id);
   };
 
-  const loadAnalysesAndFlags = async (userId: string) => {
+  const loadFlags = async () => {
+    if (!user) return;
+    
     setLoading(true);
     try {
-      // Load all analyses for the user
-      const { data: analysesData, error: analysesError } = await supabase
-        .from('case_analysis')
+      let query = supabase
+        .from('quality_flags')
         .select(`
           *,
-          cases!inner(name, description)
+          cases!inner(name),
+          case_analysis!inner(analysis_type, confidence_score)
         `)
-        .eq('user_id', userId)
+        .eq('cases.user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (analysesError) throw analysesError;
-      setAnalyses(analysesData || []);
+      // Apply filters
+      if (filters.severity !== 'all') {
+        query = query.eq('severity', filters.severity);
+      }
+      if (filters.status !== 'all') {
+        query = query.eq('status', filters.status);
+      }
+      if (filters.type !== 'all') {
+        query = query.eq('type', filters.type);
+      }
 
-      // Generate quality flags from analyses
-      const generatedFlags = generateQualityFlags(analysesData || []);
-      setFlags(generatedFlags);
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Error loading quality flags:', error);
+        setFlags([]);
+        return;
+      }
+
+      const formattedFlags: QualityFlag[] = (data || []).map(flag => ({
+        ...flag,
+        case_name: flag.cases?.name || 'Unknown Case',
+        analysis_type: flag.case_analysis?.analysis_type || 'Unknown',
+        confidence_score: flag.case_analysis?.confidence_score
+      }));
+
+      setFlags(formattedFlags);
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error('Error loading quality flags:', error);
+      setFlags([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const generateQualityFlags = (analyses: any[]): AnalysisFlag[] => {
-    const flags: AnalysisFlag[] = [];
+  const updateFlagStatus = async (flagId: string, newStatus: QualityFlag['status'], notes?: string) => {
+    setProcessing(flagId);
+    try {
+      const updateData: any = {
+        status: newStatus,
+        reviewed_by: user.id,
+        reviewed_at: new Date().toISOString()
+      };
 
-    analyses.forEach(analysis => {
-      const data = analysis.analysis_data;
-      if (!data) return;
-
-      // Flag 1: Low confidence findings
-      if (data.findings) {
-        const lowConfidenceFindings = data.findings.filter((f: any) => 
-          f.confidenceScore && f.confidenceScore < 60
-        );
-        if (lowConfidenceFindings.length > 0) {
-          flags.push({
-            id: `low-confidence-${analysis.id}`,
-            type: 'confidence',
-            severity: 'medium',
-            title: 'Low Confidence Findings Detected',
-            description: `${lowConfidenceFindings.length} findings have confidence scores below 60%`,
-            affectedFindings: lowConfidenceFindings.map((f: any) => f.title || f.id),
-            recommendation: 'Review these findings manually and consider gathering additional evidence',
-            status: 'active',
-            createdAt: analysis.created_at,
-            caseId: analysis.case_id,
-            analysisId: analysis.id
-          });
-        }
+      if (notes) {
+        updateData.resolution_notes = notes;
       }
 
-      // Flag 2: Missing critical data
-      if (!data.suspects || data.suspects.length === 0) {
-        flags.push({
-          id: `no-suspects-${analysis.id}`,
-          type: 'missing_data',
-          severity: 'high',
-          title: 'No Suspects Identified',
-          description: 'Analysis completed without identifying any persons of interest',
-          affectedFindings: ['Suspect Analysis'],
-          recommendation: 'Review case materials for overlooked individuals or expand data sources',
-          status: 'active',
-          createdAt: analysis.created_at,
-          caseId: analysis.case_id,
-          analysisId: analysis.id
-        });
-      }
+      const { error } = await supabase
+        .from('quality_flags')
+        .update(updateData)
+        .eq('id', flagId);
 
-      // Flag 3: High priority items without actions
-      if (data.findings) {
-        const criticalWithoutActions = data.findings.filter((f: any) => 
-          f.priority === 'CRITICAL' && (!f.actionRequired || f.actionRequired.length < 10)
-        );
-        if (criticalWithoutActions.length > 0) {
-          flags.push({
-            id: `critical-no-action-${analysis.id}`,
-            type: 'quality',
-            severity: 'critical',
-            title: 'Critical Findings Without Clear Actions',
-            description: `${criticalWithoutActions.length} critical findings lack specific action plans`,
-            affectedFindings: criticalWithoutActions.map((f: any) => f.title || f.id),
-            recommendation: 'Define specific investigative actions for all critical findings',
-            status: 'active',
-            createdAt: analysis.created_at,
-            caseId: analysis.case_id,
-            analysisId: analysis.id
-          });
-        }
-      }
+      if (error) throw error;
 
-      // Flag 4: Inconsistent timelines
-      if (data.findings && data.findings.length > 3) {
-        const timelineFindings = data.findings.filter((f: any) => 
-          f.category === 'timeline' && f.confidenceScore < 70
-        );
-        if (timelineFindings.length > 1) {
-          flags.push({
-            id: `timeline-inconsistency-${analysis.id}`,
-            type: 'inconsistency',
-            severity: 'medium',
-            title: 'Timeline Inconsistencies Detected',
-            description: 'Multiple timeline-related findings with conflicting information',
-            affectedFindings: timelineFindings.map((f: any) => f.title || f.id),
-            recommendation: 'Cross-reference timeline data and resolve conflicts',
-            status: 'active',
-            createdAt: analysis.created_at,
-            caseId: analysis.case_id,
-            analysisId: analysis.id
-          });
-        }
-      }
-    });
+      // Update local state
+      setFlags(prev => prev.map(flag => 
+        flag.id === flagId 
+          ? { ...flag, ...updateData }
+          : flag
+      ));
 
-    return flags;
-  };
-
-  const updateFlagStatus = async (flagId: string, newStatus: AnalysisFlag['status']) => {
-    setFlags(prev => prev.map(flag => 
-      flag.id === flagId ? { ...flag, status: newStatus } : flag
-    ));
+      setSelectedFlag(null);
+      setResolutionNotes('');
+    } catch (error) {
+      console.error('Error updating flag:', error);
+    } finally {
+      setProcessing(null);
+    }
   };
 
   const getSeverityColor = (severity: string) => {
@@ -198,33 +179,44 @@ export default function AnalysisFlagsPage() {
 
   const getTypeIcon = (type: string) => {
     switch (type) {
-      case 'quality': return LucideShield;
-      case 'confidence': return LucideTarget;
-      case 'inconsistency': return LucideAlertCircle;
+      case 'low_confidence': return LucideTarget;
+      case 'no_suspects': return LucideUser;
       case 'missing_data': return LucideFileText;
-      case 'bias': return LucideFlag;
-      default: return LucideAlertCircle;
+      case 'inconsistency': return LucideAlertCircle;
+      case 'incomplete_analysis': return LucideShield;
+      default: return LucideFlag;
     }
   };
 
-  const filteredFlags = flags.filter(flag => {
-    const severityMatch = selectedSeverity === 'all' || flag.severity === selectedSeverity;
-    const statusMatch = selectedStatus === 'all' || flag.status === selectedStatus;
-    return severityMatch && statusMatch;
-  });
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'active': return <Badge variant="destructive">Active</Badge>;
+      case 'reviewed': return <Badge variant="secondary">Reviewed</Badge>;
+      case 'resolved': return <Badge variant="default">Resolved</Badge>;
+      case 'dismissed': return <Badge variant="outline">Dismissed</Badge>;
+      default: return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const stats = {
+    total: flags.length,
+    critical: flags.filter(f => f.severity === 'critical').length,
+    active: flags.filter(f => f.status === 'active').length,
+    resolved: flags.filter(f => f.status === 'resolved').length
+  };
 
   if (loading) {
     return (
       <div className="container py-8">
         <div className="flex items-center justify-center h-64">
-          <LucideRefreshCw className="h-8 w-8 animate-spin" />
+          <LucideLoader2 className="h-8 w-8 animate-spin" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="container py-8 max-w-6xl mx-auto">
+    <div className="container py-8 max-w-7xl mx-auto">
       <Link href="/analysis" className="flex items-center text-sm mb-6 hover:underline">
         <LucideArrowLeft className="mr-2 h-4 w-4" />
         Back to Analysis
@@ -236,33 +228,50 @@ export default function AnalysisFlagsPage() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
               <LucideFlag className="h-8 w-8 text-orange-500" />
-              Analysis Quality Control
+              Quality Control Dashboard
             </h1>
             <p className="text-muted-foreground mt-2">
-              Review and validate AI analysis results for accuracy and completeness
+              Review and manage analysis quality flags to ensure investigation accuracy
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="bg-orange-50">
-              {filteredFlags.length} Active Flag{filteredFlags.length !== 1 ? 's' : ''}
-            </Badge>
-            <Button onClick={() => loadAnalysesAndFlags(user?.id)} variant="outline" size="sm">
+            <Button onClick={loadFlags} variant="outline" size="sm">
               <LucideRefreshCw className="mr-2 h-4 w-4" />
               Refresh
             </Button>
           </div>
         </div>
 
-        {/* Summary Cards */}
+        {/* Critical Alert */}
+        {stats.critical > 0 && (
+          <Alert className="border-red-200 bg-red-50">
+            <LucideAlertCircle className="h-4 w-4 text-red-600" />
+            <AlertTitle className="text-red-800">Critical Issues Detected</AlertTitle>
+            <AlertDescription className="text-red-700">
+              {stats.critical} analyses have critical quality issues that require immediate attention.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2">
+                <LucideFlag className="h-5 w-5 text-orange-500" />
+                <div>
+                  <p className="text-2xl font-bold">{stats.total}</p>
+                  <p className="text-sm text-muted-foreground">Total Flags</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
                 <LucideAlertCircle className="h-5 w-5 text-red-500" />
                 <div>
-                  <p className="text-2xl font-bold">
-                    {flags.filter(f => f.severity === 'critical').length}
-                  </p>
+                  <p className="text-2xl font-bold text-red-600">{stats.critical}</p>
                   <p className="text-sm text-muted-foreground">Critical</p>
                 </div>
               </div>
@@ -271,12 +280,10 @@ export default function AnalysisFlagsPage() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
-                <LucideFlag className="h-5 w-5 text-orange-500" />
+                <LucideClock className="h-5 w-5 text-yellow-500" />
                 <div>
-                  <p className="text-2xl font-bold">
-                    {flags.filter(f => f.severity === 'high').length}
-                  </p>
-                  <p className="text-sm text-muted-foreground">High</p>
+                  <p className="text-2xl font-bold text-yellow-600">{stats.active}</p>
+                  <p className="text-sm text-muted-foreground">Active</p>
                 </div>
               </div>
             </CardContent>
@@ -286,21 +293,8 @@ export default function AnalysisFlagsPage() {
               <div className="flex items-center gap-2">
                 <LucideCheckCircle className="h-5 w-5 text-green-500" />
                 <div>
-                  <p className="text-2xl font-bold">
-                    {flags.filter(f => f.status === 'resolved').length}
-                  </p>
+                  <p className="text-2xl font-bold text-green-600">{stats.resolved}</p>
                   <p className="text-sm text-muted-foreground">Resolved</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2">
-                <LucideFileText className="h-5 w-5 text-blue-500" />
-                <div>
-                  <p className="text-2xl font-bold">{analyses.length}</p>
-                  <p className="text-sm text-muted-foreground">Analyses</p>
                 </div>
               </div>
             </CardContent>
@@ -312,10 +306,14 @@ export default function AnalysisFlagsPage() {
           <CardContent className="p-4">
             <div className="flex flex-wrap gap-4 items-center">
               <div className="flex items-center gap-2">
-                <label className="text-sm font-medium">Severity:</label>
+                <LucideFilter className="h-4 w-4" />
+                <label className="text-sm font-medium">Filters:</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm">Severity:</label>
                 <select
-                  value={selectedSeverity}
-                  onChange={(e) => setSelectedSeverity(e.target.value)}
+                  value={filters.severity}
+                  onChange={(e) => setFilters(prev => ({ ...prev, severity: e.target.value }))}
                   className="border rounded px-2 py-1 text-sm"
                 >
                   <option value="all">All</option>
@@ -326,10 +324,10 @@ export default function AnalysisFlagsPage() {
                 </select>
               </div>
               <div className="flex items-center gap-2">
-                <label className="text-sm font-medium">Status:</label>
+                <label className="text-sm">Status:</label>
                 <select
-                  value={selectedStatus}
-                  onChange={(e) => setSelectedStatus(e.target.value)}
+                  value={filters.status}
+                  onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
                   className="border rounded px-2 py-1 text-sm"
                 >
                   <option value="all">All</option>
@@ -339,19 +337,34 @@ export default function AnalysisFlagsPage() {
                   <option value="dismissed">Dismissed</option>
                 </select>
               </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm">Type:</label>
+                <select
+                  value={filters.type}
+                  onChange={(e) => setFilters(prev => ({ ...prev, type: e.target.value }))}
+                  className="border rounded px-2 py-1 text-sm"
+                >
+                  <option value="all">All</option>
+                  <option value="low_confidence">Low Confidence</option>
+                  <option value="no_suspects">No Suspects</option>
+                  <option value="missing_data">Missing Data</option>
+                  <option value="inconsistency">Inconsistency</option>
+                  <option value="incomplete_analysis">Incomplete</option>
+                </select>
+              </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Flags List */}
         <div className="space-y-4">
-          {filteredFlags.length === 0 ? (
+          {flags.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center">
                 <LucideCheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold mb-2">No Quality Issues Found</h3>
                 <p className="text-muted-foreground">
-                  {selectedStatus === 'active' 
+                  {filters.status === 'active' 
                     ? "All analyses meet quality standards"
                     : "No flags match the selected filters"
                   }
@@ -359,7 +372,7 @@ export default function AnalysisFlagsPage() {
               </CardContent>
             </Card>
           ) : (
-            filteredFlags.map((flag) => {
+            flags.map((flag) => {
               const IconComponent = getTypeIcon(flag.type);
               return (
                 <Card key={flag.id} className={`border-l-4 ${
@@ -372,26 +385,37 @@ export default function AnalysisFlagsPage() {
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-start gap-3">
                         <IconComponent className="h-6 w-6 text-orange-500 mt-1" />
-                        <div>
+                        <div className="flex-1">
                           <h3 className="font-semibold text-lg">{flag.title}</h3>
                           <p className="text-muted-foreground mt-1">{flag.description}</p>
+                          <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
+                            <span>Case: {flag.case_name}</span>
+                            <span>•</span>
+                            <span>{flag.analysis_type}</span>
+                            {flag.confidence_score && (
+                              <>
+                                <span>•</span>
+                                <span>{flag.confidence_score}% confidence</span>
+                              </>
+                            )}
+                            <span>•</span>
+                            <span>{new Date(flag.created_at).toLocaleDateString()}</span>
+                          </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge variant={getSeverityColor(flag.severity)}>
                           {flag.severity.toUpperCase()}
                         </Badge>
-                        <Badge variant="outline" className="capitalize">
-                          {flag.type.replace('_', ' ')}
-                        </Badge>
+                        {getStatusBadge(flag.status)}
                       </div>
                     </div>
 
-                    {flag.affectedFindings.length > 0 && (
+                    {flag.affected_findings.length > 0 && (
                       <div className="mb-4">
                         <h4 className="text-sm font-medium mb-2">Affected Findings:</h4>
                         <div className="flex flex-wrap gap-1">
-                          {flag.affectedFindings.map((finding, idx) => (
+                          {flag.affected_findings.map((finding, idx) => (
                             <Badge key={idx} variant="secondary" className="text-xs">
                               {finding}
                             </Badge>
@@ -405,13 +429,21 @@ export default function AnalysisFlagsPage() {
                       <p className="text-sm text-blue-700">{flag.recommendation}</p>
                     </div>
 
+                    {flag.resolution_notes && (
+                      <div className="bg-gray-50 p-3 rounded mb-4">
+                        <h4 className="text-sm font-medium text-gray-900 mb-1">Resolution Notes:</h4>
+                        <p className="text-sm text-gray-700">{flag.resolution_notes}</p>
+                        {flag.reviewed_at && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Reviewed on {new Date(flag.reviewed_at).toLocaleString()}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <LucideClock className="h-4 w-4" />
-                          {new Date(flag.createdAt).toLocaleDateString()}
-                        </span>
-                        <Link href={`/cases/${flag.caseId}`} className="text-blue-600 hover:underline">
+                        <Link href={`/cases/${flag.case_id}`} className="text-blue-600 hover:underline">
                           View Case →
                         </Link>
                       </div>
@@ -421,23 +453,40 @@ export default function AnalysisFlagsPage() {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => updateFlagStatus(flag.id, 'reviewed')}
+                              onClick={() => {
+                                setSelectedFlag(flag);
+                                setResolutionNotes('');
+                              }}
+                              disabled={processing === flag.id}
                             >
-                              Mark Reviewed
+                              <LucideEye className="mr-1 h-3 w-3" />
+                              Review
                             </Button>
                             <Button
                               size="sm"
-                              onClick={() => updateFlagStatus(flag.id, 'resolved')}
+                              variant="outline"
+                              onClick={() => updateFlagStatus(flag.id, 'dismissed')}
+                              disabled={processing === flag.id}
                             >
-                              Resolve
+                              {processing === flag.id ? (
+                                <LucideLoader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <LucideXCircle className="mr-1 h-3 w-3" />
+                              )}
+                              Dismiss
                             </Button>
                           </>
                         )}
                         {flag.status === 'reviewed' && (
                           <Button
                             size="sm"
-                            onClick={() => updateFlagStatus(flag.id, 'resolved')}
+                            onClick={() => {
+                              setSelectedFlag(flag);
+                              setResolutionNotes('');
+                            }}
+                            disabled={processing === flag.id}
                           >
+                            <LucideCheckCircle className="mr-1 h-3 w-3" />
                             Resolve
                           </Button>
                         )}
@@ -446,8 +495,13 @@ export default function AnalysisFlagsPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => updateFlagStatus(flag.id, 'active')}
+                            disabled={processing === flag.id}
                           >
-                            Reopen
+                            {processing === flag.id ? (
+                              <LucideLoader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              'Reopen'
+                            )}
                           </Button>
                         )}
                       </div>
@@ -458,6 +512,76 @@ export default function AnalysisFlagsPage() {
             })
           )}
         </div>
+
+        {/* Review Modal */}
+        {selectedFlag && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <Card className="w-full max-w-2xl mx-4 max-h-[80vh] overflow-y-auto">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <LucideMessageSquare className="h-5 w-5" />
+                  Review Quality Flag
+                </CardTitle>
+                <CardDescription>
+                  {selectedFlag.title} - {selectedFlag.case_name}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <h4 className="font-medium mb-2">Issue Description:</h4>
+                  <p className="text-sm text-muted-foreground">{selectedFlag.description}</p>
+                </div>
+
+                <div>
+                  <h4 className="font-medium mb-2">Recommendation:</h4>
+                  <p className="text-sm text-muted-foreground">{selectedFlag.recommendation}</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Resolution Notes (Optional):
+                  </label>
+                  <Textarea
+                    value={resolutionNotes}
+                    onChange={(e) => setResolutionNotes(e.target.value)}
+                    placeholder="Add notes about how this issue was addressed..."
+                    rows={4}
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedFlag(null);
+                      setResolutionNotes('');
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => updateFlagStatus(selectedFlag.id, 'reviewed', resolutionNotes)}
+                    disabled={processing === selectedFlag.id}
+                  >
+                    Mark as Reviewed
+                  </Button>
+                  <Button
+                    onClick={() => updateFlagStatus(selectedFlag.id, 'resolved', resolutionNotes)}
+                    disabled={processing === selectedFlag.id}
+                  >
+                    {processing === selectedFlag.id ? (
+                      <LucideLoader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <LucideCheckCircle className="mr-2 h-4 w-4" />
+                    )}
+                    Resolve Issue
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
     </div>
   );

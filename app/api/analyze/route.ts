@@ -1,10 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js';
+import { QualityControlAnalyzer } from '@/lib/qualityControl';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
-  console.log("🚀 API route hit - PDF analysis with pdfjs-dist");
+  console.log("🚀 API route hit - PDF analysis with quality control");
   
   // Extract access token from Authorization header
   const authHeader = req.headers.get("authorization");
@@ -237,7 +238,7 @@ export async function POST(req: NextRequest) {
         console.warn(`⚠️ Combined text truncated from ${combinedText.length} to ${MAX_CHARS} characters.`);
       }
 
-      // Keep your sophisticated forensic analysis prompt but fix the JSON formatting issue
+      // Keep your sophisticated forensic analysis prompt
       const systemPrompt = `COLD CASE ANALYSIS SYSTEM
 
 You are an expert forensic analyst using advanced investigative methodologies. Analyze police files to identify overlooked clues, patterns, connections, and viable investigative leads in cold cases.
@@ -292,7 +293,7 @@ CRITICAL: You MUST respond with ONLY a valid JSON object. No explanations, no ma
       const response = await client.messages.create({
         model: 'claude-3-haiku-20240307',
         max_tokens: 4000,
-        temperature: 0.1, // Lower temperature for more consistent JSON
+        temperature: 0.1,
         system: systemPrompt,
         messages: [{
           role: 'user',
@@ -392,7 +393,7 @@ RESPOND WITH ONLY THIS JSON STRUCTURE:
       console.log(`✅ Claude responded: ${aiResponse.length} chars`);
       console.log('Raw AI response (first 500 chars):', aiResponse.substring(0, 500));
       
-      // More robust JSON parsing
+      // Parse AI response
       let parsedResults;
       try {
         // Clean the response - remove any markdown formatting or extra text
@@ -445,7 +446,6 @@ RESPOND WITH ONLY THIS JSON STRUCTURE:
         console.error("❌ Parse error:", parseError);
         console.error("Failed to parse response (first 1000 chars):", aiResponse.substring(0, 1000));
         
-        // Return a structured error response with more debugging info
         return NextResponse.json({
           success: false,
           error: "Failed to parse AI response",
@@ -461,24 +461,20 @@ RESPOND WITH ONLY THIS JSON STRUCTURE:
         }, { status: 500 });
       }
 
-      // Store analysis results in Supabase
+      // After successful AI analysis and parsing
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          return NextResponse.json({ error: "User not authenticated" }, { status: 401 });
-        }
-
         // Calculate overall confidence score
         const confidenceScores = [
-          ...parsedResults.findings.map((f: any) => f.confidenceScore || 0),
-          ...parsedResults.suspects.map((s: any) => s.confidence || 0),
-          ...parsedResults.connections.map((c: any) => c.confidence || 0)
+          ...parsedResults.findings?.map((f: any) => f.confidenceScore || 0) || [],
+          ...parsedResults.suspects?.map((s: any) => s.confidence || 0) || [],
+          ...parsedResults.connections?.map((c: any) => c.confidence || 0) || []
         ];
         
         const overallConfidence = confidenceScores.length > 0 
           ? Math.round(confidenceScores.reduce((a, b) => a + b, 0) / confidenceScores.length)
           : 50;
 
+        // Store analysis results
         const { data: analysisData, error: analysisError } = await supabase
           .from('case_analysis')
           .insert([{
@@ -494,14 +490,46 @@ RESPOND WITH ONLY THIS JSON STRUCTURE:
 
         if (analysisError) {
           console.error("Error storing analysis:", analysisError);
-          // Continue with the response even if storage fails
+          return NextResponse.json({ 
+            error: "Failed to store analysis results",
+            details: analysisError.message 
+          }, { status: 500 });
         }
+
+        // 🆕 Run Quality Control Analysis
+        console.log("🔍 Running quality control analysis...");
+        const qualityFlags = QualityControlAnalyzer.analyzeResults(
+          parsedResults, 
+          analysisData.id, 
+          caseId
+        );
+
+        // Store quality flags if any were generated
+        let flagsStored = false;
+        if (qualityFlags.length > 0) {
+          flagsStored = await QualityControlAnalyzer.storeQualityFlags(qualityFlags, supabase);
+          if (flagsStored) {
+            console.log(`✅ Generated and stored ${qualityFlags.length} quality flags`);
+          } else {
+            console.error("❌ Failed to store quality flags");
+          }
+        } else {
+          console.log("✅ No quality issues detected");
+        }
+
+        // Generate quality summary for response
+        const qualitySummary = QualityControlAnalyzer.getQualitySummary(qualityFlags);
 
         return NextResponse.json({
           success: true,
           caseId,
           analysis: parsedResults,
           analysisId: analysisData?.id,
+          quality: {
+            ...qualitySummary,
+            flagsStored,
+            flags: qualityFlags // Include flags for immediate display
+          },
           filesAnalyzed: extractedTexts.map(f => ({
             name: f.name,
             type: f.type,
@@ -515,21 +543,10 @@ RESPOND WITH ONLY THIS JSON STRUCTURE:
 
       } catch (storageError) {
         console.error("🚨 Storage Error:", storageError);
-        // Return the analysis even if storage fails
-        return NextResponse.json({
-          success: true,
-          caseId,
-          analysis: parsedResults,
-          filesAnalyzed: extractedTexts.map(f => ({
-            name: f.name,
-            type: f.type,
-            textLength: f.text.length,
-            preview: f.text.substring(0, 200) + (f.text.length > 200 ? "..." : "")
-          })),
-          aiModel: "claude-3-haiku-20240307",
-          processingTime: new Date().toISOString(),
-          warning: "Analysis completed but storage failed"
-        });
+        return NextResponse.json({ 
+          error: "Failed to store analysis results",
+          details: storageError instanceof Error ? storageError.message : "Unknown error"
+        }, { status: 500 });
       }
 
     } catch (aiError) {
