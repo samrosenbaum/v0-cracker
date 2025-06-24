@@ -3,8 +3,8 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import FileUploader from '../../cases/[id]/FileUploader';
-import AIInsights from '../../cases/[id]/AIInsights';
+import FileUploader from '@/app/components/FileUploader';
+import AIInsights from '@/app/components/AIInsights';
 import Timeline from "@/components/Timeline";
 import SuspectNetworkGraph from "@/components/analysis-visuals/SuspectNetworkGraph";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { LucideChevronUp, LucideChevronDown, LucideLoader2, LucideBrain, LucideCheck, LucideX, LucidePencil, LucideTrash2, LucideFileText, LucideNetwork, LucideCalendar } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+
 
 // Type definitions
 type TimelineEvent = {

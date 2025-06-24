@@ -1,9 +1,7 @@
 'use client';
 
-import { Timeline as VerticalTimeline, TimelineItem } from 'react-vertical-timeline-component';
-import 'react-vertical-timeline-component/style.min.css';
-import Timeline from '@/components/Timeline'; // Add your custom Timeline
 import dynamic from 'next/dynamic';
+import Timeline from '@/components/Timeline';
 
 const ForceGraph2D = dynamic(
   () => import('react-force-graph-2d'),

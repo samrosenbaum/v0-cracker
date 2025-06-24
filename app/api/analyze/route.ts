@@ -1,11 +1,14 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js';
-import { QualityControlAnalyzer } from '@/app/lib/qualityControl';
+import { QualityControlAnalyzer } from '../../lib/qualityControl';
+import { AdvancedDocumentParser } from '../../lib/advancedParser';
+import { generateEnhancedAnalysisPrompt, ENHANCED_JSON_STRUCTURE } from '../../lib/enhancedAnalysisPrompt';
+
 
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
-  console.log("🚀 API route hit - PDF analysis with quality control");
+  console.log("🚀 API route hit - PDF analysis with enhanced quality control");
   
   // Extract access token from Authorization header
   const authHeader = req.headers.get("authorization");
@@ -14,7 +17,7 @@ export async function POST(req: NextRequest) {
     value: authHeader ? `${authHeader.substring(0, 20)}...` : null
   });
   
-  const token = authHeader?.replace("Bearer ", "");
+  const token = authHeader?.replace("Bearer ", "")
   console.log("Token:", {
     present: !!token,
     length: token?.length
@@ -96,90 +99,146 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No files provided" }, { status: 400 });
     }
 
+    // Enhanced document processing with debugging
     const extractedTexts = [];
-    
+    const parsedDocuments = [];
+    let advancedParsingSuccessCount = 0;
+    let advancedParsingFailureCount = 0;
+
     for (const file of allFiles) {
       console.log(`🔍 Processing file: ${file.name}, type: ${file.type}`);
-      let text = "";
       
       try {
-        if (file.type === 'application/pdf') {
-          console.log("📄 Processing PDF with pdf2json...");
-          
-          try {
-            // Import pdf2json
-            const PDFParser = (await import('pdf2json')).default;
-            const pdfParser = new PDFParser();
+        // Use your advanced parsing for better entity extraction
+        console.log(`📄 Attempting advanced parsing: ${file.name}`);
+        
+        // Debug: Check if AdvancedDocumentParser is properly imported
+        console.log("AdvancedDocumentParser available:", typeof AdvancedDocumentParser);
+        console.log("parseDocument method available:", typeof AdvancedDocumentParser.parseDocument);
+        
+        const parsedDoc = await AdvancedDocumentParser.parseDocument(file);
+        
+        // Debug: Log the parsed document structure
+        console.log(`📊 Advanced parsing SUCCESS for ${file.name}:`, {
+          id: parsedDoc.id,
+          type: parsedDoc.type,
+          qualityScore: parsedDoc.qualityScore,
+          entitiesCount: parsedDoc.entities?.length || 0,
+          contentKeys: Object.keys(parsedDoc.content || {}),
+          peopleCount: parsedDoc.content?.people?.length || 0,
+          locationsCount: parsedDoc.content?.locations?.length || 0,
+          datesCount: parsedDoc.content?.dates?.length || 0,
+          vehiclesCount: parsedDoc.content?.vehicles?.length || 0,
+          communicationsCount: parsedDoc.content?.communications?.length || 0,
+          evidenceCount: parsedDoc.content?.evidence?.length || 0
+        });
+        
+        parsedDocuments.push(parsedDoc);
+        advancedParsingSuccessCount++;
+        
+        // Also create legacy format for backward compatibility
+        extractedTexts.push({
+          name: file.name,
+          text: parsedDoc.content.rawText,
+          type: file.type
+        });
+        
+        console.log(`✅ Advanced parsing completed for ${file.name}: Quality=${parsedDoc.qualityScore}%, Entities=${parsedDoc.entities.length}`);
+        
+      } catch (error) {
+        console.error(`❌ Advanced parsing FAILED for ${file.name}:`, {
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          errorStack: error instanceof Error ? error.stack : 'No stack trace',
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size
+        });
+        
+        advancedParsingFailureCount++;
+        
+        // Fallback to basic text extraction
+        let text = "";
+        try {
+          if (file.type === 'application/pdf') {
+            console.log("📄 Fallback: Processing PDF with pdf2json...");
             
-            // Get PDF data
-            const arrayBuffer = await file.arrayBuffer();
-            const pdfData = Buffer.from(arrayBuffer);
-            
-            console.log(`📄 PDF buffer size: ${pdfData.length} bytes`);
-            
-            // Parse PDF
-            const pdfText = await new Promise<string>((resolve, reject) => {
-              pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
-                try {
-                  const text = decodeURIComponent(
-                    pdfData.Pages
-                      .map((page: any) => 
-                        page.Texts
-                          .map((text: any) => 
-                            text.R
-                              .map((r: any) => r.T)
-                              .join(' ')
-                          )
-                          .join(' ')
-                      )
-                      .join(' ')
-                  );
-                  resolve(text);
-                } catch (err) {
-                  reject(err);
-                }
+            try {
+              // Import pdf2json
+              const PDFParser = (await import('pdf2json')).default;
+              const pdfParser = new PDFParser();
+              
+              // Get PDF data
+              const arrayBuffer = await file.arrayBuffer();
+              const pdfData = Buffer.from(arrayBuffer);
+              
+              console.log(`📄 PDF buffer size: ${pdfData.length} bytes`);
+              
+              // Parse PDF
+              const pdfText = await new Promise<string>((resolve, reject) => {
+                pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
+                  try {
+                    const text = decodeURIComponent(
+                      pdfData.Pages
+                        .map((page: any) => 
+                          page.Texts
+                            .map((text: any) => 
+                              text.R
+                                .map((r: any) => r.T)
+                                .join(' ')
+                            )
+                            .join(' ')
+                        )
+                        .join(' ')
+                    );
+                    resolve(text);
+                  } catch (err) {
+                    reject(err);
+                  }
+                });
+                
+                pdfParser.on('pdfParser_dataError', (errData: any) => {
+                  reject(new Error(`PDF parsing error: ${errData.parserError}`));
+                });
+                
+                pdfParser.parseBuffer(pdfData);
               });
               
-              pdfParser.on('pdfParser_dataError', (errData: any) => {
-                reject(new Error(`PDF parsing error: ${errData.parserError}`));
-              });
+              text = pdfText.trim();
+              console.log(`📄 Fallback PDF extraction: ${text.length} chars`);
               
-              pdfParser.parseBuffer(pdfData);
-            });
-            
-            text = pdfText.trim();
-            console.log(`📄 Total extracted text length: ${text.length}`);
-            console.log(`📄 First 200 chars: "${text.substring(0, 200)}"`);
-            
-            if (!text || text.length < 10) {
-              text = `[PDF FILE: ${file.name} - PDF processed but no readable text found]`;
+              if (!text || text.length < 10) {
+                text = `[PDF FILE: ${file.name} - PDF processed but no readable text found]`;
+              }
+              
+            } catch (pdfError: unknown) {
+              console.error(`❌ Fallback PDF processing error:`, pdfError);
+              const errorMessage = pdfError instanceof Error ? pdfError.message : 'Unknown PDF processing error';
+              text = `[PDF FILE: ${file.name} - PDF processing failed: ${errorMessage}]`;
             }
             
-          } catch (pdfError: unknown) {
-            console.error(`❌ PDF processing error:`, pdfError);
-            const errorMessage = pdfError instanceof Error ? pdfError.message : 'Unknown PDF processing error';
-            text = `[PDF FILE: ${file.name} - PDF processing failed: ${errorMessage}]`;
+          } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+            console.log("📝 Fallback: Processing DOCX...");
+            try {
+              const mammoth = await import('mammoth');
+              const arrayBuffer = await file.arrayBuffer();
+              const buffer = Buffer.from(arrayBuffer);
+              const result = await mammoth.extractRawText({ buffer });
+              text = result.value?.trim() || `[DOCX FILE: ${file.name} - No text found]`;
+              console.log(`📝 Fallback DOCX text length: ${text.length}`);
+            } catch (docxError: unknown) {
+              console.error(`❌ Fallback DOCX error:`, docxError);
+              const errorMessage = docxError instanceof Error ? docxError.message : 'Unknown DOCX processing error';
+              text = `[DOCX FILE: ${file.name} - Processing failed: ${errorMessage}]`;
+            }
+            
+          } else {
+            console.log("📝 Fallback: Processing text file...");
+            text = await file.text();
+            console.log(`📝 Fallback text file length: ${text.length}`);
           }
-          
-        } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-          console.log("📝 Processing DOCX...");
-          try {
-            const mammoth = await import('mammoth');
-            const arrayBuffer = await file.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
-            const result = await mammoth.extractRawText({ buffer });
-            text = result.value?.trim() || `[DOCX FILE: ${file.name} - No text found]`;
-            console.log(`📝 DOCX text length: ${text.length}`);
-          } catch (docxError: unknown) {
-            console.error(`❌ DOCX error:`, docxError);
-            const errorMessage = docxError instanceof Error ? docxError.message : 'Unknown DOCX processing error';
-            text = `[DOCX FILE: ${file.name} - Processing failed: ${errorMessage}]`;
-          }
-          
-        } else {
-          console.log("📝 Processing text file...");
-          text = await file.text();
-          console.log(`📝 Text file length: ${text.length}`);
+        } catch (basicError) {
+          console.error(`❌ Fallback extraction also failed for ${file.name}:`, basicError);
+          text = `[ERROR: Could not process ${file.name}: ${basicError instanceof Error ? basicError.message : 'Unknown error'}]`;
         }
         
         extractedTexts.push({
@@ -188,24 +247,98 @@ export async function POST(req: NextRequest) {
           type: file.type
         });
         
-      } catch (error) {
-        console.error(`❌ Error processing ${file.name}:`, error);
-        extractedTexts.push({
-          name: file.name,
-          text: `[ERROR: Could not process ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}]`,
-          type: file.type
+        // Create minimal parsed document structure for failed parsing
+        parsedDocuments.push({
+          id: `doc_${Date.now()}_${file.name}`,
+          filename: file.name,
+          type: 'general_document' as any,
+          content: { 
+            rawText: text, 
+            sections: [],
+            tables: [],
+            dates: [],
+            locations: [],
+            people: [],
+            organizations: [],
+            vehicles: [],
+            communications: [],
+            financials: [],
+            evidence: []
+          },
+          metadata: {
+            filename: file.name,
+            fileSize: file.size,
+            fileType: file.type,
+            wordCount: text.split(/\s+/).length,
+            pageCount: 1,
+            extractedAt: new Date().toISOString(),
+            language: 'en',
+            encoding: 'utf-8'
+          },
+          entities: [],
+          relationships: [],
+          qualityScore: 30
         });
       }
     }
 
+    // Debug: Log parsing statistics
+    console.log(`📊 PARSING STATISTICS:`, {
+      totalFiles: allFiles.length,
+      advancedParsingSuccess: advancedParsingSuccessCount,
+      advancedParsingFailures: advancedParsingFailureCount,
+      advancedParsingRate: Math.round((advancedParsingSuccessCount / allFiles.length) * 100) + '%',
+      totalParsedDocuments: parsedDocuments.length,
+      documentsWithEntities: parsedDocuments.filter(doc => doc.entities?.length > 0).length,
+      totalEntitiesExtracted: parsedDocuments.reduce((sum, doc) => sum + (doc.entities?.length || 0), 0)
+    });
+
+    // Debug: Check if any documents have rich entity data
+    const documentsWithRichData = parsedDocuments.filter(doc => 
+      doc.content?.people?.length > 0 || 
+      doc.content?.locations?.length > 0 || 
+      doc.content?.dates?.length > 0
+    );
+
+    console.log(`📈 RICH DATA CHECK:`, {
+      documentsWithRichData: documentsWithRichData.length,
+      richDataRate: Math.round((documentsWithRichData.length / parsedDocuments.length) * 100) + '%',
+      sampleRichDocument: documentsWithRichData[0] ? {
+        filename: documentsWithRichData[0].filename,
+        people: documentsWithRichData[0].content?.people?.length || 0,
+        locations: documentsWithRichData[0].content?.locations?.length || 0,
+        dates: documentsWithRichData[0].content?.dates?.length || 0
+      } : 'None'
+    });
+
+    // Infer case type for specialized analysis
+    function inferCaseType(parsedDocuments: any[]): string {
+      const allText = parsedDocuments.map(doc => doc.content.rawText.toLowerCase()).join(' ');
+      
+      if (allText.includes('homicide') || allText.includes('murder') || allText.includes('death')) {
+        return 'homicide';
+      }
+      if (allText.includes('missing') || allText.includes('disappeared')) {
+        return 'missing_person';
+      }
+      if (allText.includes('sexual assault') || allText.includes('rape')) {
+        return 'sexual_assault';
+      }
+      if (allText.includes('robbery') || allText.includes('theft') || allText.includes('burglary')) {
+        return 'property_crime';
+      }
+      if (allText.includes('drug') || allText.includes('narcotic')) {
+        return 'drug_related';
+      }
+      
+      return 'general_crime';
+    }
+
+    // Check if we have meaningful text (excluding error messages)
     const combinedText = extractedTexts
       .map(f => `--- ${f.name} ---\n${f.text}`)
       .join("\n\n");
 
-    console.log(`📝 Combined text length: ${combinedText.length}`);
-    console.log(`📝 Combined preview: "${combinedText.substring(0, 300)}"`);
-
-    // Check if we have meaningful text (excluding error messages)
     const meaningfulText = combinedText.replace(/\[.*?FILE:.*?\]/g, '').trim();
     if (meaningfulText.length < 20) {
       return NextResponse.json({
@@ -223,240 +356,256 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    console.log("🤖 Starting Claude analysis...");
-    
+    console.log("🤖 Starting enhanced Claude analysis...");
+
     try {
       const Anthropic = (await import('@anthropic-ai/sdk')).default;
       const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-      let truncatedText = combinedText;
+      // Prepare comprehensive document summary using your parser's rich data
+      const documentSummary = parsedDocuments.map(doc => ({
+        filename: doc.filename,
+        type: doc.type,
+        qualityScore: doc.qualityScore,
+        entityCount: doc.entities.length,
+        wordCount: doc.metadata.wordCount,
+        keyEntities: doc.entities.slice(0, 5).map((e: any) => `${e.type}: ${e.name}`),
+        summary: doc.content.rawText.substring(0, 500) + "...",
+        // Rich entity breakdown from your parser
+        entityBreakdown: {
+          people: doc.content.people.length,
+          locations: doc.content.locations.length,
+          dates: doc.content.dates.length,
+          vehicles: doc.content.vehicles.length,
+          communications: doc.content.communications.length,
+          evidence: doc.content.evidence.length
+        }
+      }));
+
+      // Create comprehensive analysis text using your structured data
+      const combinedAnalysisText = parsedDocuments.map(doc => {
+        const entitySummary = doc.entities.map((e: any) => 
+          `${e.type.toUpperCase()}: ${e.name} (confidence: ${e.confidence}%)`
+        ).join('\n');
+        
+        // Include structured data from your parser
+        const structuredSummary = `
+PEOPLE: ${doc.content.people.map((p: any) => `${p.firstName} ${p.lastName} (${p.role})`).join(', ')}
+LOCATIONS: ${doc.content.locations.map((l: any) => l.originalText).join(', ')}
+DATES: ${doc.content.dates.map((d: any) => `${d.originalText} (${d.type})`).join(', ')}
+VEHICLES: ${doc.content.vehicles.map((v: any) => `${v.originalText}`).join(', ')}
+COMMUNICATIONS: ${doc.content.communications.map((c: any) => `${c.type}: ${c.originalText}`).join(', ')}
+EVIDENCE: ${doc.content.evidence.map((e: any) => `${e.type}: ${e.description}`).join(', ')}
+`;
+        
+        return `
+=== DOCUMENT: ${doc.filename} ===
+TYPE: ${doc.type}
+QUALITY SCORE: ${doc.qualityScore}%
+EXTRACTED ENTITIES:
+${entitySummary}
+
+STRUCTURED DATA SUMMARY:
+${structuredSummary}
+
+FULL CONTENT:
+${doc.content.rawText}
+
+===================================
+`;
+      }).join('\n\n');
+
+      // Limit text size
+      let truncatedText = combinedAnalysisText;
       let truncated = false;
-      const MAX_CHARS = 64000;
-      if (combinedText.length > MAX_CHARS) {
-        truncatedText = combinedText.substring(0, MAX_CHARS);
+      const MAX_CHARS = 100000; // Increased for enhanced analysis
+      if (combinedAnalysisText.length > MAX_CHARS) {
+        truncatedText = combinedAnalysisText.substring(0, MAX_CHARS);
         truncated = true;
-        console.warn(`⚠️ Combined text truncated from ${combinedText.length} to ${MAX_CHARS} characters.`);
+        console.warn(`⚠️ Combined text truncated from ${combinedAnalysisText.length} to ${MAX_CHARS} characters.`);
       }
 
-      // Keep your sophisticated forensic analysis prompt
-      const systemPrompt = `COLD CASE ANALYSIS SYSTEM
+      // Generate enhanced analysis prompt
+      const caseType = inferCaseType(parsedDocuments);
+      const enhancedPrompt = generateEnhancedAnalysisPrompt(
+        parsedDocuments,
+        aiPrompt, // Your custom prompt from the case
+        caseType
+      );
 
-You are an expert forensic analyst using advanced investigative methodologies. Analyze police files to identify overlooked clues, patterns, connections, and viable investigative leads in cold cases.
+      // System prompt with enhanced instructions
+      const systemPrompt = `${enhancedPrompt}
 
-ANALYSIS FRAMEWORK:
+DOCUMENT ANALYSIS SUMMARY:
+Total Documents: ${parsedDocuments.length}
+Average Quality Score: ${Math.round(parsedDocuments.reduce((sum, doc) => sum + doc.qualityScore, 0) / parsedDocuments.length)}%
+Total Entities Extracted: ${parsedDocuments.reduce((sum, doc) => sum + doc.entities.length, 0)}
+Case Type: ${caseType}
 
-PRIMARY METHODOLOGIES:
-- Reid Technique: Statement analysis for deception detection
-- FBI Behavioral Analysis Unit: Offender profiling and behavioral indicators
-- NCAVC Protocols: Violent crime analysis standards
-- VICAP Integration: Pattern recognition across cases
-- Locard's Exchange Principle: Physical evidence transfer analysis
-- Geographic Profiling: Spatial relationship analysis
+DOCUMENTS OVERVIEW:
+${JSON.stringify(documentSummary, null, 2)}
 
-SUSPECT ANALYSIS CRITERIA:
-OPPORTUNITY TRIAD:
-1. Access: Geographic/temporal proximity to victim
-2. Means: Physical capability, tools, specialized knowledge
-3. Motive: Personal grievance, financial gain, psychological factors
+YOU MUST RESPOND WITH ONLY THE FOLLOWING JSON STRUCTURE:
+${ENHANCED_JSON_STRUCTURE}`;
 
-BEHAVIORAL INDICATORS:
-- Crime scene organization level (organized/disorganized)
-- Signature behaviors vs. MO elements
-- Escalation patterns in behavior
-- Post-offense behavior changes
-- Digital footprint anomalies
-
-CRITICAL RED FLAGS:
-TIMELINE DISCREPANCIES:
-- Critical Gap: Unaccounted periods >30 minutes during key timeframes
-- Digital vs. Witness: Phone/GPS data contradicting statements
-- Alibi Integrity: Unverifiable or circular alibi chains
-
-DECEPTION INDICATORS:
-- Consistency Failures: Details changing across interviews
-- Information Asymmetry: Over-detailed irrelevant info, vague critical details
-- Memory Gaps: Suspicious amnesia during crucial periods
-- Emotional Incongruence: Inappropriate emotional responses
-
-EVIDENCE ANOMALIES:
-- Chain of Custody: Gaps or irregularities in evidence handling
-- Testing Gaps: Collected evidence never analyzed
-- Missing Items: Referenced but unlocated evidence
-
-CRITICAL: You MUST respond with ONLY a valid JSON object. No explanations, no markdown formatting, no text before or after the JSON. Start your response with { and end with }.`;
-
-      const userPrompt = aiPrompt?.trim() ? `${aiPrompt.trim()}\n\n` : "";
-
-      console.log("System prompt length:", systemPrompt.length);
-      console.log("User prompt:", userPrompt);
+      console.log("Enhanced system prompt length:", systemPrompt.length);
 
       const response = await client.messages.create({
-        model: 'claude-3-haiku-20240307',
-        max_tokens: 4000,
+        model: 'claude-3-5-sonnet-20241022', // Use more powerful model
+        max_tokens: 8000, // Increased for comprehensive analysis
         temperature: 0.1,
         system: systemPrompt,
         messages: [{
           role: 'user',
-          content: `${userPrompt}
+          content: `Perform comprehensive multi-document pattern analysis on the following case materials:
 
-MISSION: Analyze these police files using forensic methodology to identify overlooked clues, patterns, connections, and viable investigative leads.
+${truncatedText}
 
-REQUIRED METRICS (For Every Finding):
-- confidenceScore: 0-100
-- evidenceStrength: 0-100
-- urgencyLevel: CRITICAL/HIGH/MEDIUM/LOW
-- specificAction: Detailed investigative step
-- investigativePriority: 1-10
-
-ANALYSIS PRIORITIES:
-1. CRITICAL: Life safety, active threat, statute limitations
-2. HIGH: Strong evidence potential, key witness availability
-3. MEDIUM: Pattern confirmation, secondary evidence
-4. LOW: Background information, administrative tasks
-
-Execute comprehensive analysis following forensic framework. Identify every potential lead that could advance the investigation.
+CRITICAL REQUIREMENTS:
+1. Identify patterns that span multiple documents
+2. Cross-reference all entities across documents  
+3. Build comprehensive timeline from all sources
+4. Detect inconsistencies and deception patterns
+5. Generate high-value investigative leads
+6. Focus on connections that would be missed in manual review
 
 Case ID: ${caseId}
 Documents: ${extractedTexts.length}
 ${truncated ? 'NOTE: Case materials were truncated due to length.\n' : ''}
 
-CASE MATERIALS:
-${truncatedText}
-
-RESPOND WITH ONLY THIS JSON STRUCTURE:
-{
-  "caseAssessment": {
-    "overallRisk": "CRITICAL|HIGH|MEDIUM|LOW",
-    "breakthroughPotential": 0-100,
-    "investigativePriority": 1-10
-  },
-  "suspects": [
-    {
-      "id": "S001",
-      "name": "Name",
-      "urgencyLevel": "CRITICAL|HIGH|MEDIUM|LOW", 
-      "connections": ["connection1"],
-      "redFlags": ["flag1"],
-      "recommendedActions": ["action1"],
-      "notes": "notes",
-      "confidence": 0-100
-    }
-  ],
-  "findings": [
-    {
-      "id": "F001",
-      "title": "Finding title", 
-      "description": "Description",
-      "category": "suspect|evidence|timeline|statement|pattern",
-      "priority": "CRITICAL|HIGH|MEDIUM|LOW",
-      "confidenceScore": 0-100,
-      "evidenceStrength": 0-100,
-      "supportingEvidence": ["evidence1"],
-      "actionRequired": "action",
-      "timeline": "IMMEDIATE|1-WEEK|1-MONTH|LONG-TERM"
-    }
-  ],
-  "connections": [
-    {
-      "id": "C001",
-      "type": "type",
-      "entities": ["entity1", "entity2"],
-      "description": "description",
-      "significance": "significance", 
-      "confidence": 0-100
-    }
-  ],
-  "overlookedLeads": [
-    {
-      "type": "suspect|evidence|timeline|statement|digital|financial",
-      "description": "description",
-      "recommendedAction": "action",
-      "rationale": "rationale",
-      "urgency": "CRITICAL|HIGH|MEDIUM|LOW",
-      "resources": "resources needed"
-    }
-  ],
-  "recommendations": [
-    {
-      "action": "action",
-      "priority": "CRITICAL|HIGH|MEDIUM|LOW", 
-      "timeline": "timeline",
-      "rationale": "rationale",
-      "resources": "resources"
-    }
-  ]
-}`
+RESPOND WITH ONLY THE JSON STRUCTURE SPECIFIED IN THE SYSTEM PROMPT.`
         }]
       });
 
       const aiResponse = response.content[0]?.type === 'text' ? response.content[0].text : '';
-      console.log(`✅ Claude responded: ${aiResponse.length} chars`);
-      console.log('Raw AI response (first 500 chars):', aiResponse.substring(0, 500));
-      
-      // Parse AI response
+      console.log(`✅ Enhanced Claude responded: ${aiResponse.length} chars`);
+      console.log('Enhanced response preview:', aiResponse.substring(0, 500));
+
+      // Enhanced JSON parsing with better error handling
       let parsedResults;
       try {
-        // Clean the response - remove any markdown formatting or extra text
+        // Clean the response more thoroughly
         let cleanedResponse = aiResponse.trim();
         
-        // Remove markdown code blocks if present
-        if (cleanedResponse.startsWith('```json')) {
-          cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-        } else if (cleanedResponse.startsWith('```')) {
-          cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
-        }
+        // Remove any markdown formatting
+        cleanedResponse = cleanedResponse
+          .replace(/^```json\s*/i, '')
+          .replace(/^```\s*/i, '')
+          .replace(/\s*```$/i, '')
+          .replace(/^\s*```.*$/gm, '');
         
-        // Find JSON object boundaries more carefully
+        // Find the JSON object boundaries
         const firstBrace = cleanedResponse.indexOf('{');
         const lastBrace = cleanedResponse.lastIndexOf('}');
         
         if (firstBrace === -1 || lastBrace === -1 || firstBrace >= lastBrace) {
-          throw new Error('No complete JSON object found in response');
+          throw new Error('No valid JSON object found in response');
         }
         
         const jsonString = cleanedResponse.substring(firstBrace, lastBrace + 1);
         console.log('Extracted JSON string (first 200 chars):', jsonString.substring(0, 200));
 
-        parsedResults = JSON.parse(jsonString);
-
-        // Validate and ensure all required fields exist with defaults
+        // Parse the JSON
+        const rawResults = JSON.parse(jsonString);
+        
+        // Transform enhanced results to legacy format for compatibility
         parsedResults = {
-          caseAssessment: parsedResults.caseAssessment || {
+          // Legacy format for existing UI components
+          suspects: rawResults.entityNetwork?.people?.map((person: any) => ({
+            id: person.id,
+            name: person.name,
+            confidence: person.suspicionLevel || 50,
+            urgencyLevel: person.suspicionLevel > 80 ? 'HIGH' : 
+                         person.suspicionLevel > 60 ? 'MEDIUM' : 'LOW',
+            connections: person.connections?.map((c: any) => c.relationship) || [],
+            redFlags: person.behaviorPatterns || [],
+            notes: `Reliability: ${person.informationReliability}%. Patterns: ${person.behaviorPatterns?.join(', ') || 'None'}`,
+            recommendedActions: rawResults.investigativeLeads
+              ?.filter((lead: any) => lead.targetEntities?.includes(person.id))
+              ?.map((lead: any) => lead.description) || []
+          })) || [],
+          
+          findings: rawResults.crossDocumentPatterns?.map((pattern: any, index: number) => ({
+            id: pattern.id || `finding_${index}`,
+            title: pattern.title,
+            description: pattern.description,
+            category: pattern.type,
+            priority: pattern.significance > 80 ? 'CRITICAL' : 
+                     pattern.significance > 60 ? 'HIGH' : 
+                     pattern.significance > 40 ? 'MEDIUM' : 'LOW',
+            confidenceScore: pattern.confidence,
+            evidenceStrength: pattern.significance,
+            supportingEvidence: pattern.documentsInvolved || [],
+            actionRequired: pattern.investigativeActions?.join('; ') || '',
+            timeline: pattern.timeline || 'Unknown'
+          })) || [],
+          
+          connections: rawResults.entityNetwork?.people?.flatMap((person: any) => 
+            person.connections?.map((conn: any) => ({
+              id: `${person.id}_${conn.toEntity}`,
+              type: conn.relationship,
+              entities: [person.name, conn.toEntity],
+              description: conn.relationship,
+              significance: `Evidence: ${conn.evidence?.join(', ') || 'None'}`,
+              confidence: conn.strength
+            })) || []
+          ) || [],
+          
+          recommendations: rawResults.investigativeLeads?.map((lead: any) => ({
+            action: lead.description,
+            priority: lead.priority > 80 ? 'CRITICAL' : 
+                     lead.priority > 60 ? 'HIGH' : 
+                     lead.priority > 40 ? 'MEDIUM' : 'LOW',
+            timeline: lead.timeline,
+            rationale: lead.expectedOutcome,
+            resources: lead.resources
+          })) || [],
+          
+          overlookedLeads: rawResults.gapAnalysis?.map((gap: any) => ({
+            type: gap.type,
+            description: gap.description,
+            recommendedAction: gap.suggestedActions?.join('; ') || '',
+            rationale: `Criticality: ${gap.criticality}%, Obtainability: ${gap.obtainabilityScore}%`,
+            urgency: gap.criticality > 80 ? 'CRITICAL' : 
+                    gap.criticality > 60 ? 'HIGH' : 
+                    gap.criticality > 40 ? 'MEDIUM' : 'LOW',
+            resources: 'Standard investigative resources'
+          })) || [],
+
+          // Enhanced data for new components
+          enhancedAnalysis: rawResults,
+          
+          // Include case assessment for legacy compatibility
+          caseAssessment: rawResults.caseAssessment || {
             overallRisk: "MEDIUM",
             breakthroughPotential: 50,
             investigativePriority: 5
-          },
-          suspects: Array.isArray(parsedResults.suspects) ? parsedResults.suspects : [],
-          findings: Array.isArray(parsedResults.findings) ? parsedResults.findings : [],
-          connections: Array.isArray(parsedResults.connections) ? parsedResults.connections : [],
-          recommendations: Array.isArray(parsedResults.recommendations) ? parsedResults.recommendations : [],
-          overlookedLeads: Array.isArray(parsedResults.overlookedLeads) ? parsedResults.overlookedLeads : []
+          }
         };
 
-        console.log("✅ Successfully parsed AI response");
-        console.log("Parsed structure:", {
-          suspects: parsedResults.suspects.length,
-          findings: parsedResults.findings.length,
-          connections: parsedResults.connections.length,
-          recommendations: parsedResults.recommendations.length,
-          overlookedLeads: parsedResults.overlookedLeads.length
+        console.log("✅ Successfully parsed enhanced analysis response");
+        console.log("Enhanced structure:", {
+          patterns: rawResults.crossDocumentPatterns?.length || 0,
+          people: rawResults.entityNetwork?.people?.length || 0,
+          timeline: rawResults.masterTimeline?.length || 0,
+          leads: rawResults.investigativeLeads?.length || 0,
+          breakthroughs: rawResults.breakthroughScenarios?.length || 0
         });
-        
+
       } catch (parseError) {
-        console.error("❌ Parse error:", parseError);
+        console.error("❌ Enhanced parse error:", parseError);
         console.error("Failed to parse response (first 1000 chars):", aiResponse.substring(0, 1000));
         
         return NextResponse.json({
           success: false,
-          error: "Failed to parse AI response",
+          error: "Failed to parse enhanced AI response",
           details: parseError instanceof Error ? parseError.message : "Unknown parsing error",
           debug: {
             responseLength: aiResponse.length,
             responsePreview: aiResponse.substring(0, 500),
             firstBraceIndex: aiResponse.indexOf('{'),
             lastBraceIndex: aiResponse.lastIndexOf('}'),
-            containsJson: aiResponse.includes('{') && aiResponse.includes('}'),
-            startsWithMarkdown: aiResponse.trim().startsWith('```')
+            containsJson: aiResponse.includes('{') && aiResponse.includes('}')
           }
         }, { status: 500 });
       }
@@ -479,11 +628,11 @@ RESPOND WITH ONLY THIS JSON STRUCTURE:
           .from('case_analysis')
           .insert([{
             case_id: caseId,
-            analysis_type: isBulkAnalysis ? 'bulk_analysis' : 'ai_analysis',
+            analysis_type: isBulkAnalysis ? 'bulk_analysis' : 'enhanced_analysis',
             analysis_data: parsedResults,
             confidence_score: overallConfidence,
             user_id: user.id,
-            used_prompt: userPrompt
+            used_prompt: aiPrompt
           }])
           .select()
           .single();
@@ -536,9 +685,36 @@ RESPOND WITH ONLY THIS JSON STRUCTURE:
             textLength: f.text.length,
             preview: f.text.substring(0, 200) + (f.text.length > 200 ? "..." : "")
           })),
-          aiModel: "claude-3-haiku-20240307",
+          // Include rich parsing data
+          advancedParsing: {
+            totalEntitiesExtracted: parsedDocuments.reduce((sum, doc) => sum + doc.entities.length, 0),
+            documentTypes: parsedDocuments.map(doc => doc.type),
+            averageQualityScore: Math.round(parsedDocuments.reduce((sum, doc) => sum + doc.qualityScore, 0) / parsedDocuments.length),
+            entityBreakdown: parsedDocuments.reduce((acc, doc) => ({
+              people: acc.people + doc.content.people.length,
+              locations: acc.locations + doc.content.locations.length,
+              dates: acc.dates + doc.content.dates.length,
+              vehicles: acc.vehicles + doc.content.vehicles.length,
+              communications: acc.communications + doc.content.communications.length,
+              evidence: acc.evidence + doc.content.evidence.length
+            }), { people: 0, locations: 0, dates: 0, vehicles: 0, communications: 0, evidence: 0 }),
+            parsingStatistics: {
+              totalFiles: allFiles.length,
+              advancedParsingSuccess: advancedParsingSuccessCount,
+              advancedParsingFailures: advancedParsingFailureCount,
+              advancedParsingRate: Math.round((advancedParsingSuccessCount / allFiles.length) * 100)
+            }
+          },
+          aiModel: "claude-3-5-sonnet-20241022",
           processingTime: new Date().toISOString(),
-          confidenceScore: overallConfidence
+          confidenceScore: overallConfidence,
+          enhancedFeatures: {
+            advancedParsing: true,
+            entityExtraction: true,
+            crossDocumentAnalysis: true,
+            qualityControl: true,
+            structuredDataExtraction: true
+          }
         });
 
       } catch (storageError) {
@@ -550,9 +726,9 @@ RESPOND WITH ONLY THIS JSON STRUCTURE:
       }
 
     } catch (aiError) {
-      console.error("🚨 AI Error:", aiError);
+      console.error("🚨 Enhanced AI Error:", aiError);
       return NextResponse.json({ 
-        error: "AI analysis failed",
+        error: "Enhanced AI analysis failed",
         details: aiError instanceof Error ? aiError.message : "Unknown error"
       }, { status: 500 });
     }

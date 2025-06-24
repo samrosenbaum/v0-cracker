@@ -3,8 +3,8 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
-import FileUploader from './FileUploader';
-import AIInsights from './AIInsights';
+import FileUploader from '../../components/FileUploader';
+import AIInsights from '../../components/AIInsights';
 import Timeline from "@/components/Timeline";
 import SuspectNetworkGraph from "@/components/analysis-visuals/SuspectNetworkGraph";
 import { Button } from "@/components/ui/button";
