@@ -1,11 +1,16 @@
 "use client"
 
-import { useEffect, useRef, useState, useMemo, useCallback } from "react"
+import { useRef, useState, useMemo, useCallback } from "react"
+import dynamic from "next/dynamic"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
+
+const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
+  ssr: false,
+})
 import {
   Select,
   SelectContent,
@@ -59,6 +64,27 @@ export default function SuspectNetworkGraph({ suspects, caseId, className = '' }
   const [filterPriority, setFilterPriority] = useState<string>("all")
   const [searchQuery, setSearchQuery] = useState("")
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Build graph data for network view
+  const graphData = useMemo(() => {
+    const nodesMap = new Map<string, any>()
+    const links: { source: string; target: string }[] = []
+
+    suspects.forEach(s => {
+      const id = s.id || s.name
+      nodesMap.set(id, { id, name: s.name, status: s.status || "unknown" })
+
+      ;(s.connections || []).forEach(conn => {
+        const targetId = conn
+        if (!nodesMap.has(targetId)) {
+          nodesMap.set(targetId, { id: targetId, name: conn, status: "unknown" })
+        }
+        links.push({ source: id, target: targetId })
+      })
+    })
+
+    return { nodes: Array.from(nodesMap.values()), links }
+  }, [suspects])
 
   // Memoize the filtered suspects to prevent unnecessary recalculations
   const filteredSuspects = useMemo(() => {
@@ -143,6 +169,14 @@ export default function SuspectNetworkGraph({ suspects, caseId, className = '' }
 
   return (
     <div className={cn('w-full h-full flex flex-col', className)}>
+      {/* View toggle */}
+      <Tabs defaultValue={view} onValueChange={v => setView(v as "network" | "list")} className="mb-2">
+        <TabsList>
+          <TabsTrigger value="network">Network</TabsTrigger>
+          <TabsTrigger value="list">List</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       {/* Filters and search */}
       <div className="flex flex-wrap gap-2 items-center mb-2">
         <Select value={filterStatus} onValueChange={handleStatusChange}>
@@ -186,12 +220,14 @@ export default function SuspectNetworkGraph({ suspects, caseId, className = '' }
       {/* Main content area (scrollable) */}
       <div className="flex-1 overflow-y-auto space-y-4">
         {view === 'network' ? (
-          <div className="flex items-center justify-center w-full h-full bg-muted rounded-md border overflow-y-auto">
-            <div className="flex flex-col items-center justify-center w-full h-full">
-              <LucideNetwork className="w-10 h-10 text-gray-400 mb-2" />
-              <span className="font-semibold text-gray-700">Network Visualization Coming Soon</span>
-              <span className="text-xs text-gray-400 mt-1">Network visualization will be available in the next update.</span>
-            </div>
+          <div className="w-full h-[400px]" ref={containerRef}>
+            <ForceGraph2D
+              graphData={graphData}
+              nodeLabel="name"
+              nodeAutoColorBy="status"
+              width={containerRef.current?.clientWidth || 600}
+              height={400}
+            />
           </div>
         ) : (
           filteredSuspects.length === 0 ? (
