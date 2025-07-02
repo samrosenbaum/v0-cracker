@@ -1,6 +1,57 @@
 // lib/enhancedAnalysisPrompt.ts
 // Copy the entire Enhanced Analysis Prompt artifact content here
 
+export const SIMPLE_FORENSIC_ANALYSIS_PROMPT = `
+FORENSIC CASE ANALYSIS SPECIALIST
+
+You are an experienced forensic analyst tasked with identifying suspects, evidence, and key findings from case documents. Focus on direct, actionable information that can advance the investigation.
+
+CORE ANALYSIS OBJECTIVES:
+
+1. SUSPECT IDENTIFICATION:
+   - Identify all persons mentioned in the documents
+   - Assess their potential involvement based on evidence
+   - Determine motive, means, and opportunity
+   - Evaluate credibility and reliability of information about each person
+   - Flag individuals with suspicious behavior or inconsistencies
+
+2. EVIDENCE ANALYSIS:
+   - Catalog all physical, digital, and testimonial evidence
+   - Assess the strength and reliability of each piece of evidence
+   - Identify missing or overlooked evidence
+   - Connect evidence to specific individuals or events
+   - Determine what additional evidence should be sought
+
+3. TIMELINE RECONSTRUCTION:
+   - Create a chronological sequence of events
+   - Identify gaps in the timeline that need investigation
+   - Note conflicting accounts of timing
+   - Highlight critical time periods and events
+
+4. KEY FINDINGS:
+   - Identify the most important discoveries
+   - Note patterns or connections that emerge
+   - Flag inconsistencies or contradictions
+   - Highlight information that could lead to breakthroughs
+
+5. INVESTIGATIVE LEADS:
+   - Suggest specific next steps for investigators
+   - Identify witnesses who should be re-interviewed
+   - Recommend evidence that should be tested or re-examined
+   - Point out locations that should be searched
+   - Suggest records that should be obtained
+
+ANALYSIS APPROACH:
+- Be direct and specific in your findings
+- Focus on facts and evidence rather than speculation
+- Prioritize information that can be acted upon
+- Identify the strongest leads and most reliable evidence
+- Be thorough but concise
+
+OUTPUT REQUIREMENTS:
+Provide a structured analysis with clear sections for suspects, evidence, timeline, findings, and recommendations. Each item should include confidence levels and supporting evidence.
+`;
+
 export const ENHANCED_FORENSIC_ANALYSIS_PROMPT = `
 ADVANCED COLD CASE ANALYSIS SYSTEM - PATTERN DETECTION SPECIALIST
 
@@ -240,6 +291,71 @@ Remember: Your goal is to identify patterns and connections that would be nearly
 ANALYZE EVERYTHING AS AN INTERCONNECTED SYSTEM, NOT ISOLATED DOCUMENTS.
 `;
 
+export const SIMPLE_JSON_STRUCTURE = `
+{
+  "suspects": [
+    {
+      "id": "suspect_001",
+      "name": "Full Name",
+      "confidence": 0-100,
+      "urgencyLevel": "HIGH|MEDIUM|LOW",
+      "connections": ["connection1", "connection2"],
+      "redFlags": ["red flag 1", "red flag 2"],
+      "notes": "Key observations about this person",
+      "recommendedActions": ["action1", "action2"],
+      "role": "suspect|witness|victim|other",
+      "location": "Last known location",
+      "evidence": ["evidence1", "evidence2"],
+      "status": "active|cleared|arrested",
+      "priority": "high|medium|low"
+    }
+  ],
+  "findings": [
+    {
+      "id": "finding_001",
+      "title": "Finding title",
+      "description": "Detailed description of the finding",
+      "category": "suspect|evidence|timeline|location|other",
+      "priority": "CRITICAL|HIGH|MEDIUM|LOW",
+      "confidenceScore": 0-100,
+      "evidenceStrength": 0-100,
+      "supportingEvidence": ["evidence1", "evidence2"],
+      "actionRequired": "Specific action needed",
+      "timeline": "When this occurred or was discovered"
+    }
+  ],
+  "connections": [
+    {
+      "id": "connection_001",
+      "type": "relationship type",
+      "entities": ["entity1", "entity2"],
+      "description": "Description of the connection",
+      "significance": "Why this connection matters",
+      "confidence": 0-100
+    }
+  ],
+  "recommendations": [
+    {
+      "action": "Specific action to take",
+      "priority": "CRITICAL|HIGH|MEDIUM|LOW",
+      "timeline": "When this should be done",
+      "rationale": "Why this action is important",
+      "resources": "What resources are needed"
+    }
+  ],
+  "overlookedLeads": [
+    {
+      "type": "missing_witness|missing_evidence|missing_records|missing_timeline",
+      "description": "What's missing",
+      "recommendedAction": "How to obtain missing information",
+      "rationale": "Why this is important",
+      "urgency": "CRITICAL|HIGH|MEDIUM|LOW",
+      "resources": "Resources needed"
+    }
+  ]
+}
+`;
+
 export const ENHANCED_JSON_STRUCTURE = `
 {
   "executiveSummary": {
@@ -420,7 +536,56 @@ You are analyzing ${documents.length} documents that may contain:
 - Surveillance reports and observations
 - Medical and autopsy reports
 
-CRITICAL: Look for patterns that span multiple documents and would be impossible to detect by reading documents individually. Your analysis should reveal connections and insights that emerge only from comprehensive cross-document analysis.
+CRITICAL: Look for patterns that span multiple documents and would be impossible to detect by reading documents individually. Your analysis should reveal connections and insights that emerge only through comprehensive cross-document analysis.
+
+RESPOND WITH ONLY THE JSON STRUCTURE SPECIFIED ABOVE.
+`;
+
+  return prompt;
+}
+
+// Integration function to use simple prompts
+export function generateSimpleAnalysisPrompt(
+  documents: any[], 
+  customPrompt?: string,
+  caseType?: string
+): string {
+  
+  let prompt = SIMPLE_FORENSIC_ANALYSIS_PROMPT;
+  
+  // Add case-specific focus
+  if (caseType) {
+    prompt += `\n\nCASE TYPE: ${caseType.toUpperCase()}
+    
+Focus on elements typical in ${caseType} cases:
+- Common suspect profiles and behaviors
+- Typical evidence patterns
+- Standard investigative approaches
+- Known vulnerabilities and pressure points
+`;
+  }
+  
+  // Add custom user prompt
+  if (customPrompt) {
+    prompt += `\n\nADDITIONAL INVESTIGATION FOCUS:
+${customPrompt}
+
+Ensure the above specific requirements are addressed in your analysis.
+`;
+  }
+  
+  // Add document summary
+  prompt += `\n\nDOCUMENT OVERVIEW:
+You are analyzing ${documents.length} documents that may contain:
+- Police reports and incident documentation
+- Witness interviews and statements  
+- Evidence logs and forensic reports
+- Communication records and digital evidence
+- Financial records and transaction data
+- Surveillance reports and observations
+- Medical and autopsy reports
+
+FOCUS ON: Direct identification of suspects, evidence analysis, timeline reconstruction, and actionable investigative leads.
 
 RESPOND WITH ONLY THE JSON STRUCTURE SPECIFIED ABOVE.
 `;

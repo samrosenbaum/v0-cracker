@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js';
 import { QualityControlAnalyzer } from '../../lib/qualityControl';
 import { AdvancedDocumentParser } from '../../lib/advancedParser';
-import { generateEnhancedAnalysisPrompt, ENHANCED_JSON_STRUCTURE } from '../../lib/enhancedAnalysisPrompt';
+import { generateEnhancedAnalysisPrompt, generateSimpleAnalysisPrompt, ENHANCED_JSON_STRUCTURE, SIMPLE_JSON_STRUCTURE } from '../../lib/enhancedAnalysisPrompt';
 
 
 export const runtime = 'nodejs';
@@ -312,7 +312,7 @@ export async function POST(req: NextRequest) {
     });
 
     // Infer case type for specialized analysis
-    function inferCaseType(parsedDocuments: any[]): string {
+    const inferCaseType = (parsedDocuments: any[]): string => {
       const allText = parsedDocuments.map(doc => doc.content.rawText.toLowerCase()).join(' ');
       
       if (allText.includes('homicide') || allText.includes('murder') || allText.includes('death')) {
@@ -332,7 +332,7 @@ export async function POST(req: NextRequest) {
       }
       
       return 'general_crime';
-    }
+    };
 
     // Check if we have meaningful text (excluding error messages)
     const combinedText = extractedTexts
@@ -425,16 +425,47 @@ ${doc.content.rawText}
         console.warn(`⚠️ Combined text truncated from ${combinedAnalysisText.length} to ${MAX_CHARS} characters.`);
       }
 
-      // Generate enhanced analysis prompt
+      // Choose analysis type based on whether this is bulk analysis
       const caseType = inferCaseType(parsedDocuments);
-      const enhancedPrompt = generateEnhancedAnalysisPrompt(
-        parsedDocuments,
-        aiPrompt, // Your custom prompt from the case
-        caseType
-      );
+      let systemPrompt: string;
+      let jsonStructure: string;
+      let analysisType: string;
+      
+      if (isBulkAnalysis) {
+        // Use simple analysis for bulk analysis (better for suspect identification)
+        console.log("🔍 Using SIMPLE analysis for bulk analysis (better suspect identification)");
+        const simplePrompt = generateSimpleAnalysisPrompt(
+          parsedDocuments,
+          aiPrompt,
+          caseType
+        );
+        
+        systemPrompt = `${simplePrompt}
 
-      // System prompt with enhanced instructions
-      const systemPrompt = `${enhancedPrompt}
+DOCUMENT ANALYSIS SUMMARY:
+Total Documents: ${parsedDocuments.length}
+Average Quality Score: ${Math.round(parsedDocuments.reduce((sum, doc) => sum + doc.qualityScore, 0) / parsedDocuments.length)}%
+Total Entities Extracted: ${parsedDocuments.reduce((sum, doc) => sum + doc.entities.length, 0)}
+Case Type: ${caseType}
+
+DOCUMENTS OVERVIEW:
+${JSON.stringify(documentSummary, null, 2)}
+
+YOU MUST RESPOND WITH ONLY THE FOLLOWING JSON STRUCTURE:
+${SIMPLE_JSON_STRUCTURE}`;
+
+        jsonStructure = SIMPLE_JSON_STRUCTURE;
+        analysisType = 'simple';
+      } else {
+        // Use enhanced analysis for single file analysis (better for pattern recognition)
+        console.log("🔍 Using ENHANCED analysis for single file analysis (better pattern recognition)");
+        const enhancedPrompt = generateEnhancedAnalysisPrompt(
+          parsedDocuments,
+          aiPrompt,
+          caseType
+        );
+        
+        systemPrompt = `${enhancedPrompt}
 
 DOCUMENT ANALYSIS SUMMARY:
 Total Documents: ${parsedDocuments.length}
@@ -448,16 +479,37 @@ ${JSON.stringify(documentSummary, null, 2)}
 YOU MUST RESPOND WITH ONLY THE FOLLOWING JSON STRUCTURE:
 ${ENHANCED_JSON_STRUCTURE}`;
 
-      console.log("Enhanced system prompt length:", systemPrompt.length);
+        jsonStructure = ENHANCED_JSON_STRUCTURE;
+        analysisType = 'enhanced';
+      }
+
+      console.log(`${analysisType === 'simple' ? 'Simple' : 'Enhanced'} system prompt length:`, systemPrompt.length);
 
       const response = await client.messages.create({
-        model: 'claude-3-5-sonnet-20241022', // Use more powerful model
-        max_tokens: 8000, // Increased for comprehensive analysis
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: isBulkAnalysis ? 6000 : 8000, // Less tokens for simple analysis
         temperature: 0.1,
         system: systemPrompt,
         messages: [{
           role: 'user',
-          content: `Perform comprehensive multi-document pattern analysis on the following case materials:
+          content: isBulkAnalysis ? 
+            `Perform direct forensic analysis on the following case materials:
+
+${truncatedText}
+
+FOCUS ON:
+1. Direct suspect identification and assessment
+2. Evidence cataloging and analysis
+3. Timeline reconstruction
+4. Key findings and inconsistencies
+5. Actionable investigative leads
+
+Case ID: ${caseId}
+Documents: ${extractedTexts.length}
+${truncated ? 'NOTE: Case materials were truncated due to length.\n' : ''}
+
+RESPOND WITH ONLY THE JSON STRUCTURE SPECIFIED IN THE SYSTEM PROMPT.` :
+            `Perform comprehensive multi-document pattern analysis on the following case materials:
 
 ${truncatedText}
 
@@ -478,8 +530,8 @@ RESPOND WITH ONLY THE JSON STRUCTURE SPECIFIED IN THE SYSTEM PROMPT.`
       });
 
       const aiResponse = response.content[0]?.type === 'text' ? response.content[0].text : '';
-      console.log(`✅ Enhanced Claude responded: ${aiResponse.length} chars`);
-      console.log('Enhanced response preview:', aiResponse.substring(0, 500));
+      console.log(`✅ ${analysisType === 'simple' ? 'Simple' : 'Enhanced'} Claude responded: ${aiResponse.length} chars`);
+      console.log(`${analysisType === 'simple' ? 'Simple' : 'Enhanced'} response preview:`, aiResponse.substring(0, 500));
 
       // Enhanced JSON parsing with better error handling
       let parsedResults;
@@ -508,104 +560,132 @@ RESPOND WITH ONLY THE JSON STRUCTURE SPECIFIED IN THE SYSTEM PROMPT.`
         // Parse the JSON
         const rawResults = JSON.parse(jsonString);
         
-        // Transform enhanced results to legacy format for compatibility
-        parsedResults = {
-          // Legacy format for existing UI components
-          suspects: rawResults.entityNetwork?.people?.map((person: any) => ({
-            id: person.id,
-            name: person.name,
-            confidence: person.suspicionLevel || 50,
-            urgencyLevel: person.suspicionLevel > 80 ? 'HIGH' : 
-                         person.suspicionLevel > 60 ? 'MEDIUM' : 'LOW',
-            connections: person.connections?.map((c: any) => c.relationship) || [],
-            redFlags: person.behaviorPatterns || [],
-            notes: `Reliability: ${person.informationReliability}%. Patterns: ${person.behaviorPatterns?.join(', ') || 'None'}`,
-            recommendedActions: rawResults.investigativeLeads
-              ?.filter((lead: any) => lead.targetEntities?.includes(person.id))
-              ?.map((lead: any) => lead.description) || []
-          })) || [],
+        // Transform results to legacy format for compatibility based on analysis type
+        if (analysisType === 'simple') {
+          // Simple analysis results are already in the right format
+          parsedResults = {
+            suspects: rawResults.suspects || [],
+            findings: rawResults.findings || [],
+            connections: rawResults.connections || [],
+            recommendations: rawResults.recommendations || [],
+            overlookedLeads: rawResults.overlookedLeads || [],
+            enhancedAnalysis: rawResults,
+            caseAssessment: {
+              overallRisk: "MEDIUM",
+              breakthroughPotential: 50,
+              investigativePriority: 5
+            }
+          };
           
-          findings: rawResults.crossDocumentPatterns?.map((pattern: any, index: number) => ({
-            id: pattern.id || `finding_${index}`,
-            title: pattern.title,
-            description: pattern.description,
-            category: pattern.type,
-            priority: pattern.significance > 80 ? 'CRITICAL' : 
-                     pattern.significance > 60 ? 'HIGH' : 
-                     pattern.significance > 40 ? 'MEDIUM' : 'LOW',
-            confidenceScore: pattern.confidence,
-            evidenceStrength: pattern.significance,
-            supportingEvidence: pattern.documentsInvolved || [],
-            actionRequired: pattern.investigativeActions?.join('; ') || '',
-            timeline: pattern.timeline || 'Unknown'
-          })) || [],
+          console.log("✅ Successfully parsed simple analysis response");
+          console.log("Simple structure:", {
+            suspects: rawResults.suspects?.length || 0,
+            findings: rawResults.findings?.length || 0,
+            connections: rawResults.connections?.length || 0,
+            recommendations: rawResults.recommendations?.length || 0,
+            overlookedLeads: rawResults.overlookedLeads?.length || 0
+          });
+        } else {
+          // Transform enhanced results to legacy format for compatibility
+          parsedResults = {
+            // Legacy format for existing UI components
+            suspects: rawResults.entityNetwork?.people?.map((person: any) => ({
+              id: person.id,
+              name: person.name,
+              confidence: person.suspicionLevel || 50,
+              urgencyLevel: person.suspicionLevel > 80 ? 'HIGH' : 
+                           person.suspicionLevel > 60 ? 'MEDIUM' : 'LOW',
+              connections: person.connections?.map((c: any) => c.relationship) || [],
+              redFlags: person.behaviorPatterns || [],
+              notes: `Reliability: ${person.informationReliability}%. Patterns: ${person.behaviorPatterns?.join(', ') || 'None'}`,
+              recommendedActions: rawResults.investigativeLeads
+                ?.filter((lead: any) => lead.targetEntities?.includes(person.id))
+                ?.map((lead: any) => lead.description) || []
+            })) || [],
           
-          connections: rawResults.entityNetwork?.people?.flatMap((person: any) => 
-            person.connections?.map((conn: any) => ({
-              id: `${person.id}_${conn.toEntity}`,
-              type: conn.relationship,
-              entities: [person.name, conn.toEntity],
-              description: conn.relationship,
-              significance: `Evidence: ${conn.evidence?.join(', ') || 'None'}`,
-              confidence: conn.strength
-            })) || []
-          ) || [],
-          
-          recommendations: rawResults.investigativeLeads?.map((lead: any) => ({
-            action: lead.description,
-            priority: lead.priority > 80 ? 'CRITICAL' : 
-                     lead.priority > 60 ? 'HIGH' : 
-                     lead.priority > 40 ? 'MEDIUM' : 'LOW',
-            timeline: lead.timeline,
-            rationale: lead.expectedOutcome,
-            resources: lead.resources
-          })) || [],
-          
-          overlookedLeads: rawResults.gapAnalysis?.map((gap: any) => ({
-            type: gap.type,
-            description: gap.description,
-            recommendedAction: gap.suggestedActions?.join('; ') || '',
-            rationale: `Criticality: ${gap.criticality}%, Obtainability: ${gap.obtainabilityScore}%`,
-            urgency: gap.criticality > 80 ? 'CRITICAL' : 
-                    gap.criticality > 60 ? 'HIGH' : 
-                    gap.criticality > 40 ? 'MEDIUM' : 'LOW',
-            resources: 'Standard investigative resources'
-          })) || [],
+            findings: rawResults.crossDocumentPatterns?.map((pattern: any, index: number) => ({
+              id: pattern.id || `finding_${index}`,
+              title: pattern.title,
+              description: pattern.description,
+              category: pattern.type,
+              priority: pattern.significance > 80 ? 'CRITICAL' : 
+                       pattern.significance > 60 ? 'HIGH' : 
+                       pattern.significance > 40 ? 'MEDIUM' : 'LOW',
+              confidenceScore: pattern.confidence,
+              evidenceStrength: pattern.significance,
+              supportingEvidence: pattern.documentsInvolved || [],
+              actionRequired: pattern.investigativeActions?.join('; ') || '',
+              timeline: pattern.timeline || 'Unknown'
+            })) || [],
+            
+            connections: rawResults.entityNetwork?.people?.flatMap((person: any) => 
+              person.connections?.map((conn: any) => ({
+                id: `${person.id}_${conn.toEntity}`,
+                type: conn.relationship,
+                entities: [person.name, conn.toEntity],
+                description: conn.relationship,
+                significance: `Evidence: ${conn.evidence?.join(', ') || 'None'}`,
+                confidence: conn.strength
+              })) || []
+            ) || [],
+            
+            recommendations: rawResults.investigativeLeads?.map((lead: any) => ({
+              action: lead.description,
+              priority: lead.priority > 80 ? 'CRITICAL' : 
+                       lead.priority > 60 ? 'HIGH' : 
+                       lead.priority > 40 ? 'MEDIUM' : 'LOW',
+              timeline: lead.timeline,
+              rationale: lead.expectedOutcome,
+              resources: lead.resources
+            })) || [],
+            
+            overlookedLeads: rawResults.gapAnalysis?.map((gap: any) => ({
+              type: gap.type,
+              description: gap.description,
+              recommendedAction: gap.suggestedActions?.join('; ') || '',
+              rationale: `Criticality: ${gap.criticality}%, Obtainability: ${gap.obtainabilityScore}%`,
+              urgency: gap.criticality > 80 ? 'CRITICAL' : 
+                      gap.criticality > 60 ? 'HIGH' : 
+                      gap.criticality > 40 ? 'MEDIUM' : 'LOW',
+              resources: 'Standard investigative resources'
+            })) || [],
 
-          // Enhanced data for new components
-          enhancedAnalysis: rawResults,
+            // Enhanced data for new components
+            enhancedAnalysis: rawResults,
+            
+            // Include case assessment for legacy compatibility
+            caseAssessment: rawResults.caseAssessment || {
+              overallRisk: "MEDIUM",
+              breakthroughPotential: 50,
+              investigativePriority: 5
+            }
+          };
           
-          // Include case assessment for legacy compatibility
-          caseAssessment: rawResults.caseAssessment || {
-            overallRisk: "MEDIUM",
-            breakthroughPotential: 50,
-            investigativePriority: 5
-          }
-        };
-
-        console.log("✅ Successfully parsed enhanced analysis response");
-        console.log("Enhanced structure:", {
-          patterns: rawResults.crossDocumentPatterns?.length || 0,
-          people: rawResults.entityNetwork?.people?.length || 0,
-          timeline: rawResults.masterTimeline?.length || 0,
-          leads: rawResults.investigativeLeads?.length || 0,
-          breakthroughs: rawResults.breakthroughScenarios?.length || 0
-        });
+          console.log("✅ Successfully parsed enhanced analysis response");
+          console.log("Enhanced structure:", {
+            patterns: rawResults.crossDocumentPatterns?.length || 0,
+            people: rawResults.entityNetwork?.people?.length || 0,
+            timeline: rawResults.masterTimeline?.length || 0,
+            leads: rawResults.investigativeLeads?.length || 0,
+            breakthroughs: rawResults.breakthroughScenarios?.length || 0
+          });
+        }
 
       } catch (parseError) {
-        console.error("❌ Enhanced parse error:", parseError);
+        console.error(`❌ ${analysisType === 'simple' ? 'Simple' : 'Enhanced'} parse error:`, parseError);
         console.error("Failed to parse response (first 1000 chars):", aiResponse.substring(0, 1000));
         
         return NextResponse.json({
           success: false,
-          error: "Failed to parse enhanced AI response",
+          error: `Failed to parse ${analysisType === 'simple' ? 'simple' : 'enhanced'} AI response`,
           details: parseError instanceof Error ? parseError.message : "Unknown parsing error",
           debug: {
             responseLength: aiResponse.length,
             responsePreview: aiResponse.substring(0, 500),
             firstBraceIndex: aiResponse.indexOf('{'),
             lastBraceIndex: aiResponse.lastIndexOf('}'),
-            containsJson: aiResponse.includes('{') && aiResponse.includes('}')
+            containsJson: aiResponse.includes('{') && aiResponse.includes('}'),
+            analysisType
           }
         }, { status: 500 });
       }
@@ -726,9 +806,9 @@ RESPOND WITH ONLY THE JSON STRUCTURE SPECIFIED IN THE SYSTEM PROMPT.`
       }
 
     } catch (aiError) {
-      console.error("🚨 Enhanced AI Error:", aiError);
+      console.error("🚨 AI Error:", aiError);
       return NextResponse.json({ 
-        error: "Enhanced AI analysis failed",
+        error: "AI analysis failed",
         details: aiError instanceof Error ? aiError.message : "Unknown error"
       }, { status: 500 });
     }
