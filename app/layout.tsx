@@ -1,10 +1,7 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { Inter } from "next/font/google"
 import "./globals.css"
 import MainNavigation from '@/components/MainNavigation'
-
-const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
   title: "ColdCase AI - Forensic Analysis Platform",
@@ -18,7 +15,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={inter.className} suppressHydrationWarning>
+      <body className="retro-theme" suppressHydrationWarning>
         <MainNavigation />
         <main className="min-h-screen bg-gray-50">
           {children}

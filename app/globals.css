@@ -3,7 +3,21 @@
 @tailwind utilities;
 
 body {
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: Tahoma, Arial, sans-serif;
+}
+
+/* Windows 95 inspired palette */
+.retro-theme {
+  --background: 0 0% 80%;
+  --foreground: 0 0% 0%;
+  --primary: 240 100% 40%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 0 0% 92%;
+  --secondary-foreground: 0 0% 10%;
+  --muted: 0 0% 85%;
+  --muted-foreground: 0 0% 20%;
+  --accent: 240 100% 90%;
+  --accent-foreground: 0 0% 10%;
 }
 
 @layer utilities {
