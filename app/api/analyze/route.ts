@@ -78,20 +78,30 @@ export async function POST(req: NextRequest) {
       isBulkAnalysis,
     })
   ) {
-    const enqueuedJob = await backgroundJobService.enqueueAnalysisJob({
-      caseId,
-      userId: user.id,
-      files,
-      isBulkAnalysis,
-      aiPrompt,
-    });
-
-    if (enqueuedJob) {
-      return NextResponse.json({
-        success: true,
-        enqueued: true,
-        job: enqueuedJob,
+    try {
+      const storedFiles = await persistenceService.persistUploadedFiles({
+        caseId,
+        userId: user.id,
+        files,
       });
+
+      const enqueuedJob = await backgroundJobService.enqueueAnalysisJob({
+        caseId,
+        userId: user.id,
+        files: storedFiles,
+        isBulkAnalysis,
+        aiPrompt,
+      });
+
+      if (enqueuedJob) {
+        return NextResponse.json({
+          success: true,
+          enqueued: true,
+          job: enqueuedJob,
+        });
+      }
+    } catch (error) {
+      console.error("Failed to enqueue background analysis job", error);
     }
   }
 

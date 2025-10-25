@@ -1,5 +1,14 @@
+import { randomUUID } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { QualityFlag } from "@/app/lib/services/quality-service";
+
+export interface StoredAnalysisFile {
+  name: string;
+  type: string;
+  size: number;
+  bucket: string;
+  storagePath: string;
+}
 
 interface SaveAnalysisParams {
   caseId: string;
@@ -55,6 +64,43 @@ export class AnalysisPersistenceService {
     }
 
     return results;
+  }
+
+  async persistUploadedFiles(params: {
+    caseId: string;
+    userId: string;
+    files: File[];
+  }): Promise<StoredAnalysisFile[]> {
+    const { caseId, userId, files } = params;
+    const storedFiles: StoredAnalysisFile[] = [];
+    const folderPath = `${userId}/${caseId}`;
+    const bucket = "case-files";
+
+    for (const file of files) {
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const safeFileName = file.name.replace(/\s+/g, "-");
+      const storagePath = `${folderPath}/${Date.now()}-${randomUUID()}-${safeFileName}`;
+
+      const { error } = await this.supabase.storage.from(bucket).upload(storagePath, buffer, {
+        contentType: file.type || "application/octet-stream",
+        upsert: true,
+      });
+
+      if (error) {
+        throw new Error(`Failed to persist uploaded file ${file.name}: ${error.message}`);
+      }
+
+      storedFiles.push({
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        bucket,
+        storagePath,
+      });
+    }
+
+    return storedFiles;
   }
 
   async saveAnalysisResult(params: SaveAnalysisParams) {

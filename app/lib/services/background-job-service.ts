@@ -1,10 +1,11 @@
 import { randomUUID } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { StoredAnalysisFile } from "@/app/lib/services/persistence-service";
 
 export interface BackgroundJobRequest {
   caseId: string;
   userId: string;
-  files: File[];
+  files: StoredAnalysisFile[];
   isBulkAnalysis: boolean;
   aiPrompt?: string | null;
 }
@@ -34,6 +35,8 @@ export class BackgroundJobService {
         name: file.name,
         type: file.type,
         size: file.size,
+        bucket: file.bucket,
+        storagePath: file.storagePath,
       })),
     };
 
