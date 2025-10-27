@@ -1,9 +1,9 @@
-import ColdCaseCracker from '../components/ColdCaseCracker'
+import FreshEyesPlatform from '../components/FreshEyesPlatform'
 
 export default function Home() {
   return (
     <main>
-      <ColdCaseCracker />
+      <FreshEyesPlatform />
     </main>
   )
 }
