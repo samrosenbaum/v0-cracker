@@ -139,7 +139,11 @@ export default function CaseFileUpload({ caseId, onUploadComplete }: CaseFileUpl
         // Get current user
         const { data: { user } } = await supabase.auth.getUser();
 
-        // Create database record
+        if (!user) {
+          throw new Error('You must be logged in to upload files');
+        }
+
+        // Create database record - let RLS handle permission checking
         const { error: dbError } = await supabase
           .from('case_documents')
           .insert({
@@ -147,7 +151,7 @@ export default function CaseFileUpload({ caseId, onUploadComplete }: CaseFileUpl
             file_name: fileData.file.name,
             document_type: fileData.documentType,
             storage_path: fileName,
-            user_id: user?.id,
+            user_id: user.id,
             metadata: {
               description: fileData.description || null,
               file_size: fileData.file.size,
@@ -156,7 +160,14 @@ export default function CaseFileUpload({ caseId, onUploadComplete }: CaseFileUpl
             },
           });
 
-        if (dbError) throw dbError;
+        if (dbError) {
+          console.error('Database insert error:', dbError);
+          // Provide helpful error message
+          if (dbError.message.includes('row-level security')) {
+            throw new Error('Permission denied. Make sure you are a member of this case\'s agency. Run fix-agency-membership.sql in Supabase.');
+          }
+          throw new Error(`Failed to save file record: ${dbError.message}`);
+        }
 
         updateFileMetadata(fileData.id, {
           uploadStatus: 'success',
