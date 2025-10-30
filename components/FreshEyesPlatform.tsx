@@ -244,10 +244,10 @@ const FreshEyesPlatform = () => {
         ) : (
           <div className="divide-y divide-gray-200">
             {cases.map(case_ => (
-              <div
+              <a
+                href={`/cases/${case_.id}`}
                 key={case_.id}
-                className="p-6 hover:bg-gray-50 transition-colors cursor-pointer"
-                onClick={() => setSelectedCase(case_)}
+                className="block p-6 hover:bg-gray-50 transition-colors cursor-pointer"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
@@ -275,7 +275,7 @@ const FreshEyesPlatform = () => {
                     </div>
                   </div>
                 </div>
-              </div>
+              </a>
             ))}
           </div>
         )}
