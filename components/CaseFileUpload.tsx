@@ -136,6 +136,9 @@ export default function CaseFileUpload({ caseId, onUploadComplete }: CaseFileUpl
 
         updateFileMetadata(fileData.id, { uploadProgress: 80 });
 
+        // Get current user
+        const { data: { user } } = await supabase.auth.getUser();
+
         // Create database record
         const { error: dbError } = await supabase
           .from('case_documents')
@@ -143,10 +146,14 @@ export default function CaseFileUpload({ caseId, onUploadComplete }: CaseFileUpl
             case_id: caseId,
             file_name: fileData.file.name,
             document_type: fileData.documentType,
-            description: fileData.description || null,
             storage_path: fileName,
-            file_size: fileData.file.size,
-            mime_type: fileData.file.type,
+            user_id: user?.id,
+            metadata: {
+              description: fileData.description || null,
+              file_size: fileData.file.size,
+              mime_type: fileData.file.type,
+              public_url: publicUrl,
+            },
           });
 
         if (dbError) throw dbError;

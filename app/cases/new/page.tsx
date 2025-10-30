@@ -9,14 +9,11 @@ export default function NewCasePage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
-    case_number: '',
-    case_name: '',
+    name: '',
+    title: '',
     description: '',
-    incident_date: '',
     status: 'active',
     priority: 'medium',
-    victim_name: '',
-    location: '',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -33,13 +30,24 @@ export default function NewCasePage() {
         return;
       }
 
+      // Get user's agency membership
+      const { data: membership } = await supabase
+        .from('agency_members')
+        .select('agency_id')
+        .eq('user_id', user.id)
+        .limit(1)
+        .single();
+
+      // If no agency membership, use default agency
+      const agency_id = membership?.agency_id || '00000000-0000-0000-0000-000000000000';
+
       // Insert case
       const { data: newCase, error } = await supabase
         .from('cases')
         .insert({
           ...formData,
           user_id: user.id,
-          incident_date: formData.incident_date || null,
+          agency_id: agency_id,
         })
         .select()
         .single();
@@ -88,101 +96,53 @@ export default function NewCasePage() {
         {/* Form */}
         <form onSubmit={handleSubmit} className="bg-white rounded-lg border p-8">
           <div className="space-y-6">
-            {/* Case Number */}
+            {/* Name */}
             <div>
-              <label htmlFor="case_number" className="block text-sm font-medium text-gray-700 mb-2">
-                Case Number *
-              </label>
-              <input
-                type="text"
-                id="case_number"
-                name="case_number"
-                required
-                value={formData.case_number}
-                onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="e.g., 2024-001"
-              />
-            </div>
-
-            {/* Case Name */}
-            <div>
-              <label htmlFor="case_name" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
                 Case Name *
               </label>
               <input
                 type="text"
-                id="case_name"
-                name="case_name"
+                id="name"
+                name="name"
                 required
-                value={formData.case_name}
+                value={formData.name}
                 onChange={handleChange}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="e.g., Miller Street Investigation"
               />
             </div>
 
-            {/* Victim Name */}
+            {/* Title */}
             <div>
-              <label htmlFor="victim_name" className="block text-sm font-medium text-gray-700 mb-2">
-                Victim Name
+              <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
+                Case Title *
               </label>
               <input
                 type="text"
-                id="victim_name"
-                name="victim_name"
-                value={formData.victim_name}
+                id="title"
+                name="title"
+                required
+                value={formData.title}
                 onChange={handleChange}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="e.g., John Doe"
+                placeholder="e.g., Robbery Investigation - 123 Main St"
               />
             </div>
 
             {/* Description */}
             <div>
               <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
-                Description *
+                Description
               </label>
               <textarea
                 id="description"
                 name="description"
-                required
                 rows={4}
                 value={formData.description}
                 onChange={handleChange}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Brief description of the case..."
-              />
-            </div>
-
-            {/* Incident Date */}
-            <div>
-              <label htmlFor="incident_date" className="block text-sm font-medium text-gray-700 mb-2">
-                Incident Date
-              </label>
-              <input
-                type="date"
-                id="incident_date"
-                name="incident_date"
-                value={formData.incident_date}
-                onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            {/* Location */}
-            <div>
-              <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-2">
-                Location
-              </label>
-              <input
-                type="text"
-                id="location"
-                name="location"
-                value={formData.location}
-                onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="e.g., 123 Main St, City, State"
               />
             </div>
 

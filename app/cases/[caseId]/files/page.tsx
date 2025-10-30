@@ -11,15 +11,16 @@ interface CaseDocument {
   case_id: string;
   file_name: string;
   document_type: string;
-  description?: string | null;
   storage_path: string;
-  file_size?: number;
-  mime_type?: string | null;
-  metadata?: any;
+  metadata?: {
+    description?: string | null;
+    file_size?: number;
+    mime_type?: string | null;
+    public_url?: string;
+  };
   created_at: string;
   updated_at: string;
   user_id: string;
-  uploaded_by?: string | null;
 }
 
 export default function CaseFilesPage() {
@@ -120,7 +121,8 @@ export default function CaseFilesPage() {
     }
   };
 
-  const formatFileSize = (bytes?: number): string => {
+  const formatFileSize = (doc: CaseDocument): string => {
+    const bytes = doc.metadata?.file_size;
     if (!bytes) return 'Unknown size';
     if (bytes < 1024) return bytes + ' bytes';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -202,7 +204,13 @@ export default function CaseFilesPage() {
             <div className="bg-white rounded-lg p-4 border">
               <p className="text-sm text-gray-600">Total Size</p>
               <p className="text-2xl font-bold text-gray-900">
-                {formatFileSize(documents.reduce((sum, doc) => sum + doc.file_size, 0))}
+                {(() => {
+                  const total = documents.reduce((sum, doc) => sum + (doc.metadata?.file_size || 0), 0);
+                  if (total === 0) return 'N/A';
+                  if (total < 1024) return total + ' bytes';
+                  if (total < 1024 * 1024) return (total / 1024).toFixed(1) + ' KB';
+                  return (total / (1024 * 1024)).toFixed(1) + ' MB';
+                })()}
               </p>
             </div>
             <div className="bg-white rounded-lg p-4 border">
@@ -305,9 +313,9 @@ export default function CaseFilesPage() {
                           </span>
                         </div>
 
-                        {doc.description && (
+                        {doc.metadata?.description && (
                           <p className="text-sm text-gray-600 mb-3">
-                            {doc.description}
+                            {doc.metadata.description}
                           </p>
                         )}
 
@@ -318,14 +326,8 @@ export default function CaseFilesPage() {
                           </div>
                           <div className="flex items-center gap-1">
                             <Tag className="w-4 h-4" />
-                            {formatFileSize(doc.file_size)}
+                            {formatFileSize(doc)}
                           </div>
-                          {doc.uploaded_by && (
-                            <div className="flex items-center gap-1">
-                              <User className="w-4 h-4" />
-                              {doc.uploaded_by}
-                            </div>
-                          )}
                         </div>
                       </div>
                     </div>

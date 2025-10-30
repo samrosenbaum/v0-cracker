@@ -28,9 +28,13 @@ interface CaseDocument {
   case_id: string;
   file_name: string;
   document_type: string;
-  file_size?: number;
   storage_path: string;
-  metadata?: any;
+  metadata?: {
+    description?: string | null;
+    file_size?: number;
+    mime_type?: string | null;
+    public_url?: string;
+  };
   created_at: string;
   updated_at: string;
   user_id: string;
