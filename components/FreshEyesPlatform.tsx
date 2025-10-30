@@ -1,8 +1,9 @@
 'use client'
 
 import React, { useState, useEffect } from 'react';
-import { Upload, Search, Eye, FileText, Users, Calendar, AlertTriangle, Brain, Plus, Filter, Download, Share2 } from 'lucide-react';
+import { Upload, Search, Eye, FileText, Users, Calendar, AlertTriangle, Brain, Plus, Filter, Download, Share2, LogOut } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
+import { useRouter } from 'next/navigation';
 
 interface Case {
   id: string;
@@ -41,6 +42,7 @@ interface CaseDocument {
 }
 
 const FreshEyesPlatform = () => {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedCase, setSelectedCase] = useState<Case | null>(null);
   const [cases, setCases] = useState<Case[]>([]);
@@ -136,6 +138,11 @@ const FreshEyesPlatform = () => {
     if (diffDays < 7) return `${diffDays} days ago`;
     if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
   };
 
   const StatusBadge = ({ status, size = "sm" }: { status: string, size?: string }) => {
@@ -453,7 +460,14 @@ const FreshEyesPlatform = () => {
                   className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
-              <div className="w-8 h-8 bg-gray-300 rounded-full"></div>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Logout"
+              >
+                <LogOut className="w-4 h-4" />
+                <span className="hidden md:inline">Logout</span>
+              </button>
             </div>
           </div>
         </div>
