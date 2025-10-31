@@ -178,7 +178,10 @@ const FreshEyesPlatform = () => {
     <div className="space-y-6">
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+        <a
+          href="/cases"
+          className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all cursor-pointer"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Cases</p>
@@ -188,9 +191,12 @@ const FreshEyesPlatform = () => {
               <FileText className="w-6 h-6 text-blue-600" />
             </div>
           </div>
-        </div>
+        </a>
 
-        <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+        <a
+          href="/cases?status=active"
+          className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md hover:border-green-300 transition-all cursor-pointer"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Active Cases</p>
@@ -200,9 +206,12 @@ const FreshEyesPlatform = () => {
               <AlertTriangle className="w-6 h-6 text-green-600" />
             </div>
           </div>
-        </div>
+        </a>
 
-        <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+        <a
+          href="/analyses"
+          className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md hover:border-purple-300 transition-all cursor-pointer"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">AI Analyses</p>
@@ -212,9 +221,12 @@ const FreshEyesPlatform = () => {
               <Brain className="w-6 h-6 text-purple-600" />
             </div>
           </div>
-        </div>
+        </a>
 
-        <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+        <a
+          href="/evidence"
+          className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md hover:border-orange-300 transition-all cursor-pointer"
+        >
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Evidence Files</p>
@@ -224,7 +236,7 @@ const FreshEyesPlatform = () => {
               <Upload className="w-6 h-6 text-orange-600" />
             </div>
           </div>
-        </div>
+        </a>
       </div>
 
       {/* Recent Cases */}
