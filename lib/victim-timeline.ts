@@ -1,8 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
+import { getAnthropicClient } from './anthropic-client';
 
 // ============================================================================
 // VICTIM LAST MOVEMENTS RECONSTRUCTION
@@ -242,6 +238,8 @@ Reconstruct the victim's timeline for the 24-48 hours preceding the incident. Fo
 
 Provide response as valid JSON only.`;
 
+  const anthropic = getAnthropicClient();
+
   const message = await anthropic.messages.create({
     model: 'claude-3-5-sonnet-20241022',
     max_tokens: 8000,
@@ -388,6 +386,8 @@ Each deviation could be significant - it might indicate:
 
 Return array of RoutineDeviation objects.`;
 
+  const anthropic = getAnthropicClient();
+
   const message = await anthropic.messages.create({
     model: 'claude-3-5-sonnet-20241022',
     max_tokens: 4000,
@@ -470,6 +470,8 @@ Focus on digital evidence that:
 
 Return JSON with footprints, lastCommunications, and suspiciousActivity arrays.`;
 
+  const anthropic = getAnthropicClient();
+
   const message = await anthropic.messages.create({
     model: 'claude-3-5-sonnet-20241022',
     max_tokens: 4000,
@@ -549,6 +551,8 @@ GREEN FLAGS:
 Calculate credibility score and recommend reliability level.
 
 Return array of WitnessAccountValidation objects.`;
+
+  const anthropic = getAnthropicClient();
 
   const message = await anthropic.messages.create({
     model: 'claude-3-5-sonnet-20241022',

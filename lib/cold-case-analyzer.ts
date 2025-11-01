@@ -1,8 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
+import { getAnthropicClient } from './anthropic-client';
 
 // ============================================================================
 // 1. BEHAVIORAL PATTERN ANALYSIS
@@ -45,6 +41,8 @@ INTERVIEWS:
 ${interviews.map(i => `[${i.date}] ${i.speaker}:\n${i.content}`).join('\n\n')}
 
 Return JSON matching BehaviorPattern[] interface.`;
+
+  const anthropic = getAnthropicClient();
 
   const message = await anthropic.messages.create({
     model: 'claude-3-5-sonnet-20241022',
@@ -153,6 +151,8 @@ Focus on evidence that STILL EXISTS or can still be obtained, even years later.
 
 Return JSON matching EvidenceGap[] interface.`;
 
+  const anthropic = getAnthropicClient();
+
   const message = await anthropic.messages.create({
     model: 'claude-3-5-sonnet-20241022',
     max_tokens: 8000,
@@ -231,6 +231,8 @@ Create a network map showing:
 
 Return JSON with nodes (RelationshipNode[]) and hiddenConnections (HiddenConnection[]).`;
 
+  const anthropic = getAnthropicClient();
+
   const message = await anthropic.messages.create({
     model: 'claude-3-5-sonnet-20241022',
     max_tokens: 8000,
@@ -307,6 +309,8 @@ PATTERNS TO CHECK:
 Calculate similarity scores and return matches.
 
 Return JSON matching CaseSimilarity[] interface.`;
+
+  const anthropic = getAnthropicClient();
 
   const message = await anthropic.messages.create({
     model: 'claude-3-5-sonnet-20241022',
@@ -388,6 +392,8 @@ For each overlooked detail, explain:
 - What to do with it now
 
 Return JSON matching OverlookedDetail[] interface.`;
+
+  const anthropic = getAnthropicClient();
 
   const message = await anthropic.messages.create({
     model: 'claude-3-5-sonnet-20241022',
@@ -477,6 +483,8 @@ For each question provide:
 
 Return JSON matching InterrogationStrategy interface.`;
 
+  const anthropic = getAnthropicClient();
+
   const message = await anthropic.messages.create({
     model: 'claude-3-5-sonnet-20241022',
     max_tokens: 8000,
@@ -540,6 +548,8 @@ For each piece of evidence, recommend:
 5. Priority level
 
 Return JSON matching ForensicReExamination[] interface.`;
+
+  const anthropic = getAnthropicClient();
 
   const message = await anthropic.messages.create({
     model: 'claude-3-5-sonnet-20241022',
