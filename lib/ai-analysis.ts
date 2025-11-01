@@ -1,8 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
+import { getAnthropicClient } from './anthropic-client';
 
 export interface TimelineEvent {
   id: string;
@@ -110,6 +106,8 @@ export async function analyzeCaseDocuments(
   const documentsText = documents.map((doc, idx) =>
     `=== DOCUMENT ${idx + 1}: ${doc.filename} (${doc.type}) ===\n${doc.content}\n`
   ).join('\n\n');
+
+  const anthropic = getAnthropicClient();
 
   const message = await anthropic.messages.create({
     model: 'claude-3-5-sonnet-20241022',
