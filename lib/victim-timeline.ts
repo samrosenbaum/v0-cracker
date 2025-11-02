@@ -241,7 +241,7 @@ Provide response as valid JSON only.`;
   const anthropic = getAnthropicClient();
 
   const message = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20240620',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 8000,
     messages: [{ role: 'user', content: prompt }],
   });
@@ -389,7 +389,7 @@ Return array of RoutineDeviation objects.`;
   const anthropic = getAnthropicClient();
 
   const message = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20240620',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 4000,
     messages: [{ role: 'user', content: prompt }],
   });
@@ -473,7 +473,7 @@ Return JSON with footprints, lastCommunications, and suspiciousActivity arrays.`
   const anthropic = getAnthropicClient();
 
   const message = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20240620',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 4000,
     messages: [{ role: 'user', content: prompt }],
   });
@@ -555,7 +555,7 @@ Return array of WitnessAccountValidation objects.`;
   const anthropic = getAnthropicClient();
 
   const message = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20240620',
+    model: 'claude-sonnet-4-5-20250929',
     max_tokens: 4000,
     messages: [{ role: 'user', content: prompt }],
   });
