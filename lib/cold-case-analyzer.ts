@@ -45,7 +45,7 @@ Return JSON matching BehaviorPattern[] interface.`;
   const anthropic = getAnthropicClient();
 
   const message = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-3-5-sonnet-20240620',
     max_tokens: 8000,
     messages: [{ role: 'user', content: prompt }],
   });
@@ -154,7 +154,7 @@ Return JSON matching EvidenceGap[] interface.`;
   const anthropic = getAnthropicClient();
 
   const message = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-3-5-sonnet-20240620',
     max_tokens: 8000,
     messages: [{ role: 'user', content: prompt }],
   });
@@ -234,7 +234,7 @@ Return JSON with nodes (RelationshipNode[]) and hiddenConnections (HiddenConnect
   const anthropic = getAnthropicClient();
 
   const message = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-3-5-sonnet-20240620',
     max_tokens: 8000,
     messages: [{ role: 'user', content: prompt }],
   });
@@ -313,7 +313,7 @@ Return JSON matching CaseSimilarity[] interface.`;
   const anthropic = getAnthropicClient();
 
   const message = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-3-5-sonnet-20240620',
     max_tokens: 8000,
     messages: [{ role: 'user', content: prompt }],
   });
@@ -396,7 +396,7 @@ Return JSON matching OverlookedDetail[] interface.`;
   const anthropic = getAnthropicClient();
 
   const message = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-3-5-sonnet-20240620',
     max_tokens: 8000,
     messages: [{ role: 'user', content: prompt }],
   });
@@ -486,7 +486,7 @@ Return JSON matching InterrogationStrategy interface.`;
   const anthropic = getAnthropicClient();
 
   const message = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-3-5-sonnet-20240620',
     max_tokens: 8000,
     messages: [{ role: 'user', content: prompt }],
   });
@@ -552,7 +552,7 @@ Return JSON matching ForensicReExamination[] interface.`;
   const anthropic = getAnthropicClient();
 
   const message = await anthropic.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-3-5-sonnet-20240620',
     max_tokens: 8000,
     messages: [{ role: 'user', content: prompt }],
   });
