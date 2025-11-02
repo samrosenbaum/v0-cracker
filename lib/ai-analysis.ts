@@ -128,10 +128,29 @@ export async function analyzeCaseDocuments(
   // Extract JSON from the response
   const jsonMatch = content.text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
+    console.error('Claude response text:', content.text.substring(0, 500));
     throw new Error('Could not parse JSON from Claude response');
   }
 
-  const analysis: CaseAnalysis = JSON.parse(jsonMatch[0]);
+  let analysis: CaseAnalysis;
+  try {
+    analysis = JSON.parse(jsonMatch[0]);
+  } catch (parseError) {
+    console.error('JSON parse error:', parseError);
+    console.error('Attempted to parse:', jsonMatch[0].substring(0, 500));
+    throw new Error('Failed to parse JSON from Claude response');
+  }
+
+  // Validate and provide defaults for missing fields
+  if (!analysis.timeline) {
+    console.warn('Claude response missing timeline array');
+    analysis.timeline = [];
+  }
+  if (!analysis.conflicts) analysis.conflicts = [];
+  if (!analysis.personMentions) analysis.personMentions = [];
+  if (!analysis.unfollowedTips) analysis.unfollowedTips = [];
+  if (!analysis.keyInsights) analysis.keyInsights = [];
+  if (!analysis.suspectAnalysis) analysis.suspectAnalysis = [];
 
   // Add unique IDs to timeline events if not present
   analysis.timeline = analysis.timeline.map((event, idx) => ({
