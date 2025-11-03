@@ -5,7 +5,7 @@ let anthropicInstance: Anthropic | null = null;
 export const DEFAULT_ANTHROPIC_MODEL =
   process.env.ANTHROPIC_MODEL ||
   process.env.NEXT_PUBLIC_ANTHROPIC_MODEL ||
-  'claude-3-5-sonnet-20241022';
+  'claude-sonnet-4-5-20250929';
 
 export function getAnthropicClient(): Anthropic {
   if (anthropicInstance) {
