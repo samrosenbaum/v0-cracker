@@ -2,6 +2,11 @@ import Anthropic from '@anthropic-ai/sdk';
 
 let anthropicInstance: Anthropic | null = null;
 
+export const DEFAULT_ANTHROPIC_MODEL =
+  process.env.ANTHROPIC_MODEL ||
+  process.env.NEXT_PUBLIC_ANTHROPIC_MODEL ||
+  'claude-3-5-sonnet-20241022';
+
 export function getAnthropicClient(): Anthropic {
   if (anthropicInstance) {
     return anthropicInstance;

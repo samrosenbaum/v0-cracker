@@ -1,4 +1,4 @@
-import { getAnthropicClient } from './anthropic-client';
+import { DEFAULT_ANTHROPIC_MODEL, getAnthropicClient } from './anthropic-client';
 
 export interface TimelineEvent {
   id: string;
@@ -110,7 +110,7 @@ export async function analyzeCaseDocuments(
   const anthropic = getAnthropicClient();
 
   const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-5-20250929',
+    model: DEFAULT_ANTHROPIC_MODEL,
     max_tokens: 8000,
     messages: [
       {
