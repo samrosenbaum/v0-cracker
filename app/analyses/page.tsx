@@ -9,7 +9,7 @@ interface Analysis {
   id: string;
   case_id: string;
   analysis_type: string;
-  analysis_result: any;
+  analysis_data: any;
   created_at: string;
   updated_at: string;
   cases?: {
@@ -74,13 +74,13 @@ export default function AllAnalysesPage() {
   };
 
   const getAnalysisSummary = (analysis: Analysis): string => {
-    if (typeof analysis.analysis_result === 'string') {
-      return analysis.analysis_result.substring(0, 200) + '...';
+    if (typeof analysis.analysis_data === 'string') {
+      return analysis.analysis_data.substring(0, 200) + '...';
     }
-    if (analysis.analysis_result?.summary) {
-      return analysis.analysis_result.summary.substring(0, 200) + '...';
+    if (analysis.analysis_data?.summary) {
+      return analysis.analysis_data.summary.substring(0, 200) + '...';
     }
-    if (analysis.analysis_result?.findings) {
+    if (analysis.analysis_data?.findings) {
       return 'Analysis completed with findings';
     }
     return 'Analysis completed';

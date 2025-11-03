@@ -104,7 +104,7 @@ export async function POST(
       .insert({
         case_id: caseId,
         analysis_type: 'timeline',
-        analysis_result: {
+        analysis_data: {
           timeline: analysis.timeline,
           conflicts: analysis.conflicts,
           personMentions: analysis.personMentions,
