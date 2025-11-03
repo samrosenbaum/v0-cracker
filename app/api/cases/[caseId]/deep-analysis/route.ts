@@ -10,32 +10,58 @@ export async function POST(
     const { caseId } = params;
 
     console.log('Deep analysis requested for case:', caseId);
+    console.log('Case ID type:', typeof caseId);
+    console.log('Case ID length:', caseId?.length);
+
+    // First check if case exists without .single()
+    const { data: caseCheck, error: checkError } = await supabaseServer
+      .from('cases')
+      .select('*')
+      .eq('id', caseId);
+
+    console.log('Case check results:', {
+      found: caseCheck?.length || 0,
+      error: checkError?.message,
+      caseId
+    });
+
+    if (checkError) {
+      console.error('Error checking case:', checkError);
+      return NextResponse.json({
+        error: `Database error: ${checkError.message}`,
+        details: checkError
+      }, { status: 500 });
+    }
+
+    if (!caseCheck || caseCheck.length === 0) {
+      console.error('Case not found with ID:', caseId);
+      return NextResponse.json({
+        error: 'Case not found',
+        caseId: caseId,
+        message: 'No case exists with this ID'
+      }, { status: 404 });
+    }
+
+    if (caseCheck.length > 1) {
+      console.error('Multiple cases found with ID:', caseId);
+      return NextResponse.json({
+        error: 'Multiple cases found',
+        count: caseCheck.length
+      }, { status: 500 });
+    }
+
+    const caseData = caseCheck[0];
 
     // Fetch all case data
     const [
-      { data: caseData, error: caseError },
       { data: documents, error: docsError },
       { data: suspects, error: suspectsError },
       { data: evidence, error: evidenceError },
     ] = await Promise.all([
-      supabaseServer.from('cases').select('*').eq('id', caseId).single(),
       supabaseServer.from('case_documents').select('*').eq('case_id', caseId),
       supabaseServer.from('suspects').select('*').eq('case_id', caseId),
       supabaseServer.from('case_files').select('*').eq('case_id', caseId),
     ]);
-
-    if (caseError) {
-      console.error('Error fetching case:', caseError);
-      return NextResponse.json({
-        error: `Database error: ${caseError.message}`,
-        details: caseError
-      }, { status: 500 });
-    }
-
-    if (!caseData) {
-      console.error('Case not found with ID:', caseId);
-      return NextResponse.json({ error: 'Case not found' }, { status: 404 });
-    }
 
     console.log('Found case:', caseData.title || caseData.id);
     console.log('Documents:', documents?.length || 0);
