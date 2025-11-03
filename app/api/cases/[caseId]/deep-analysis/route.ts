@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase-client';
+import { supabaseServer } from '@/lib/supabase-server';
 import { performComprehensiveAnalysis } from '@/lib/cold-case-analyzer';
 
 export async function POST(
@@ -18,10 +18,10 @@ export async function POST(
       { data: suspects, error: suspectsError },
       { data: evidence, error: evidenceError },
     ] = await Promise.all([
-      supabase.from('cases').select('*').eq('id', caseId).single(),
-      supabase.from('case_documents').select('*').eq('case_id', caseId),
-      supabase.from('suspects').select('*').eq('case_id', caseId),
-      supabase.from('case_files').select('*').eq('case_id', caseId),
+      supabaseServer.from('cases').select('*').eq('id', caseId).single(),
+      supabaseServer.from('case_documents').select('*').eq('case_id', caseId),
+      supabaseServer.from('suspects').select('*').eq('case_id', caseId),
+      supabaseServer.from('case_files').select('*').eq('case_id', caseId),
     ]);
 
     if (caseError) {
@@ -67,7 +67,7 @@ export async function POST(
     const analysis = await performComprehensiveAnalysis(caseId, analysisInput);
 
     // Save analysis to database
-    const { error: saveError } = await supabase
+    const { error: saveError } = await supabaseServer
       .from('case_analysis')
       .insert({
         case_id: caseId,

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase-client';
+import { supabaseServer } from '@/lib/supabase-server';
 import { analyzeCaseDocuments, detectTimeConflicts, identifyOverlookedSuspects, generateConflictSummary } from '@/lib/ai-analysis';
 
 export async function POST(
@@ -10,7 +10,7 @@ export async function POST(
     const { caseId } = params;
 
     // Fetch all case documents
-    const { data: documents, error: docError } = await supabase
+    const { data: documents, error: docError } = await supabaseServer
       .from('case_documents')
       .select('*')
       .eq('case_id', caseId);
@@ -41,7 +41,7 @@ export async function POST(
     analysis.conflicts.push(...timeConflicts);
 
     // Identify overlooked suspects
-    const { data: formalSuspects } = await supabase
+    const { data: formalSuspects } = await supabaseServer
       .from('suspects')
       .select('name')
       .eq('case_id', caseId);
@@ -65,7 +65,7 @@ export async function POST(
       status: 'verified',
     }));
 
-    const { error: timelineError } = await supabase
+    const { error: timelineError } = await supabaseServer
       .from('evidence_events')
       .insert(timelineInserts);
 
@@ -90,7 +90,7 @@ export async function POST(
       } as any,
     }));
 
-    const { error: flagError } = await supabase
+    const { error: flagError } = await supabaseServer
       .from('quality_flags')
       .insert(conflictInserts);
 
@@ -99,7 +99,7 @@ export async function POST(
     }
 
     // Save analysis results
-    const { error: analysisError } = await supabase
+    const { error: analysisError } = await supabaseServer
       .from('case_analysis')
       .insert({
         case_id: caseId,
