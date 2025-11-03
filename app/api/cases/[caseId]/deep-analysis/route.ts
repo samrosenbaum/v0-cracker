@@ -9,12 +9,14 @@ export async function POST(
   try {
     const { caseId } = params;
 
+    console.log('Deep analysis requested for case:', caseId);
+
     // Fetch all case data
     const [
-      { data: caseData },
-      { data: documents },
-      { data: suspects },
-      { data: evidence },
+      { data: caseData, error: caseError },
+      { data: documents, error: docsError },
+      { data: suspects, error: suspectsError },
+      { data: evidence, error: evidenceError },
     ] = await Promise.all([
       supabase.from('cases').select('*').eq('id', caseId).single(),
       supabase.from('case_documents').select('*').eq('case_id', caseId),
@@ -22,9 +24,23 @@ export async function POST(
       supabase.from('case_files').select('*').eq('case_id', caseId),
     ]);
 
+    if (caseError) {
+      console.error('Error fetching case:', caseError);
+      return NextResponse.json({
+        error: `Database error: ${caseError.message}`,
+        details: caseError
+      }, { status: 500 });
+    }
+
     if (!caseData) {
+      console.error('Case not found with ID:', caseId);
       return NextResponse.json({ error: 'Case not found' }, { status: 404 });
     }
+
+    console.log('Found case:', caseData.title || caseData.id);
+    console.log('Documents:', documents?.length || 0);
+    console.log('Suspects:', suspects?.length || 0);
+    console.log('Evidence:', evidence?.length || 0);
 
     // Prepare data for analysis
     const analysisInput = {
