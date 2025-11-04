@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase-client';
+import { supabaseServer } from '@/lib/supabase-server';
 import { generateComprehensiveVictimTimeline } from '@/lib/victim-timeline';
 
 export async function POST(
@@ -28,7 +28,7 @@ export async function POST(
     }
 
     // Fetch case documents
-    const { data: documents, error: docError } = await supabase
+    const { data: documents, error: docError } = await supabaseServer
       .from('case_documents')
       .select('*')
       .eq('case_id', caseId);
@@ -38,7 +38,7 @@ export async function POST(
     }
 
     // Fetch case files (for evidence)
-    const { data: files } = await supabase
+    const { data: files } = await supabaseServer
       .from('case_files')
       .select('*')
       .eq('case_id', caseId);
@@ -86,7 +86,7 @@ export async function POST(
       priority: movement.significance,
     }));
 
-    const { error: timelineError } = await supabase
+    const { error: timelineError } = await supabaseServer
       .from('evidence_events')
       .insert(timelineInserts);
 
@@ -113,7 +113,7 @@ export async function POST(
       }));
 
     if (gapFlags.length > 0) {
-      const { error: flagError } = await supabase
+      const { error: flagError } = await supabaseServer
         .from('quality_flags')
         .insert(gapFlags);
 
@@ -123,7 +123,7 @@ export async function POST(
     }
 
     // Save complete analysis
-    const { error: analysisError } = await supabase
+    const { error: analysisError } = await supabaseServer
       .from('case_analysis')
       .insert({
         case_id: caseId,
