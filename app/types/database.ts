@@ -519,6 +519,136 @@ export interface Database {
           }
         ]
       }
+      processing_jobs: {
+        Row: {
+          id: string
+          case_id: string
+          job_type: "document_extraction" | "ai_analysis" | "embedding_generation"
+          total_units: number
+          completed_units: number
+          failed_units: number
+          status: "pending" | "running" | "completed" | "failed" | "cancelled"
+          progress_percentage: number
+          estimated_completion: string | null
+          started_at: string | null
+          completed_at: string | null
+          error_summary: Json
+          metadata: Json
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          case_id: string
+          job_type: "document_extraction" | "ai_analysis" | "embedding_generation"
+          total_units?: number
+          completed_units?: number
+          failed_units?: number
+          status?: "pending" | "running" | "completed" | "failed" | "cancelled"
+          estimated_completion?: string | null
+          started_at?: string | null
+          completed_at?: string | null
+          error_summary?: Json
+          metadata?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          case_id?: string
+          job_type?: "document_extraction" | "ai_analysis" | "embedding_generation"
+          total_units?: number
+          completed_units?: number
+          failed_units?: number
+          status?: "pending" | "running" | "completed" | "failed" | "cancelled"
+          estimated_completion?: string | null
+          started_at?: string | null
+          completed_at?: string | null
+          error_summary?: Json
+          metadata?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "processing_jobs_case_id_fkey"
+            columns: ["case_id"]
+            referencedRelation: "cases"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      document_chunks: {
+        Row: {
+          id: string
+          case_file_id: string
+          processing_job_id: string | null
+          chunk_index: number
+          chunk_type: "page" | "section" | "paragraph" | "sliding-window"
+          content: string | null
+          content_embedding: string | null
+          content_length: number | null
+          extraction_confidence: number | null
+          extraction_method: "pdf-parse" | "ocr-tesseract" | "ocr-google" | "whisper-transcription" | "direct-read" | "cached" | null
+          metadata: Json
+          processing_status: "pending" | "processing" | "completed" | "failed" | "skipped"
+          processing_attempts: number
+          error_log: string | null
+          processed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          case_file_id: string
+          processing_job_id?: string | null
+          chunk_index: number
+          chunk_type?: "page" | "section" | "paragraph" | "sliding-window"
+          content?: string | null
+          content_embedding?: string | null
+          extraction_confidence?: number | null
+          extraction_method?: "pdf-parse" | "ocr-tesseract" | "ocr-google" | "whisper-transcription" | "direct-read" | "cached" | null
+          metadata?: Json
+          processing_status?: "pending" | "processing" | "completed" | "failed" | "skipped"
+          processing_attempts?: number
+          error_log?: string | null
+          processed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          case_file_id?: string
+          processing_job_id?: string | null
+          chunk_index?: number
+          chunk_type?: "page" | "section" | "paragraph" | "sliding-window"
+          content?: string | null
+          content_embedding?: string | null
+          extraction_confidence?: number | null
+          extraction_method?: "pdf-parse" | "ocr-tesseract" | "ocr-google" | "whisper-transcription" | "direct-read" | "cached" | null
+          metadata?: Json
+          processing_status?: "pending" | "processing" | "completed" | "failed" | "skipped"
+          processing_attempts?: number
+          error_log?: string | null
+          processed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_chunks_case_file_id_fkey"
+            columns: ["case_file_id"]
+            referencedRelation: "case_files"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_chunks_processing_job_id_fkey"
+            columns: ["processing_job_id"]
+            referencedRelation: "processing_jobs"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -527,6 +657,53 @@ export interface Database {
       current_agency_id: {
         Args: Record<PropertyKey, never>
         Returns: string | null
+      }
+      search_document_chunks: {
+        Args: {
+          query_embedding: string
+          match_threshold?: number
+          match_count?: number
+          case_id_filter?: string
+          case_file_id_filter?: string
+        }
+        Returns: Array<{
+          id: string
+          case_file_id: string
+          chunk_index: number
+          chunk_type: string
+          content: string
+          metadata: Json
+          similarity: number
+        }>
+      }
+      get_processing_job_stats: {
+        Args: {
+          job_id_param: string
+        }
+        Returns: Array<{
+          total_chunks: number
+          completed_chunks: number
+          failed_chunks: number
+          pending_chunks: number
+          processing_chunks: number
+          total_characters: number
+          avg_confidence: number
+          progress_pct: number
+        }>
+      }
+      get_case_chunks_summary: {
+        Args: {
+          case_id_param: string
+        }
+        Returns: Array<{
+          total_files: number
+          total_chunks: number
+          completed_chunks: number
+          failed_chunks: number
+          total_characters: number
+          avg_confidence: number
+          completion_pct: number
+        }>
       }
     }
     Enums: {

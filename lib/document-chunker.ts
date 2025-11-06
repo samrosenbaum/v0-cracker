@@ -10,7 +10,8 @@
  */
 
 import { supabaseServer } from './supabase-server';
-import pdf from 'pdf-parse';
+import * as pdfParse from 'pdf-parse';
+import type { Database } from '@/app/types/database';
 
 export interface ChunkingStrategy {
   type: 'page' | 'section' | 'sliding-window';
@@ -19,12 +20,12 @@ export interface ChunkingStrategy {
   overlap?: number; // Overlapping context (characters)
 }
 
-export interface DocumentChunk {
-  case_file_id: string;
-  processing_job_id?: string;
-  chunk_index: number;
-  chunk_type: 'page' | 'section' | 'paragraph' | 'sliding-window';
-  processing_status: 'pending' | 'processing' | 'completed' | 'failed' | 'skipped';
+// Use the database type but with a typed metadata field for our use
+export type DocumentChunkRow = Database['public']['Tables']['document_chunks']['Row'];
+export type DocumentChunkInsert = Database['public']['Tables']['document_chunks']['Insert'];
+
+export interface DocumentChunk extends Omit<DocumentChunkInsert, 'metadata'> {
+  id?: string;
   metadata: {
     pageNumber?: number;
     totalPages?: number;
@@ -32,6 +33,7 @@ export interface DocumentChunk {
     endChar?: number;
     imageFormat?: string;
     fileName?: string;
+    [key: string]: any;
   };
 }
 
@@ -150,7 +152,7 @@ async function getDocumentMetadata(storagePath: string): Promise<{
 
       if (fileData) {
         const buffer = Buffer.from(await fileData.arrayBuffer());
-        const pdfData = await pdf(buffer);
+        const pdfData = await (pdfParse as any)(buffer);
         pageCount = pdfData.numpages;
       }
     } catch (error) {
@@ -372,14 +374,15 @@ export async function getPendingChunks(
  */
 export async function updateChunkStatus(
   chunkId: string,
-  status: 'pending' | 'processing' | 'completed' | 'failed',
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'skipped',
   updates: Partial<{
-    content: string;
-    extraction_confidence: number;
-    extraction_method: string;
-    error_log: string;
-    processed_at: string;
+    content: string | null;
+    extraction_confidence: number | null;
+    extraction_method: 'pdf-parse' | 'ocr-tesseract' | 'ocr-google' | 'whisper-transcription' | 'direct-read' | 'cached' | null;
+    error_log: string | null;
+    processed_at: string | null;
     metadata: any;
+    processing_attempts: number;
   }> = {}
 ): Promise<void> {
   const { error } = await supabaseServer
@@ -387,7 +390,7 @@ export async function updateChunkStatus(
     .update({
       processing_status: status,
       ...updates,
-    })
+    } as any)
     .eq('id', chunkId);
 
   if (error) {
