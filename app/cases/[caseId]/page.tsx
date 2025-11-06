@@ -39,10 +39,12 @@ export default function CaseDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [documentCount, setDocumentCount] = useState(0);
   const [analysisCount, setAnalysisCount] = useState(0);
+  const [pendingReviewCount, setPendingReviewCount] = useState(0);
 
   useEffect(() => {
     fetchCaseData();
     fetchCounts();
+    fetchPendingReviewCount();
   }, [caseId]);
 
   const fetchCaseData = async () => {
@@ -80,6 +82,19 @@ export default function CaseDetailPage() {
 
     if (analysisCountResult !== null) {
       setAnalysisCount(analysisCountResult);
+    }
+  };
+
+  const fetchPendingReviewCount = async () => {
+    // Get pending review count
+    const { count: reviewCount } = await supabase
+      .from('document_review_queue')
+      .select('*', { count: 'exact', head: true })
+      .eq('case_id', caseId)
+      .eq('status', 'pending');
+
+    if (reviewCount !== null) {
+      setPendingReviewCount(reviewCount);
     }
   };
 
@@ -176,6 +191,31 @@ export default function CaseDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* Document Review Alert */}
+        {pendingReviewCount > 0 && (
+          <div className="mb-6 p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded-r-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <AlertCircle className="w-6 h-6 text-yellow-600 mr-3" />
+                <div>
+                  <p className="font-semibold text-yellow-800">
+                    {pendingReviewCount} document{pendingReviewCount > 1 ? 's' : ''} need review
+                  </p>
+                  <p className="text-sm text-yellow-700">
+                    Some text couldn't be read clearly from handwritten documents. Review now for accurate analysis.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => router.push(`/cases/${caseId}/review`)}
+                className="ml-auto px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors font-medium"
+              >
+                Review Now
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">

@@ -18,6 +18,23 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || '',
 });
 
+export interface UncertainSegment {
+  text: string;           // What OCR thinks it says
+  confidence: number;     // 0-1 score for this segment
+  position: {
+    page?: number;
+    boundingBox: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
+  };
+  imageSnippet?: string;  // Base64 encoded crop of the unclear text region
+  alternatives?: string[]; // Other possible readings from OCR
+  wordIndex?: number;      // Position in the word sequence
+}
+
 export interface ExtractionResult {
   text: string;
   pageCount?: number;
@@ -25,6 +42,8 @@ export interface ExtractionResult {
   method: 'pdf-parse' | 'ocr-tesseract' | 'ocr-google' | 'whisper-transcription' | 'cached';
   metadata?: any;
   error?: string;
+  uncertainSegments?: UncertainSegment[]; // Segments that need human review
+  needsReview?: boolean; // Quick flag if human review is recommended
 }
 
 /**
@@ -195,13 +214,14 @@ async function extractFromPDF(buffer: Buffer): Promise<ExtractionResult> {
 /**
  * Extract text from image using OCR (Tesseract)
  * Good for: crime scene photos with text, handwritten notes, evidence photos
+ * Now includes word-level confidence tracking for human review
  */
 async function extractFromImage(buffer: Buffer): Promise<ExtractionResult> {
 
   console.log('[Document Parser] Running OCR on image...');
 
   try {
-    // Run Tesseract OCR
+    // Run Tesseract OCR with detailed word data
     const { data } = await Tesseract.recognize(buffer, 'eng', {
       logger: (m) => {
         if (m.status === 'recognizing text') {
@@ -213,15 +233,59 @@ async function extractFromImage(buffer: Buffer): Promise<ExtractionResult> {
     console.log(`[Document Parser] OCR extracted ${data.text.length} characters`);
     console.log(`[Document Parser] OCR confidence: ${data.confidence}%`);
 
+    // Track uncertain segments (low confidence words)
+    const uncertainSegments: UncertainSegment[] = [];
+    const CONFIDENCE_THRESHOLD = 60; // Words below 60% confidence need review
+
+    if (data.words && data.words.length > 0) {
+      data.words.forEach((word: any, idx: number) => {
+        // Flag low-confidence words that are potentially important
+        const isLowConfidence = word.confidence < CONFIDENCE_THRESHOLD;
+        const isImportant =
+          word.text.length >= 2 && // Not just single letters
+          !/^(the|and|or|a|an|is|was|were|be|to|of|in|on|at)$/i.test(word.text); // Not common words
+
+        if (isLowConfidence && isImportant) {
+          uncertainSegments.push({
+            text: word.text,
+            confidence: word.confidence / 100,
+            position: {
+              boundingBox: {
+                x: word.bbox.x0,
+                y: word.bbox.y0,
+                width: word.bbox.x1 - word.bbox.x0,
+                height: word.bbox.y1 - word.bbox.y0,
+              },
+            },
+            wordIndex: idx,
+            // imageSnippet would be added here if we implement cropping
+          });
+        }
+      });
+    }
+
+    const overallConfidence = data.confidence / 100;
+    const needsReview =
+      overallConfidence < 0.75 || // Overall low confidence
+      uncertainSegments.length > 0; // Has specific uncertain segments
+
+    console.log(`[Document Parser] Found ${uncertainSegments.length} uncertain segments`);
+    if (needsReview) {
+      console.log(`[Document Parser] ⚠️  Document needs human review`);
+    }
+
     return {
       text: data.text,
-      confidence: data.confidence / 100, // Convert 0-100 to 0-1
+      confidence: overallConfidence,
       method: 'ocr-tesseract',
       metadata: {
         language: 'eng',
         words: data.words?.length || 0,
         lines: data.lines?.length || 0,
+        uncertainCount: uncertainSegments.length,
       },
+      uncertainSegments,
+      needsReview,
     };
 
   } catch (error: any) {
@@ -231,6 +295,7 @@ async function extractFromImage(buffer: Buffer): Promise<ExtractionResult> {
       method: 'ocr-tesseract',
       confidence: 0,
       error: `OCR failed: ${error.message}`,
+      needsReview: true,
     };
   }
 }
@@ -402,6 +467,70 @@ export async function extractMultipleDocuments(
   }
 
   return results;
+}
+
+/**
+ * Queue a document for human review if it has uncertain segments
+ */
+export async function queueDocumentForReview(
+  documentId: string,
+  caseId: string,
+  extractionResult: ExtractionResult
+): Promise<boolean> {
+
+  // Only queue if needs review
+  if (!extractionResult.needsReview) {
+    console.log('[Document Parser] Document does not need review, skipping queue');
+    return false;
+  }
+
+  try {
+    const { error } = await supabaseServer
+      .from('document_review_queue')
+      .insert({
+        case_id: caseId,
+        document_id: documentId,
+        extracted_text: extractionResult.text,
+        overall_confidence: extractionResult.confidence || 0,
+        extraction_method: extractionResult.method,
+        uncertain_segments: extractionResult.uncertainSegments || [],
+        status: 'pending',
+        priority: calculateReviewPriority(extractionResult),
+      });
+
+    if (error) {
+      console.error('[Document Parser] Error queueing document for review:', error);
+      return false;
+    }
+
+    console.log(`[Document Parser] ✓ Queued document for review (${extractionResult.uncertainSegments?.length || 0} uncertain segments)`);
+    return true;
+
+  } catch (error: any) {
+    console.error('[Document Parser] Error queueing document for review:', error);
+    return false;
+  }
+}
+
+/**
+ * Calculate review priority based on extraction quality
+ * Returns 1-10 (10 = highest priority)
+ */
+function calculateReviewPriority(result: ExtractionResult): number {
+  const confidence = result.confidence || 0;
+  const uncertainCount = result.uncertainSegments?.length || 0;
+
+  // Very low confidence = high priority
+  if (confidence < 0.5) return 10;
+  if (confidence < 0.6) return 8;
+
+  // Many uncertain segments = high priority
+  if (uncertainCount > 10) return 9;
+  if (uncertainCount > 5) return 7;
+  if (uncertainCount > 2) return 6;
+
+  // Default medium-low priority
+  return 5;
 }
 
 /**
