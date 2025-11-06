@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { analyzeCaseDocuments, detectTimeConflicts, identifyOverlookedSuspects, generateConflictSummary } from '@/lib/ai-analysis';
-import { extractMultipleDocuments } from '@/lib/document-parser';
+import { extractMultipleDocuments, queueDocumentForReview } from '@/lib/document-parser';
 
 export async function POST(
   request: NextRequest,
@@ -34,6 +34,22 @@ export async function POST(
 
     console.log(`[Analyze API] Extracting content from ${storagePaths.length} files...`);
     const extractionResults = await extractMultipleDocuments(storagePaths, 5); // Process 5 at a time
+
+    // Queue documents that need human review (low confidence OCR)
+    console.log(`[Analyze API] Checking for documents that need human review...`);
+    let queuedForReview = 0;
+    for (const doc of documents) {
+      const extractionResult = extractionResults.get(doc.storage_path);
+      if (extractionResult && extractionResult.needsReview) {
+        const queued = await queueDocumentForReview(doc.id, caseId, extractionResult);
+        if (queued) {
+          queuedForReview++;
+        }
+      }
+    }
+    if (queuedForReview > 0) {
+      console.log(`[Analyze API] ⚠️  ${queuedForReview} document(s) queued for human review`);
+    }
 
     // Build documents for AI analysis with REAL extracted content
     const docsForAnalysis = documents.map(doc => {

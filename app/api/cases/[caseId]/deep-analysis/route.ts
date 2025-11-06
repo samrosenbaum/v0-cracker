@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { performComprehensiveAnalysis } from '@/lib/cold-case-analyzer';
-import { extractMultipleDocuments } from '@/lib/document-parser';
+import { extractMultipleDocuments, queueDocumentForReview } from '@/lib/document-parser';
 
 export async function POST(
   request: NextRequest,
@@ -73,6 +73,22 @@ export async function POST(
     console.log(`[Deep Analysis] Extracting content from ${documents?.length || 0} documents...`);
     const storagePaths = documents?.map(d => d.storage_path).filter(Boolean) as string[] || [];
     const extractionResults = await extractMultipleDocuments(storagePaths, 5);
+
+    // Queue documents that need human review (low confidence OCR)
+    console.log(`[Deep Analysis] Checking for documents that need human review...`);
+    let queuedForReview = 0;
+    for (const doc of (documents || [])) {
+      const extractionResult = extractionResults.get(doc.storage_path);
+      if (extractionResult && extractionResult.needsReview) {
+        const queued = await queueDocumentForReview(doc.id, caseId, extractionResult);
+        if (queued) {
+          queuedForReview++;
+        }
+      }
+    }
+    if (queuedForReview > 0) {
+      console.log(`[Deep Analysis] ⚠️  ${queuedForReview} document(s) queued for human review`);
+    }
 
     // Prepare data for analysis with REAL extracted content
     const analysisInput = {
