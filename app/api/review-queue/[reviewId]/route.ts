@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
+import { createServerSupabaseClient } from '@/lib/supabase-route-handler';
 
 export async function GET(
   request: NextRequest,
@@ -99,7 +100,8 @@ export async function PATCH(
 
     // If status is changing to 'in_review', set current user as assigned
     if (updates.status === 'in_review' && !updates.assigned_to) {
-      const { data: { user } } = await supabaseServer.auth.getUser();
+      const supabaseClient = await createServerSupabaseClient();
+      const { data: { user } } = await supabaseClient.auth.getUser();
       if (user) {
         updates.assigned_to = user.id;
       }

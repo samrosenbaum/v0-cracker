@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
+import { createServerSupabaseClient } from '@/lib/supabase-route-handler';
 
 export async function POST(
   request: NextRequest,
@@ -31,12 +32,14 @@ export async function POST(
       );
     }
 
-    // Get current user
-    const { data: { user } } = await supabaseServer.auth.getUser();
+    // Get current user from request session
+    const supabaseClient = await createServerSupabaseClient();
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
 
-    if (!user) {
+    if (authError || !user) {
+      console.error('[Review Queue API] Auth error:', authError);
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized - please log in' },
         { status: 401 }
       );
     }
