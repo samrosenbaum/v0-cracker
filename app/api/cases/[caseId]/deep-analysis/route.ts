@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { performComprehensiveAnalysis } from '@/lib/cold-case-analyzer';
+import { extractMultipleDocuments } from '@/lib/document-parser';
 
 export async function POST(
   request: NextRequest,
@@ -68,7 +69,12 @@ export async function POST(
     console.log('Suspects:', suspects?.length || 0);
     console.log('Evidence:', evidence?.length || 0);
 
-    // Prepare data for analysis
+    // EXTRACT REAL DOCUMENT CONTENT
+    console.log(`[Deep Analysis] Extracting content from ${documents?.length || 0} documents...`);
+    const storagePaths = documents?.map(d => d.storage_path).filter(Boolean) as string[] || [];
+    const extractionResults = await extractMultipleDocuments(storagePaths, 5);
+
+    // Prepare data for analysis with REAL extracted content
     const analysisInput = {
       incidentType: caseData.description || 'Unknown',
       date: caseData.created_at,
@@ -77,10 +83,13 @@ export async function POST(
       suspects: suspects?.map(s => s.name) || [],
       witnesses: [], // Would be extracted from documents
       interviews: [], // Would be extracted from documents
-      documents: documents?.map(d => ({
-        filename: d.file_name,
-        content: '[Content would be loaded from storage]',
-      })) || [],
+      documents: documents?.map(d => {
+        const extraction = extractionResults.get(d.storage_path);
+        return {
+          filename: d.file_name,
+          content: extraction?.text || '[Could not extract content]',
+        };
+      }) || [],
       evidence: evidence?.map(e => ({
         item: e.file_name,
         dateCollected: e.created_at,
@@ -88,6 +97,8 @@ export async function POST(
         results: 'Unknown',
       })) || [],
     };
+
+    console.log(`[Deep Analysis] Extracted ${analysisInput.documents.reduce((sum, d) => sum + d.content.length, 0)} total characters`);
 
     // Run comprehensive analysis
     const analysis = await performComprehensiveAnalysis(caseId, analysisInput);

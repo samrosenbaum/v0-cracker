@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { analyzeCaseDocuments, detectTimeConflicts, identifyOverlookedSuspects, generateConflictSummary } from '@/lib/ai-analysis';
+import { extractMultipleDocuments } from '@/lib/document-parser';
 
 export async function POST(
   request: NextRequest,
@@ -26,14 +27,37 @@ export async function POST(
       );
     }
 
-    // For now, we'll simulate document content. In production, you'd fetch from storage
-    const docsForAnalysis = documents.map(doc => ({
-      content: `[Document content would be loaded from storage: ${doc.storage_path}]`,
-      filename: doc.file_name,
-      type: doc.document_type,
-    }));
+    console.log(`[Analyze API] Found ${documents.length} documents to analyze`);
 
-    // Run AI analysis
+    // REAL DOCUMENT EXTRACTION - Extract text from all uploaded files
+    const storagePaths = documents.map(doc => doc.storage_path).filter(Boolean) as string[];
+
+    console.log(`[Analyze API] Extracting content from ${storagePaths.length} files...`);
+    const extractionResults = await extractMultipleDocuments(storagePaths, 5); // Process 5 at a time
+
+    // Build documents for AI analysis with REAL extracted content
+    const docsForAnalysis = documents.map(doc => {
+      const extractionResult = extractionResults.get(doc.storage_path);
+
+      return {
+        content: extractionResult?.text || `[Could not extract text from ${doc.file_name}]`,
+        filename: doc.file_name,
+        type: doc.document_type,
+        confidence: extractionResult?.confidence || 0,
+        extractionMethod: extractionResult?.method || 'unknown',
+      };
+    });
+
+    // Log extraction results
+    const totalChars = docsForAnalysis.reduce((sum, doc) => sum + doc.content.length, 0);
+    const successfulExtractions = docsForAnalysis.filter(doc => doc.confidence > 0.5).length;
+
+    console.log(`[Analyze API] Extraction complete:`);
+    console.log(`  - ${successfulExtractions}/${documents.length} documents extracted successfully`);
+    console.log(`  - Total characters extracted: ${totalChars.toLocaleString()}`);
+
+    // Run AI analysis on REAL document content
+    console.log(`[Analyze API] Running AI analysis...`);
     const analysis = await analyzeCaseDocuments(docsForAnalysis);
 
     // Detect additional conflicts using our algorithm
