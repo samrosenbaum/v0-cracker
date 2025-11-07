@@ -1,8 +1,8 @@
 /**
- * API Route: Timeline Events
+ * API Route: Case Connections
  *
- * GET    /api/cases/[caseId]/timeline - List timeline events
- * POST   /api/cases/[caseId]/timeline - Create timeline event
+ * GET    /api/cases/[caseId]/connections - List all connections
+ * POST   /api/cases/[caseId]/connections - Create a connection
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -14,24 +14,16 @@ export async function GET(
 ) {
   try {
     const { caseId } = params;
-    const { searchParams } = new URL(request.url);
-    const startDate = searchParams.get('start_date');
-    const endDate = searchParams.get('end_date');
 
-    let query = supabaseServer
-      .from('timeline_events')
+    const { data, error } = await supabaseServer
+      .from('case_connections')
       .select('*')
-      .eq('case_id', caseId);
-
-    if (startDate && endDate) {
-      query = query.gte('event_time', startDate).lte('event_time', endDate);
-    }
-
-    const { data, error } = await query.order('event_time', { ascending: true });
+      .eq('case_id', caseId)
+      .order('created_at', { ascending: false });
 
     if (error) throw new Error(error.message);
 
-    return NextResponse.json({ success: true, events: data || [] });
+    return NextResponse.json({ success: true, connections: data || [] });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -46,14 +38,14 @@ export async function POST(
     const body = await request.json();
 
     const { data, error } = await supabaseServer
-      .from('timeline_events')
+      .from('case_connections')
       .insert({ case_id: caseId, ...body })
       .select()
       .single();
 
     if (error) throw new Error(error.message);
 
-    return NextResponse.json({ success: true, event: data });
+    return NextResponse.json({ success: true, connection: data });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

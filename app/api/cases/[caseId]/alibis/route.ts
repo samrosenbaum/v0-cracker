@@ -1,8 +1,8 @@
 /**
- * API Route: Timeline Events
+ * API Route: Alibi Entries
  *
- * GET    /api/cases/[caseId]/timeline - List timeline events
- * POST   /api/cases/[caseId]/timeline - Create timeline event
+ * GET    /api/cases/[caseId]/alibis - List alibi entries
+ * POST   /api/cases/[caseId]/alibis - Create alibi entry
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -15,23 +15,22 @@ export async function GET(
   try {
     const { caseId } = params;
     const { searchParams } = new URL(request.url);
-    const startDate = searchParams.get('start_date');
-    const endDate = searchParams.get('end_date');
+    const subjectId = searchParams.get('subject_id');
 
     let query = supabaseServer
-      .from('timeline_events')
+      .from('alibi_entries')
       .select('*')
       .eq('case_id', caseId);
 
-    if (startDate && endDate) {
-      query = query.gte('event_time', startDate).lte('event_time', endDate);
+    if (subjectId) {
+      query = query.eq('subject_entity_id', subjectId);
     }
 
-    const { data, error } = await query.order('event_time', { ascending: true });
+    const { data, error } = await query.order('version_number', { ascending: true });
 
     if (error) throw new Error(error.message);
 
-    return NextResponse.json({ success: true, events: data || [] });
+    return NextResponse.json({ success: true, alibis: data || [] });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -46,14 +45,14 @@ export async function POST(
     const body = await request.json();
 
     const { data, error } = await supabaseServer
-      .from('timeline_events')
+      .from('alibi_entries')
       .insert({ case_id: caseId, ...body })
       .select()
       .single();
 
     if (error) throw new Error(error.message);
 
-    return NextResponse.json({ success: true, event: data });
+    return NextResponse.json({ success: true, alibi: data });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

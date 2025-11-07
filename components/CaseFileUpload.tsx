@@ -169,6 +169,27 @@ export default function CaseFileUpload({ caseId, onUploadComplete }: CaseFileUpl
           throw new Error(`Failed to save file record: ${dbError.message}`);
         }
 
+        // Trigger document chunking for parallel processing
+        try {
+          await fetch('/api/documents/trigger-chunking', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              caseId,
+              storagePath: fileName,
+              fileName: fileData.file.name,
+              fileType: fileData.file.type,
+              fileSize: fileData.file.size,
+            }),
+          });
+          console.log('Document chunking triggered for:', fileData.file.name);
+        } catch (chunkError) {
+          // Don't fail the upload if chunking trigger fails
+          console.warn('Failed to trigger chunking (non-fatal):', chunkError);
+        }
+
         updateFileMetadata(fileData.id, {
           uploadStatus: 'success',
           uploadProgress: 100
