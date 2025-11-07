@@ -5,6 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import TimelineVisualization from '@/components/TimelineVisualization';
 import MurderBoard from '@/components/MurderBoard';
 import AlibiTracker from '@/components/AlibiTracker';
+import EntityFormModal from '@/components/EntityFormModal';
+import ConnectionFormModal from '@/components/ConnectionFormModal';
+import TimelineEventFormModal from '@/components/TimelineEventFormModal';
+import AlibiEntryFormModal from '@/components/AlibiEntryFormModal';
 import { Database } from '@/app/types/database';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, ArrowLeft, RefreshCw } from 'lucide-react';
@@ -32,6 +36,17 @@ export default function InvestigationBoardPage() {
   const [boardData, setBoardData] = useState<BoardData | null>(null);
   const [activeTab, setActiveTab] = useState('timeline');
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Modal states
+  const [isEntityModalOpen, setIsEntityModalOpen] = useState(false);
+  const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
+  const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
+  const [isAlibiModalOpen, setIsAlibiModalOpen] = useState(false);
+  const [selectedEntity, setSelectedEntity] = useState<CaseEntity | null>(null);
+  const [selectedConnection, setSelectedConnection] = useState<CaseConnection | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(null);
+  const [selectedAlibi, setSelectedAlibi] = useState<AlibiEntry | null>(null);
+  const [preselectedSubjectId, setPreselectedSubjectId] = useState<string | undefined>();
 
   const fetchBoardData = async (showToast = false) => {
     try {
@@ -191,12 +206,12 @@ export default function InvestigationBoardPage() {
               events={boardData.timeline_events}
               entities={boardData.entities}
               onEventClick={(event) => {
-                console.log('Event clicked:', event);
-                // Could open a modal or detail panel
+                setSelectedEvent(event);
+                setIsTimelineModalOpen(true);
               }}
               onAddEvent={() => {
-                toast.success('Add event feature coming soon!');
-                // Navigate to add event form
+                setSelectedEvent(null);
+                setIsTimelineModalOpen(true);
               }}
             />
           </TabsContent>
@@ -209,20 +224,20 @@ export default function InvestigationBoardPage() {
               connections={boardData.connections}
               victimEntityId={victimEntity?.id}
               onEntityClick={(entity) => {
-                console.log('Entity clicked:', entity);
-                // Could open entity detail panel
+                setSelectedEntity(entity);
+                setIsEntityModalOpen(true);
               }}
               onConnectionClick={(connection) => {
-                console.log('Connection clicked:', connection);
-                // Could open connection detail panel
+                setSelectedConnection(connection);
+                setIsConnectionModalOpen(true);
               }}
               onAddEntity={() => {
-                toast.success('Add entity feature coming soon!');
-                // Navigate to add entity form
+                setSelectedEntity(null);
+                setIsEntityModalOpen(true);
               }}
               onAddConnection={() => {
-                toast.success('Add connection feature coming soon!');
-                // Navigate to add connection form
+                setSelectedConnection(null);
+                setIsConnectionModalOpen(true);
               }}
             />
           </TabsContent>
@@ -234,17 +249,75 @@ export default function InvestigationBoardPage() {
               alibis={boardData.alibis}
               entities={boardData.entities}
               onAlibiClick={(alibi) => {
-                console.log('Alibi clicked:', alibi);
-                // Could open alibi detail panel
+                setSelectedAlibi(alibi);
+                setIsAlibiModalOpen(true);
               }}
               onAddAlibi={(subjectId) => {
-                console.log('Add alibi for:', subjectId);
-                toast.success('Add alibi feature coming soon!');
-                // Navigate to add alibi form
+                setSelectedAlibi(null);
+                setPreselectedSubjectId(subjectId);
+                setIsAlibiModalOpen(true);
               }}
             />
           </TabsContent>
         </Tabs>
+
+        {/* Form Modals */}
+        <EntityFormModal
+          caseId={caseId}
+          entity={selectedEntity}
+          isOpen={isEntityModalOpen}
+          onClose={() => {
+            setIsEntityModalOpen(false);
+            setSelectedEntity(null);
+          }}
+          onSuccess={() => {
+            fetchBoardData(false);
+          }}
+        />
+
+        <ConnectionFormModal
+          caseId={caseId}
+          entities={boardData.entities}
+          connection={selectedConnection}
+          isOpen={isConnectionModalOpen}
+          onClose={() => {
+            setIsConnectionModalOpen(false);
+            setSelectedConnection(null);
+          }}
+          onSuccess={() => {
+            fetchBoardData(false);
+          }}
+        />
+
+        <TimelineEventFormModal
+          caseId={caseId}
+          entities={boardData.entities}
+          event={selectedEvent}
+          isOpen={isTimelineModalOpen}
+          onClose={() => {
+            setIsTimelineModalOpen(false);
+            setSelectedEvent(null);
+          }}
+          onSuccess={() => {
+            fetchBoardData(false);
+          }}
+        />
+
+        <AlibiEntryFormModal
+          caseId={caseId}
+          entities={boardData.entities}
+          alibi={selectedAlibi}
+          preselectedSubjectId={preselectedSubjectId}
+          isOpen={isAlibiModalOpen}
+          onClose={() => {
+            setIsAlibiModalOpen(false);
+            setSelectedAlibi(null);
+            setPreselectedSubjectId(undefined);
+          }}
+          onSuccess={() => {
+            fetchBoardData(false);
+          }}
+        />
       </div>
     </div>
   );
