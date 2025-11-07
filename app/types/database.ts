@@ -649,6 +649,328 @@ export interface Database {
           }
         ]
       }
+      case_entities: {
+        Row: {
+          id: string
+          case_id: string
+          entity_type: "person" | "location" | "evidence" | "vehicle" | "organization" | "other"
+          name: string
+          role: string | null
+          description: string | null
+          image_url: string | null
+          color: string | null
+          icon: string | null
+          metadata: Json
+          created_at: string
+          updated_at: string
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          case_id: string
+          entity_type: "person" | "location" | "evidence" | "vehicle" | "organization" | "other"
+          name: string
+          role?: string | null
+          description?: string | null
+          image_url?: string | null
+          color?: string | null
+          icon?: string | null
+          metadata?: Json
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          case_id?: string
+          entity_type?: "person" | "location" | "evidence" | "vehicle" | "organization" | "other"
+          name?: string
+          role?: string | null
+          description?: string | null
+          image_url?: string | null
+          color?: string | null
+          icon?: string | null
+          metadata?: Json
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_entities_case_id_fkey"
+            columns: ["case_id"]
+            referencedRelation: "cases"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      case_connections: {
+        Row: {
+          id: string
+          case_id: string
+          from_entity_id: string
+          to_entity_id: string
+          connection_type: string
+          label: string | null
+          description: string | null
+          confidence: "confirmed" | "probable" | "possible" | "unverified" | null
+          evidence_document_ids: string[] | null
+          evidence_notes: string | null
+          line_style: "solid" | "dashed" | "dotted" | null
+          line_color: string | null
+          line_weight: number | null
+          metadata: Json
+          created_at: string
+          updated_at: string
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          case_id: string
+          from_entity_id: string
+          to_entity_id: string
+          connection_type: string
+          label?: string | null
+          description?: string | null
+          confidence?: "confirmed" | "probable" | "possible" | "unverified" | null
+          evidence_document_ids?: string[] | null
+          evidence_notes?: string | null
+          line_style?: "solid" | "dashed" | "dotted" | null
+          line_color?: string | null
+          line_weight?: number | null
+          metadata?: Json
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          case_id?: string
+          from_entity_id?: string
+          to_entity_id?: string
+          connection_type?: string
+          label?: string | null
+          description?: string | null
+          confidence?: "confirmed" | "probable" | "possible" | "unverified" | null
+          evidence_document_ids?: string[] | null
+          evidence_notes?: string | null
+          line_style?: "solid" | "dashed" | "dotted" | null
+          line_color?: string | null
+          line_weight?: number | null
+          metadata?: Json
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "case_connections_case_id_fkey"
+            columns: ["case_id"]
+            referencedRelation: "cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "case_connections_from_entity_id_fkey"
+            columns: ["from_entity_id"]
+            referencedRelation: "case_entities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "case_connections_to_entity_id_fkey"
+            columns: ["to_entity_id"]
+            referencedRelation: "case_entities"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      timeline_events: {
+        Row: {
+          id: string
+          case_id: string
+          event_type: "victim_action" | "suspect_movement" | "witness_account" | "evidence_found" | "phone_call" | "transaction" | "sighting" | "other"
+          title: string
+          description: string | null
+          event_time: string | null
+          event_date: string | null
+          time_precision: "exact" | "approximate" | "estimated" | "unknown" | null
+          time_range_start: string | null
+          time_range_end: string | null
+          location: string | null
+          location_coordinates: string | null
+          primary_entity_id: string | null
+          related_entity_ids: string[] | null
+          verification_status: "verified" | "unverified" | "disputed" | "false" | null
+          verified_by: string | null
+          confidence_score: number | null
+          source_type: string | null
+          source_document_id: string | null
+          source_notes: string | null
+          color: string | null
+          icon: string | null
+          metadata: Json
+          created_at: string
+          updated_at: string
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          case_id: string
+          event_type: "victim_action" | "suspect_movement" | "witness_account" | "evidence_found" | "phone_call" | "transaction" | "sighting" | "other"
+          title: string
+          description?: string | null
+          event_time?: string | null
+          event_date?: string | null
+          time_precision?: "exact" | "approximate" | "estimated" | "unknown" | null
+          time_range_start?: string | null
+          time_range_end?: string | null
+          location?: string | null
+          location_coordinates?: string | null
+          primary_entity_id?: string | null
+          related_entity_ids?: string[] | null
+          verification_status?: "verified" | "unverified" | "disputed" | "false" | null
+          verified_by?: string | null
+          confidence_score?: number | null
+          source_type?: string | null
+          source_document_id?: string | null
+          source_notes?: string | null
+          color?: string | null
+          icon?: string | null
+          metadata?: Json
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          case_id?: string
+          event_type?: "victim_action" | "suspect_movement" | "witness_account" | "evidence_found" | "phone_call" | "transaction" | "sighting" | "other"
+          title?: string
+          description?: string | null
+          event_time?: string | null
+          event_date?: string | null
+          time_precision?: "exact" | "approximate" | "estimated" | "unknown" | null
+          time_range_start?: string | null
+          time_range_end?: string | null
+          location?: string | null
+          location_coordinates?: string | null
+          primary_entity_id?: string | null
+          related_entity_ids?: string[] | null
+          verification_status?: "verified" | "unverified" | "disputed" | "false" | null
+          verified_by?: string | null
+          confidence_score?: number | null
+          source_type?: string | null
+          source_document_id?: string | null
+          source_notes?: string | null
+          color?: string | null
+          icon?: string | null
+          metadata?: Json
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "timeline_events_case_id_fkey"
+            columns: ["case_id"]
+            referencedRelation: "cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timeline_events_primary_entity_id_fkey"
+            columns: ["primary_entity_id"]
+            referencedRelation: "case_entities"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      alibi_entries: {
+        Row: {
+          id: string
+          case_id: string
+          subject_entity_id: string
+          version_number: number
+          statement_date: string
+          interviewer: string | null
+          alibi_start_time: string
+          alibi_end_time: string
+          location_claimed: string
+          activity_claimed: string
+          full_statement: string | null
+          corroborating_entity_ids: string[] | null
+          verification_status: "verified" | "partial" | "unverified" | "contradicted" | "false" | null
+          verification_notes: string | null
+          changes_from_previous: string | null
+          inconsistencies: Json
+          source_document_id: string | null
+          source_notes: string | null
+          metadata: Json
+          created_at: string
+          updated_at: string
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          case_id: string
+          subject_entity_id: string
+          version_number?: number
+          statement_date?: string
+          interviewer?: string | null
+          alibi_start_time: string
+          alibi_end_time: string
+          location_claimed: string
+          activity_claimed: string
+          full_statement?: string | null
+          corroborating_entity_ids?: string[] | null
+          verification_status?: "verified" | "partial" | "unverified" | "contradicted" | "false" | null
+          verification_notes?: string | null
+          changes_from_previous?: string | null
+          inconsistencies?: Json
+          source_document_id?: string | null
+          source_notes?: string | null
+          metadata?: Json
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          case_id?: string
+          subject_entity_id?: string
+          version_number?: number
+          statement_date?: string
+          interviewer?: string | null
+          alibi_start_time?: string
+          alibi_end_time?: string
+          location_claimed?: string
+          activity_claimed?: string
+          full_statement?: string | null
+          corroborating_entity_ids?: string[] | null
+          verification_status?: "verified" | "partial" | "unverified" | "contradicted" | "false" | null
+          verification_notes?: string | null
+          changes_from_previous?: string | null
+          inconsistencies?: Json
+          source_document_id?: string | null
+          source_notes?: string | null
+          metadata?: Json
+          created_at?: string
+          updated_at?: string
+          created_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alibi_entries_case_id_fkey"
+            columns: ["case_id"]
+            referencedRelation: "cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alibi_entries_subject_entity_id_fkey"
+            columns: ["subject_entity_id"]
+            referencedRelation: "case_entities"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -704,6 +1026,55 @@ export interface Database {
           avg_confidence: number
           completion_pct: number
         }>
+      }
+      get_entity_connections: {
+        Args: {
+          entity_uuid: string
+        }
+        Returns: Array<{
+          connection_id: string
+          direction: string
+          connected_entity_id: string
+          connected_entity_name: string
+          connection_type: string
+          label: string
+          confidence: string
+        }>
+      }
+      get_timeline_events_in_range: {
+        Args: {
+          p_case_id: string
+          start_date: string
+          end_date: string
+        }
+        Returns: Array<{
+          event_id: string
+          event_type: string
+          title: string
+          description: string
+          event_time: string
+          location: string
+          entity_name: string
+          verification_status: string
+          confidence_score: number
+        }>
+      }
+      detect_alibi_inconsistencies: {
+        Args: {
+          p_subject_entity_id: string
+        }
+        Returns: Array<{
+          version_1: number
+          version_2: number
+          inconsistency_type: string
+          details: string
+        }>
+      }
+      get_case_board_summary: {
+        Args: {
+          p_case_id: string
+        }
+        Returns: Json
       }
     }
     Enums: {
