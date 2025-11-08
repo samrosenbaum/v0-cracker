@@ -9,10 +9,10 @@ import { sendInngestEvent } from '@/lib/inngest-client';
 
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> }
+  { params }: { params: { caseId: string } }
 ) {
   try {
-    const { caseId } = await context.params;
+    const { caseId } = params;
 
     console.log(`[Board Population API] Triggering population for case: ${caseId}`);
 

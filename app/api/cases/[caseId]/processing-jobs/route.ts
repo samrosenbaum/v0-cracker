@@ -18,10 +18,10 @@ import {
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> }
+  { params }: { params: { caseId: string } }
 ) {
   try {
-    const { caseId } = await context.params;
+    const { caseId } = params;
     const { searchParams } = new URL(request.url);
     const activeOnly = searchParams.get('active') === 'true';
     const statusFilter = searchParams.get('status');

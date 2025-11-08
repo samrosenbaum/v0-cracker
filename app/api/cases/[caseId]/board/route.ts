@@ -9,10 +9,10 @@ import { supabaseServer } from '@/lib/supabase-server';
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> }
+  { params }: { params: { caseId: string } }
 ) {
   try {
-    const { caseId } = await context.params;
+    const { caseId } = params;
 
     // Fetch all board data in parallel
     const [entitiesResult, connectionsResult, timelineResult, alibisResult, summaryResult] = await Promise.all([
