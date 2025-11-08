@@ -11,7 +11,7 @@ import { supabaseServer } from '@/lib/supabase-server';
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string; entityId: string }> }
+  { params }: { params: { caseId: string; entityId: string } }
 ) {
   try {
     const { entityId } = await context.params;
@@ -34,7 +34,7 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string; entityId: string }> }
+  { params }: { params: { caseId: string; entityId: string } }
 ) {
   try {
     const { entityId } = await context.params;
@@ -70,7 +70,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string; entityId: string }> }
+  { params }: { params: { caseId: string; entityId: string } }
 ) {
   try {
     const { entityId } = await context.params;

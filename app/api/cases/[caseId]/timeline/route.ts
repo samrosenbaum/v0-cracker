@@ -10,10 +10,10 @@ import { supabaseServer } from '@/lib/supabase-server';
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> }
+  { params }: { params: { caseId: string } }
 ) {
   try {
-    const { caseId } = await context.params;
+    const { caseId } = params;
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('start_date');
     const endDate = searchParams.get('end_date');
@@ -39,10 +39,10 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> }
+  { params }: { params: { caseId: string } }
 ) {
   try {
-    const { caseId } = await context.params;
+    const { caseId } = params;
     const body = await request.json();
 
     const { data, error } = await supabaseServer

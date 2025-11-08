@@ -5,10 +5,10 @@ import { extractMultipleDocuments, queueDocumentForReview } from '@/lib/document
 
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> }
+  { params }: { params: { caseId: string } }
 ) {
   try {
-    const { caseId } = await context.params;
+    const { caseId } = params;
 
     console.log('Deep analysis requested for case:', caseId);
     console.log('Case ID type:', typeof caseId);

@@ -5,10 +5,10 @@ import { extractMultipleDocuments, queueDocumentForReview } from '@/lib/document
 
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> }
+  { params }: { params: { caseId: string } }
 ) {
   try {
-    const { caseId } = await context.params;
+    const { caseId } = params;
 
     // Fetch all case documents
     const { data: documents, error: docError } = await supabaseServer

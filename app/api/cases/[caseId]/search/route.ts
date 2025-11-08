@@ -20,10 +20,10 @@ const openai = new OpenAI({
 
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> }
+  { params }: { params: { caseId: string } }
 ) {
   try {
-    const { caseId } = await context.params;
+    const { caseId } = params;
     const body = await request.json();
     const {
       query,
