@@ -7,7 +7,7 @@ import MurderBoard from '@/components/MurderBoard';
 import AlibiTracker from '@/components/AlibiTracker';
 import { Database } from '@/app/types/database';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, ArrowLeft, RefreshCw } from 'lucide-react';
+import { Loader2, ArrowLeft, RefreshCw, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 type CaseEntity = Database['public']['Tables']['case_entities']['Row'];
@@ -32,6 +32,7 @@ export default function InvestigationBoardPage() {
   const [boardData, setBoardData] = useState<BoardData | null>(null);
   const [activeTab, setActiveTab] = useState('timeline');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isPopulating, setIsPopulating] = useState(false);
 
   const fetchBoardData = async (showToast = false) => {
     try {
@@ -61,6 +62,50 @@ export default function InvestigationBoardPage() {
   useEffect(() => {
     fetchBoardData();
   }, [caseId]);
+
+  const handlePopulateFromDocuments = async () => {
+    try {
+      setIsPopulating(true);
+      toast.loading('Analyzing documents and populating board...', { id: 'populate' });
+
+      const response = await fetch(`/api/cases/${caseId}/board/populate`, {
+        method: 'POST',
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to trigger population');
+      }
+
+      toast.success(
+        'Board population started! This may take a few minutes. The page will refresh automatically when complete.',
+        { id: 'populate', duration: 5000 }
+      );
+
+      // Poll for updates every 5 seconds
+      const pollInterval = setInterval(async () => {
+        await fetchBoardData(false);
+
+        // Check if we have data now
+        if (boardData && (boardData.entities.length > 0 || boardData.timeline_events.length > 0)) {
+          clearInterval(pollInterval);
+          toast.success('Board populated successfully!', { duration: 3000 });
+        }
+      }, 5000);
+
+      // Stop polling after 2 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        setIsPopulating(false);
+      }, 120000);
+
+    } catch (error: any) {
+      console.error('[Board] Error triggering population:', error);
+      toast.error(error.message || 'Failed to trigger board population', { id: 'populate' });
+      setIsPopulating(false);
+    }
+  };
 
   // Find victim entity if exists
   const victimEntity = boardData?.entities.find(
@@ -115,14 +160,25 @@ export default function InvestigationBoardPage() {
               </p>
             </div>
 
-            <button
-              onClick={() => fetchBoardData(true)}
-              disabled={isRefreshing}
-              className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handlePopulateFromDocuments}
+                disabled={isPopulating}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Sparkles className={`w-4 h-4 ${isPopulating ? 'animate-pulse' : ''}`} />
+                {isPopulating ? 'Populating...' : 'Populate from Documents'}
+              </button>
+
+              <button
+                onClick={() => fetchBoardData(true)}
+                disabled={isRefreshing}
+                className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+            </div>
           </div>
         </div>
 

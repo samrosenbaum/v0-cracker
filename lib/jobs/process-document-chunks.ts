@@ -376,6 +376,28 @@ export const aggregateDocumentJob = inngest.createFunction(
       },
     });
 
+    // Step 5: Get case ID and trigger Investigation Board population
+    const caseId = await step.run('get-case-id', async () => {
+      const { data: caseFile } = await supabaseServer
+        .from('case_files')
+        .select('case_id')
+        .eq('id', caseFileId)
+        .single();
+
+      return caseFile?.case_id;
+    });
+
+    if (caseId) {
+      await step.sendEvent('trigger-board-population', {
+        name: 'board/populate',
+        data: {
+          caseId,
+          caseFileId, // Populate from this specific file
+        },
+      });
+      console.log(`[Job: Aggregate Document] Triggered Investigation Board population for case: ${caseId}`);
+    }
+
     return {
       caseFileId,
       totalChunks: aggregatedData.totalChunks,
