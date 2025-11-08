@@ -21,6 +21,8 @@ import {
   generateEmbeddingsJob,
 } from '@/lib/jobs/process-document-chunks';
 
+import { populateInvestigationBoardJob } from '@/lib/jobs/populate-investigation-board';
+
 /**
  * Register all Inngest functions (jobs) here
  */
@@ -29,6 +31,7 @@ const inngestFunctions = [
   processChunkJob,
   aggregateDocumentJob,
   generateEmbeddingsJob,
+  populateInvestigationBoardJob,
 ];
 
 /**

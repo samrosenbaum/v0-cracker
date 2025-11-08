@@ -89,6 +89,14 @@ type Events = {
       chunkIds?: string[]; // Optional: specific chunks to analyze
     };
   };
+
+  // Triggered to populate Investigation Board from case documents
+  'board/populate': {
+    data: {
+      caseId: string;
+      caseFileId?: string; // Optional: populate from specific file, otherwise all files
+    };
+  };
 };
 
 /**
