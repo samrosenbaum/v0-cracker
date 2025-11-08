@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 import { Database } from '@/app/types/database';
 import {
@@ -449,7 +449,6 @@ export default function MurderBoard({
                   style={{
                     backgroundColor: isSelected ? color : `${color}20`,
                     color: isSelected ? '#fff' : color,
-                    ringColor: color,
                   }}
                 >
                   <Icon className="w-4 h-4" />
@@ -476,7 +475,6 @@ export default function MurderBoard({
                   style={{
                     backgroundColor: isSelected ? color : `${color}20`,
                     color: isSelected ? '#fff' : color,
-                    ringColor: color,
                   }}
                 >
                   {confidence}

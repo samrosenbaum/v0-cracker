@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Database } from '@/app/types/database';
 import { X, User, MapPin, Package, Car, Building2, Circle, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';

@@ -199,7 +199,6 @@ export default function TimelineEventFormModal({
                       backgroundColor: isSelected ? type.color : `${type.color}20`,
                       borderColor: isSelected ? type.color : '#E5E7EB',
                       color: isSelected ? '#fff' : type.color,
-                      ringColor: type.color,
                     }}
                   >
                     {type.label}

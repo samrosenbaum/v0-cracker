@@ -345,7 +345,6 @@ export default function ConnectionFormModal({
                       backgroundColor: isSelected ? level.color : `${level.color}20`,
                       borderColor: isSelected ? level.color : '#E5E7EB',
                       color: isSelected ? '#fff' : level.color,
-                      ringColor: level.color,
                     }}
                   >
                     <span className="font-medium text-sm">{level.label}</span>
