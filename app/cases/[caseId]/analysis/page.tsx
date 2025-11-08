@@ -98,9 +98,13 @@ export default function AnalysisPage() {
           victimName: caseInfo?.victim_name || 'Unknown',
           incidentTime: caseInfo?.incident_date || new Date().toISOString(),
         };
-      } else if (analysisType === 'timeline' || analysisType === 'deep-analysis') {
-        // Timeline and deep analysis use the analyze endpoint
+      } else if (analysisType === 'timeline') {
+        // Timeline uses the analyze endpoint
         endpoint = `/api/cases/${caseId}/analyze`;
+        body = {};
+      } else if (analysisType === 'deep-analysis') {
+        // Deep analysis has its own dedicated endpoint
+        endpoint = `/api/cases/${caseId}/deep-analysis`;
         body = {};
       } else {
         // Default to using the analysis type as the endpoint path
