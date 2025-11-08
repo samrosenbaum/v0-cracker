@@ -10,10 +10,10 @@ import { supabaseServer } from '@/lib/supabase-server';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { caseId: string } }
+  context: { params: Promise<{ caseId: string }> }
 ) {
   try {
-    const { caseId } = params;
+    const { caseId } = await context.params;
 
     // Get query parameters
     const url = new URL(request.url);
