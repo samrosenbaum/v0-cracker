@@ -60,12 +60,13 @@ const FreshEyesPlatform = () => {
   }, []);
 
   const checkAuthAndFetchData = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      console.warn('No active session, redirecting to login...');
-      router.push('/login');
-      return;
-    }
+    // Auth check disabled for testing
+    // const { data: { session } } = await supabase.auth.getSession();
+    // if (!session) {
+    //   console.warn('No active session, redirecting to login...');
+    //   router.push('/login');
+    //   return;
+    // }
     fetchCases();
     fetchStats();
   };
