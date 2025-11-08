@@ -332,7 +332,7 @@ export default function AnalysisPage() {
               <h1 className="text-3xl font-bold text-gray-900">AI Analysis Center</h1>
               {caseInfo && (
                 <p className="text-gray-600 mt-1">
-                  {caseInfo.case_name || `Case #${caseInfo.case_number}`}
+                  {caseInfo.title || caseInfo.name}
                 </p>
               )}
             </div>

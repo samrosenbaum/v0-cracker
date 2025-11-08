@@ -31,7 +31,7 @@ export async function GET(
         ),
         case:cases!case_id (
           id,
-          case_number,
+          name,
           title
         )
       `)

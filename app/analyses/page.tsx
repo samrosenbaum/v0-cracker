@@ -13,8 +13,8 @@ interface Analysis {
   created_at: string;
   updated_at: string;
   cases?: {
-    case_name?: string;
-    case_number?: string;
+    name: string;
+    title: string;
   };
 }
 
@@ -35,8 +35,8 @@ export default function AllAnalysesPage() {
       .select(`
         *,
         cases (
-          case_name,
-          case_number
+          name,
+          title
         )
       `)
       .order('created_at', { ascending: false });
@@ -153,7 +153,7 @@ export default function AllAnalysesPage() {
                                 onClick={() => router.push(`/cases/${analysis.case_id}`)}
                                 className="text-sm text-blue-600 hover:text-blue-700 font-medium"
                               >
-                                {analysis.cases.case_name || analysis.cases.case_number || 'View Case'}
+                                {analysis.cases.title || analysis.cases.name || 'View Case'}
                               </button>
                             )}
                           </div>
