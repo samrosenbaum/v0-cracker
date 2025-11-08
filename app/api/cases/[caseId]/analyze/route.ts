@@ -3,6 +3,23 @@ import { supabaseServer } from '@/lib/supabase-server';
 import { analyzeCaseDocuments, detectTimeConflicts, identifyOverlookedSuspects, generateConflictSummary } from '@/lib/ai-analysis';
 import { extractMultipleDocuments, queueDocumentForReview } from '@/lib/document-parser';
 
+const CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+function withCors(response: NextResponse) {
+  Object.entries(CORS_HEADERS).forEach(([key, value]) => {
+    response.headers.set(key, value);
+  });
+  return response;
+}
+
+export async function OPTIONS() {
+  return withCors(new NextResponse(null, { status: 204 }));
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { caseId: string } }
@@ -17,13 +34,15 @@ export async function POST(
       .eq('case_id', caseId);
 
     if (docError) {
-      return NextResponse.json({ error: docError.message }, { status: 500 });
+      return withCors(NextResponse.json({ error: docError.message }, { status: 500 }));
     }
 
     if (!documents || documents.length === 0) {
-      return NextResponse.json(
-        { error: 'No documents found for this case' },
-        { status: 404 }
+      return withCors(
+        NextResponse.json(
+          { error: 'No documents found for this case' },
+          { status: 404 }
+        )
       );
     }
 
@@ -179,23 +198,25 @@ export async function POST(
       });
 
     if (analysisError) {
-      return NextResponse.json({ error: analysisError.message }, { status: 500 });
+      return withCors(NextResponse.json({ error: analysisError.message }, { status: 500 }));
     }
 
-    return NextResponse.json({
+    return withCors(NextResponse.json({
       success: true,
       analysis: {
         ...analysis,
         overlookedSuspects,
         conflictSummary: generateConflictSummary(analysis.conflicts),
       },
-    });
+    }));
 
   } catch (error: any) {
     console.error('Analysis error:', error);
-    return NextResponse.json(
-      { error: error.message || 'Analysis failed' },
-      { status: 500 }
+    return withCors(
+      NextResponse.json(
+        { error: error.message || 'Analysis failed' },
+        { status: 500 }
+      )
     );
   }
 }
