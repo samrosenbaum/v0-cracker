@@ -4,9 +4,10 @@ import { generateComprehensiveVictimTimeline } from '@/lib/victim-timeline';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { caseId: string } }
+  context: { params: Promise<{ caseId: string }> | { caseId: string } }
 ) {
   try {
+    const params = await Promise.resolve(context.params);
     const { caseId } = params;
     const body = await request.json();
 

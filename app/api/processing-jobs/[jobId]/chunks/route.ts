@@ -13,9 +13,10 @@ import { supabaseServer } from '@/lib/supabase-server';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { jobId: string } }
+  context: { params: Promise<{ jobId: string }> | { jobId: string } }
 ) {
   try {
+    const params = await Promise.resolve(context.params);
     const { jobId } = params;
     const { searchParams } = new URL(request.url);
     const statusFilter = searchParams.get('status');

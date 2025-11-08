@@ -9,9 +9,10 @@ import { supabaseServer } from '@/lib/supabase-server';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { reviewId: string } }
+  context: { params: Promise<{ reviewId: string }> | { reviewId: string } }
 ) {
   try {
+    const params = await Promise.resolve(context.params);
     const { reviewId } = params;
 
     console.log(`[Review Queue API] Fetching review item ${reviewId}`);
@@ -79,9 +80,10 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { reviewId: string } }
+  context: { params: Promise<{ reviewId: string }> | { reviewId: string } }
 ) {
   try {
+    const params = await Promise.resolve(context.params);
     const { reviewId } = params;
     const body = await request.json();
 

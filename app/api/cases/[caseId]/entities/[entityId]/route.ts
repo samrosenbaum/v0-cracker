@@ -11,10 +11,11 @@ import { supabaseServer } from '@/lib/supabase-server';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { caseId: string; entityId: string } }
+  context: { params: Promise<{ caseId: string; entityId: string }> | { caseId: string; entityId: string } }
 ) {
   try {
-    const { entityId } = await context.params;
+    const params = await Promise.resolve(context.params);
+    const { entityId } = params;
 
     const { data: entity, error } = await supabaseServer
       .from('case_entities')
@@ -34,10 +35,11 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { caseId: string; entityId: string } }
+  context: { params: Promise<{ caseId: string; entityId: string }> | { caseId: string; entityId: string } }
 ) {
   try {
-    const { entityId } = await context.params;
+    const params = await Promise.resolve(context.params);
+    const { entityId } = params;
     const body = await request.json();
 
     const updates = {
@@ -70,10 +72,11 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { caseId: string; entityId: string } }
+  context: { params: Promise<{ caseId: string; entityId: string }> | { caseId: string; entityId: string } }
 ) {
   try {
-    const { entityId } = await context.params;
+    const params = await Promise.resolve(context.params);
+    const { entityId } = params;
 
     const { error } = await supabaseServer
       .from('case_entities')

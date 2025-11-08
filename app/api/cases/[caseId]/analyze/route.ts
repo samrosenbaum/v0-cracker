@@ -5,9 +5,11 @@ import { extractMultipleDocuments, queueDocumentForReview } from '@/lib/document
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { caseId: string } }
+  context: { params: Promise<{ caseId: string }> | { caseId: string } }
 ) {
   try {
+    // Handle both sync and async params for Next.js 14/15 compatibility
+    const params = await Promise.resolve(context.params);
     const { caseId } = params;
 
     // Fetch all case documents
