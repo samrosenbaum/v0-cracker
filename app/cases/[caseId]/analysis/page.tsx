@@ -118,9 +118,23 @@ export default function AnalysisPage() {
         body: JSON.stringify(body),
       });
 
+      // Check response status before parsing JSON
+      if (!response.ok) {
+        let errorMessage = 'Unknown error';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          // If JSON parsing fails, use status text
+          errorMessage = response.statusText || `Request failed with status ${response.status}`;
+        }
+        alert(`Analysis failed: ${errorMessage}`);
+        return;
+      }
+
       const result = await response.json();
 
-      if (result.success || response.ok) {
+      if (result.success) {
         // Show different messages based on analysis type
         if (analysisType === 'timeline') {
           const viewBoard = confirm(
@@ -145,8 +159,6 @@ export default function AnalysisPage() {
           alert(`${analysisType} completed successfully!`);
         }
         fetchAnalyses(); // Refresh the list
-      } else {
-        alert(`Analysis failed: ${result.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Analysis error:', error);
