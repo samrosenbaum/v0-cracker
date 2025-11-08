@@ -117,7 +117,29 @@ export default function AnalysisPage() {
       const result = await response.json();
 
       if (result.success || response.ok) {
-        alert(`${analysisType} completed successfully!`);
+        // Show different messages based on analysis type
+        if (analysisType === 'timeline') {
+          const viewBoard = confirm(
+            'Timeline analysis completed successfully!\n\n' +
+            `${result.analysis?.timeline?.length || 0} timeline events have been extracted and saved.\n\n` +
+            'Click OK to view the timeline on the Investigation Board, or Cancel to stay here.'
+          );
+          if (viewBoard) {
+            router.push(`/cases/${caseId}/board`);
+            return;
+          }
+        } else if (analysisType === 'victim-timeline') {
+          const viewBoard = confirm(
+            'Victim timeline reconstruction completed successfully!\n\n' +
+            'Click OK to view the timeline on the Investigation Board, or Cancel to stay here.'
+          );
+          if (viewBoard) {
+            router.push(`/cases/${caseId}/board`);
+            return;
+          }
+        } else {
+          alert(`${analysisType} completed successfully!`);
+        }
         fetchAnalyses(); // Refresh the list
       } else {
         alert(`Analysis failed: ${result.error || 'Unknown error'}`);
@@ -425,6 +447,14 @@ export default function AnalysisPage() {
                           <p className="text-sm text-gray-600 mb-2">
                             Completed {formatDate(analysis.created_at)}
                           </p>
+                          {(analysis.analysis_type === 'timeline' || analysis.analysis_type === 'timeline_and_conflicts' || analysis.analysis_type === 'victim-timeline') && (
+                            <button
+                              onClick={() => router.push(`/cases/${caseId}/board`)}
+                              className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+                            >
+                              View Timeline on Investigation Board →
+                            </button>
+                          )}
                           {analysis.analysis_data && (
                             <div className="mt-3 p-4 bg-gray-50 rounded-lg">
                               <pre className="text-xs text-gray-700 overflow-x-auto max-h-40">

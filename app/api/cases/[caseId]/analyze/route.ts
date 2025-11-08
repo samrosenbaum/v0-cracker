@@ -92,21 +92,41 @@ export async function POST(
     );
 
     // Save timeline events to database
-    const timelineInserts = analysis.timeline.map(event => ({
-      case_id: caseId,
-      title: event.description.substring(0, 100),
-      description: event.description,
-      type: event.sourceType,
-      date: event.date,
-      time: event.startTime || event.time,
-      location: event.location,
-      personnel: event.involvedPersons.join(', '),
-      tags: event.involvedPersons,
-      status: 'verified',
-    }));
+    // Map AI analysis timeline events to the timeline_events table schema
+    const timelineInserts = analysis.timeline.map(event => {
+      // Map sourceType to event_type enum
+      const eventTypeMap: Record<string, string> = {
+        'interview': 'witness_account',
+        'witness_statement': 'witness_account',
+        'police_report': 'other',
+        'forensic_report': 'evidence_found',
+        'tip': 'other',
+        'other': 'other'
+      };
+
+      return {
+        case_id: caseId,
+        event_type: eventTypeMap[event.sourceType] || 'other',
+        title: event.description?.substring(0, 100) || 'Timeline Event',
+        description: event.description || null,
+        event_time: event.time || event.startTime || null,
+        event_date: event.date || null,
+        time_precision: event.startTime && event.endTime ? 'approximate' as const :
+                       event.time ? 'exact' as const : 'estimated' as const,
+        time_range_start: event.startTime || null,
+        time_range_end: event.endTime || null,
+        location: event.location || null,
+        primary_entity_id: null, // Will be linked later if entities are created
+        verification_status: 'unverified' as const,
+        confidence_score: event.confidence || 0.5,
+        source_type: event.sourceType,
+        source_notes: event.source || null,
+        metadata: event.metadata || {},
+      };
+    });
 
     const { error: timelineError } = await supabaseServer
-      .from('evidence_events')
+      .from('timeline_events')
       .insert(timelineInserts);
 
     if (timelineError) {
