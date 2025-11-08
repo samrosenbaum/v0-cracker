@@ -21,8 +21,8 @@ import {
 
 interface CaseData {
   id: string;
-  case_number?: string;
-  case_name?: string;
+  name: string;
+  title: string;
   description: string | null;
   incident_date?: string | null;
   status: string;
@@ -179,7 +179,7 @@ export default function CaseDetailPage() {
             <div>
               <div className="flex items-center gap-3 mb-2">
                 <h1 className="text-3xl font-bold text-gray-900">
-                  {caseData.case_name || `Case #${caseData.case_number}`}
+                  {caseData.title || caseData.name}
                 </h1>
                 <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusBadgeClass(caseData.status)}`}>
                   {caseData.status.charAt(0).toUpperCase() + caseData.status.slice(1)}
@@ -188,8 +188,8 @@ export default function CaseDetailPage() {
                   {caseData.priority.charAt(0).toUpperCase() + caseData.priority.slice(1)} Priority
                 </span>
               </div>
-              {caseData.case_number && (
-                <p className="text-gray-600">Case Number: {caseData.case_number}</p>
+              {caseData.name && (
+                <p className="text-gray-600">Case Name: {caseData.name}</p>
               )}
             </div>
           </div>

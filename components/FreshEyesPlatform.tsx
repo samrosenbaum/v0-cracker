@@ -7,10 +7,8 @@ import { useRouter } from 'next/navigation';
 
 interface Case {
   id: string;
-  case_number?: string;
-  case_name?: string;
-  name?: string;
-  title?: string;
+  name: string;
+  title: string;
   description: string | null;
   incident_date?: string | null;
   lastUpdated?: string;
@@ -287,7 +285,7 @@ const FreshEyesPlatform = () => {
                   <div className="flex-1">
                     <div className="flex items-center space-x-3 mb-2">
                       <h4 className="text-lg font-medium text-gray-900">
-                        {case_.case_name || case_.case_number}
+                        {case_.title || case_.name}
                       </h4>
                       <StatusBadge status={case_.status} />
                       <PriorityBadge priority={case_.priority} />
@@ -335,7 +333,7 @@ const FreshEyesPlatform = () => {
           <div className="flex items-start justify-between mb-4">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 mb-2">
-                {selectedCase.case_name || selectedCase.case_number}
+                {selectedCase.title || selectedCase.name}
               </h1>
               {selectedCase.description && (
                 <p className="text-gray-600">{selectedCase.description}</p>
@@ -349,8 +347,8 @@ const FreshEyesPlatform = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
             <div className="space-y-2">
-              <p className="text-sm font-medium text-gray-500">Case Number</p>
-              <p className="text-lg text-gray-900">{selectedCase.case_number}</p>
+              <p className="text-sm font-medium text-gray-500">Case Name</p>
+              <p className="text-lg text-gray-900">{selectedCase.name}</p>
             </div>
             <div className="space-y-2">
               <p className="text-sm font-medium text-gray-500">Incident Date</p>

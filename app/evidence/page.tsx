@@ -16,8 +16,8 @@ interface CaseDocument {
   updated_at: string;
   user_id: string;
   cases?: {
-    case_name?: string;
-    case_number?: string;
+    name: string;
+    title: string;
   };
 }
 
@@ -38,8 +38,8 @@ export default function AllEvidencePage() {
       .select(`
         *,
         cases (
-          case_name,
-          case_number
+          name,
+          title
         )
       `)
       .order('created_at', { ascending: false });
@@ -143,7 +143,7 @@ export default function AllEvidencePage() {
                                 onClick={() => router.push(`/cases/${doc.case_id}`)}
                                 className="text-sm text-blue-600 hover:text-blue-700 font-medium"
                               >
-                                {doc.cases.case_name || doc.cases.case_number || 'View Case'}
+                                {doc.cases.title || doc.cases.name || 'View Case'}
                               </button>
                             </>
                           )}

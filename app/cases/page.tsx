@@ -7,8 +7,8 @@ import { FileText, Calendar, Plus, ArrowLeft } from 'lucide-react';
 
 interface Case {
   id: string;
-  case_number?: string;
-  case_name?: string;
+  name: string;
+  title: string;
   description: string | null;
   incident_date?: string | null;
   status: string;
@@ -206,7 +206,7 @@ export default function AllCasesPage() {
                     <div className="flex-1">
                       <div className="flex items-center space-x-3 mb-2">
                         <h4 className="text-lg font-medium text-gray-900">
-                          {case_.case_name || case_.case_number}
+                          {case_.title || case_.name}
                         </h4>
                         <StatusBadge status={case_.status} />
                         <PriorityBadge priority={case_.priority} />
