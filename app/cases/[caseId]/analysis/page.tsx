@@ -88,14 +88,25 @@ export default function AnalysisPage() {
     setRunningAnalysis(analysisType);
 
     try {
-      const endpoint = `/api/cases/${caseId}/${analysisType}`;
+      // Map analysis types to their correct endpoints
+      let endpoint: string;
+      let body: any = {};
 
-      const body = analysisType === 'victim-timeline'
-        ? {
-            victimName: caseInfo?.victim_name || 'Unknown',
-            incidentTime: caseInfo?.incident_date || new Date().toISOString(),
-          }
-        : {};
+      if (analysisType === 'victim-timeline') {
+        endpoint = `/api/cases/${caseId}/victim-timeline`;
+        body = {
+          victimName: caseInfo?.victim_name || 'Unknown',
+          incidentTime: caseInfo?.incident_date || new Date().toISOString(),
+        };
+      } else if (analysisType === 'timeline' || analysisType === 'deep-analysis') {
+        // Timeline and deep analysis use the analyze endpoint
+        endpoint = `/api/cases/${caseId}/analyze`;
+        body = {};
+      } else {
+        // Default to using the analysis type as the endpoint path
+        endpoint = `/api/cases/${caseId}/${analysisType}`;
+        body = {};
+      }
 
       const response = await fetch(endpoint, {
         method: 'POST',
