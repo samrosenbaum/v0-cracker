@@ -260,13 +260,13 @@ export default function AnalysisPage() {
     { id: 'timeline', color: 'blue', available: true },
     { id: 'deep-analysis', color: 'purple', available: true },
     { id: 'victim-timeline', color: 'green', available: true },
-    { id: 'behavioral-patterns', color: 'orange', available: false },
-    { id: 'evidence-gaps', color: 'red', available: false },
-    { id: 'relationship-network', color: 'indigo', available: false },
-    { id: 'similar-cases', color: 'teal', available: false },
-    { id: 'overlooked-details', color: 'yellow', available: false },
-    { id: 'interrogation-questions', color: 'pink', available: false },
-    { id: 'forensic-retesting', color: 'cyan', available: false },
+    { id: 'behavioral-patterns', color: 'orange', available: true },
+    { id: 'evidence-gaps', color: 'red', available: true },
+    { id: 'relationship-network', color: 'indigo', available: true },
+    { id: 'similar-cases', color: 'teal', available: true },
+    { id: 'overlooked-details', color: 'yellow', available: true },
+    { id: 'interrogation-questions', color: 'pink', available: true },
+    { id: 'forensic-retesting', color: 'cyan', available: true },
   ];
 
   const getColorClasses = (color: string, available: boolean) => {

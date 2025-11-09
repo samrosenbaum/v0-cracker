@@ -23,10 +23,10 @@ export async function GET() {
   return withCors(
     NextResponse.json(
       {
-        message: 'Victim Timeline endpoint is ready. Use POST method to run analysis.',
-        endpoint: '/api/cases/[caseId]/victim-timeline',
+        message: 'Overlooked Details Detection endpoint is ready. Use POST method to run analysis.',
+        endpoint: '/api/cases/[caseId]/overlooked-details',
         method: 'POST',
-        description: 'Reconstructs victim\'s last 24-48 hours with gap detection'
+        description: 'Identifies small details in case files that may have been previously missed'
       },
       { status: 200 }
     )
@@ -40,44 +40,28 @@ export async function POST(
   try {
     const params = await Promise.resolve(context.params);
     const { caseId } = params;
-    const body = await request.json();
 
-    // Get victim information from request
-    const {
-      victimName,
-      incidentTime,
-      incidentLocation,
-      typicalRoutine,
-      knownHabits,
-      regularContacts,
-    } = body;
-
-    if (!victimName || !incidentTime) {
-      return withCors(NextResponse.json(
-        { error: 'victimName and incidentTime are required' },
-        { status: 400 }
-      ));
-    }
+    console.log('[Overlooked Details API] Analysis requested for case:', caseId);
 
     const anthropicKey =
       process.env.ANTHROPIC_API_KEY || process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY;
 
     if (!anthropicKey) {
-      return withCors(NextResponse.json(
-        {
-          error:
-            'Anthropic API key is not configured. Please set ANTHROPIC_API_KEY before running victim timeline analysis.',
-        },
-        { status: 503 }
-      ));
+      return withCors(
+        NextResponse.json(
+          {
+            error:
+              'Anthropic API key is not configured. Please set ANTHROPIC_API_KEY before running overlooked details analysis.',
+          },
+          { status: 503 }
+        )
+      );
     }
 
     const now = new Date().toISOString();
     const initialMetadata = {
-      analysisType: 'victim_timeline',
-      victimName,
-      incidentTime,
-      incidentLocation,
+      analysisType: 'overlooked_details',
+      requestedAt: now,
     };
 
     const { data: job, error: jobError } = await supabaseServer
@@ -95,30 +79,18 @@ export async function POST(
       .single();
 
     if (jobError || !job) {
-      console.error('Failed to create processing job for victim timeline:', jobError);
+      console.error('[Overlooked Details API] Failed to create processing job:', jobError);
       return withCors(
         NextResponse.json(
-          { error: 'Unable to schedule victim timeline analysis job.' },
+          { error: 'Unable to schedule overlooked details analysis job.' },
           { status: 500 }
         )
       );
     }
 
-    await sendInngestEvent('analysis/victim-timeline', {
+    await sendInngestEvent('analysis/overlooked-details', {
       jobId: job.id,
       caseId,
-      victimInfo: {
-        name: victimName,
-        incidentTime,
-        incidentLocation,
-        typicalRoutine,
-        knownHabits,
-        regularContacts,
-      },
-      requestContext: {
-        digitalRecords: body.digitalRecords || null,
-      },
-      requestedAt: now,
     });
 
     return withCors(
@@ -128,16 +100,18 @@ export async function POST(
           jobId: job.id,
           status: 'pending',
           message:
-            'Victim timeline reconstruction has been scheduled. Check processing job status for progress.',
+            'Overlooked details analysis has been scheduled. Check processing job status for progress.',
         },
         { status: 202 }
       )
     );
   } catch (error: any) {
-    console.error('Victim timeline error:', error);
-    return withCors(NextResponse.json(
-      { error: error.message || 'Timeline analysis failed' },
-      { status: 500 }
-    ));
+    console.error('[Overlooked Details API] Error:', error);
+    return withCors(
+      NextResponse.json(
+        { error: error.message || 'Analysis failed' },
+        { status: 500 }
+      )
+    );
   }
 }

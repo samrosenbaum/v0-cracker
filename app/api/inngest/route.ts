@@ -25,6 +25,13 @@ import { populateInvestigationBoardJob } from '@/lib/jobs/populate-investigation
 import { processVictimTimelineJob } from '@/lib/jobs/victim-timeline';
 import { processTimelineAnalysisJob } from '@/lib/jobs/timeline-analysis';
 import { processDeepAnalysisJob } from '@/lib/jobs/deep-analysis';
+import { processBehavioralPatternsJob } from '@/lib/jobs/behavioral-patterns';
+import { processEvidenceGapsJob } from '@/lib/jobs/evidence-gaps';
+import { processRelationshipNetworkJob } from '@/lib/jobs/relationship-network';
+import { processSimilarCasesJob } from '@/lib/jobs/similar-cases';
+import { processOverlookedDetailsJob } from '@/lib/jobs/overlooked-details';
+import { processInterrogationQuestionsJob } from '@/lib/jobs/interrogation-questions';
+import { processForensicRetestingJob } from '@/lib/jobs/forensic-retesting';
 
 /**
  * Register all Inngest functions (jobs) here
@@ -43,6 +50,13 @@ const inngestFunctions = [
   processVictimTimelineJob,
   processTimelineAnalysisJob,
   processDeepAnalysisJob,
+  processBehavioralPatternsJob,
+  processEvidenceGapsJob,
+  processRelationshipNetworkJob,
+  processSimilarCasesJob,
+  processOverlookedDetailsJob,
+  processInterrogationQuestionsJob,
+  processForensicRetestingJob,
 ];
 
 /**
