@@ -2,8 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { sendInngestEvent } from '@/lib/inngest-client';
 import { hasSupabaseServiceConfig } from '@/lib/environment';
-import { listCaseDocuments, getStorageObject, addCaseAnalysis, getCaseById } from '@/lib/demo-data';
-import { analyzeCaseDocuments } from '@/lib/ai-analysis';
+import {
+  listCaseDocuments,
+  getStorageObject,
+  addCaseAnalysis,
+  getCaseById,
+  addProcessingJob,
+  updateProcessingJob,
+  getProcessingJob as getDemoProcessingJob,
+} from '@/lib/demo-data';
+import {
+  analyzeCaseDocuments,
+  detectTimeConflicts,
+  identifyOverlookedSuspects,
+  generateConflictSummary,
+} from '@/lib/ai-analysis';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -29,7 +42,346 @@ export async function GET() {
         message: 'Analysis endpoint is ready. Use POST method to run analysis.',
         endpoint: '/api/cases/[caseId]/analyze',
         method: 'POST',
-        description: 'Analyzes case documents and extracts timeline events and conflicts (async job)'
+        description: 'Analyzes case documents and extracts timeline events and conflicts (async job)',
+      },
+      { status: 200 }
+    )
+  );
+}
+
+async function resolveDocumentContent(
+  storagePath?: string | null,
+  metadata?: Record<string, any>
+): Promise<string> {
+  if (metadata) {
+    const textLikeFields = ['extracted_text', 'text', 'content', 'body', 'summary'];
+    for (const field of textLikeFields) {
+      const value = metadata[field];
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return value;
+      }
+    }
+  }
+
+  if (!storagePath) {
+    return '';
+  }
+
+  try {
+    const { data, error } = await supabaseServer.storage
+      .from('case-files')
+      .download(storagePath);
+
+    if (!error && data) {
+      const buffer = Buffer.from(await data.arrayBuffer());
+      const text = buffer.toString('utf-8');
+      if (text.trim().length > 0) {
+        return text;
+      }
+    }
+  } catch (storageError) {
+    console.warn('[Timeline Analysis API] Failed to download from storage:', storageError);
+  }
+
+  const fallbackObject = getStorageObject('case-files', storagePath);
+  if (fallbackObject?.content) {
+    return fallbackObject.content;
+  }
+
+  return '';
+}
+
+async function gatherDocumentsForAnalysis(caseId: string, preferSupabase: boolean) {
+  if (preferSupabase) {
+    try {
+      const { data: supabaseDocs, error: docError } = await supabaseServer
+        .from('case_documents')
+        .select('file_name, document_type, storage_path, metadata')
+        .eq('case_id', caseId);
+
+      if (!docError && supabaseDocs && supabaseDocs.length > 0) {
+        const documents: { content: string; filename: string; type: string }[] = [];
+        for (const doc of supabaseDocs) {
+          const content = await resolveDocumentContent(doc.storage_path, doc.metadata);
+          documents.push({
+            content: content || `[No extracted text available for ${doc.file_name}]`,
+            filename: doc.file_name,
+            type: doc.document_type || 'other',
+          });
+        }
+        if (documents.length > 0) {
+          return documents;
+        }
+      }
+    } catch (error) {
+      console.error('[Timeline Analysis API] Failed to gather documents from Supabase:', error);
+    }
+  }
+
+  const demoDocs = listCaseDocuments(caseId);
+  return demoDocs.map((doc) => {
+    const storage = doc.storage_path
+      ? getStorageObject('case-files', doc.storage_path)
+      : null;
+    const content =
+      (typeof doc.metadata?.extracted_text === 'string' && doc.metadata.extracted_text) ||
+      storage?.content ||
+      '';
+
+    return {
+      content: content || `Summary unavailable for ${doc.file_name}.`,
+      filename: doc.file_name,
+      type: doc.document_type || 'other',
+    };
+  });
+}
+
+async function runFallbackAnalysis(
+  caseId: string,
+  options: {
+    reason?: string;
+    useSupabase: boolean;
+    existingJobId?: string | null;
+  }
+) {
+  const { reason = 'fallback', useSupabase, existingJobId } = options;
+  console.log('[Timeline Analysis API] Running fallback timeline analysis:', {
+    caseId,
+    reason,
+    existingJobId,
+    mode: useSupabase ? 'supabase' : 'demo',
+  });
+
+  const caseRecord = useSupabase ? null : getCaseById(caseId);
+
+  if (!useSupabase && !caseRecord) {
+    return withCors(
+      NextResponse.json(
+        { error: `Case ${caseId} not found in local dataset.` },
+        { status: 404 }
+      )
+    );
+  }
+
+  const documents = await gatherDocumentsForAnalysis(caseId, useSupabase);
+
+  if (!documents.length) {
+    return withCors(
+      NextResponse.json(
+        {
+          error: 'No documents available for analysis. Upload files or configure Supabase connection.',
+        },
+        { status: 400 }
+      )
+    );
+  }
+
+  const analysis = await analyzeCaseDocuments(documents, caseId);
+  const timeConflicts = detectTimeConflicts(analysis.timeline);
+
+  const combinedConflicts = [...analysis.conflicts];
+  for (const conflict of timeConflicts) {
+    const exists = combinedConflicts.some(
+      (existing) =>
+        existing.type === conflict.type &&
+        existing.description === conflict.description &&
+        existing.details === conflict.details
+    );
+    if (!exists) {
+      combinedConflicts.push(conflict);
+    }
+  }
+
+  let formalSuspects: string[] = [];
+  if (useSupabase) {
+    try {
+      const { data: suspects, error: suspectError } = await supabaseServer
+        .from('suspects')
+        .select('name')
+        .eq('case_id', caseId);
+      if (!suspectError && suspects) {
+        formalSuspects = suspects
+          .map((suspect) => suspect?.name)
+          .filter((name): name is string => Boolean(name));
+      }
+    } catch (error) {
+      console.warn('[Timeline Analysis API] Unable to fetch suspects for fallback:', error);
+    }
+  }
+
+  const overlookedSuspects = identifyOverlookedSuspects(
+    analysis.personMentions,
+    formalSuspects
+  );
+
+  const finalAnalysis = {
+    ...analysis,
+    conflicts: combinedConflicts,
+    overlookedSuspects,
+    conflictSummary: generateConflictSummary(combinedConflicts),
+  };
+
+  const totalUnits = 5;
+  const now = new Date().toISOString();
+  const summary = {
+    totalEvents: finalAnalysis.timeline.length,
+    totalConflicts: finalAnalysis.conflicts.length,
+    criticalConflicts: finalAnalysis.conflicts.filter((c) => c.severity === 'critical').length,
+    overlookedSuspects: overlookedSuspects.length,
+  };
+
+  let jobId: string | null = existingJobId || null;
+  let analysisRecordId: string | null = null;
+
+  if (useSupabase) {
+    let existingJobMetadata: Record<string, any> = {};
+    let existingStartedAt: string | null = null;
+
+    if (existingJobId) {
+      const { data: jobRecord } = await supabaseServer
+        .from('processing_jobs')
+        .select('metadata, started_at, total_units')
+        .eq('id', existingJobId)
+        .maybeSingle();
+
+      existingJobMetadata = (jobRecord?.metadata as Record<string, any>) || {};
+      existingStartedAt = jobRecord?.started_at || null;
+    }
+
+    if (jobId) {
+      const { error: jobUpdateError } = await supabaseServer
+        .from('processing_jobs')
+        .update({
+          status: 'completed',
+          total_units: totalUnits,
+          completed_units: totalUnits,
+          failed_units: 0,
+          progress_percentage: 100,
+          started_at: existingStartedAt || now,
+          completed_at: now,
+          metadata: {
+            ...existingJobMetadata,
+            analysisType: 'timeline_and_conflicts',
+            fallbackReason: reason,
+            completedBy: 'timeline-fallback-engine',
+            summary,
+          },
+        })
+        .eq('id', jobId);
+
+      if (jobUpdateError) {
+        console.error('[Timeline Analysis API] Failed to update fallback job:', jobUpdateError);
+      }
+    } else {
+      const { data: jobInsert, error: jobInsertError } = await supabaseServer
+        .from('processing_jobs')
+        .insert({
+          case_id: caseId,
+          job_type: 'ai_analysis',
+          status: 'completed',
+          total_units: totalUnits,
+          completed_units: totalUnits,
+          failed_units: 0,
+          progress_percentage: 100,
+          started_at: now,
+          completed_at: now,
+          metadata: {
+            analysisType: 'timeline_and_conflicts',
+            fallbackReason: reason,
+            completedBy: 'timeline-fallback-engine',
+            summary,
+          },
+        })
+        .select('id')
+        .single();
+
+      if (jobInsertError) {
+        console.error('[Timeline Analysis API] Failed to insert fallback job:', jobInsertError);
+      } else {
+        jobId = jobInsert?.id || null;
+      }
+    }
+
+    const { data: analysisInsert, error: analysisError } = await supabaseServer
+      .from('case_analysis')
+      .insert({
+        case_id: caseId,
+        analysis_type: 'timeline_and_conflicts',
+        analysis_data: finalAnalysis as any,
+        confidence_score: 0.72,
+        used_prompt: 'Timeline analysis fallback',
+        created_at: now,
+        updated_at: now,
+      })
+      .select('id')
+      .single();
+
+    if (analysisError) {
+      console.error('[Timeline Analysis API] Failed to save fallback analysis:', analysisError);
+    } else {
+      analysisRecordId = analysisInsert?.id || null;
+    }
+  } else {
+    if (jobId) {
+      const demoJob = getDemoProcessingJob(jobId);
+      updateProcessingJob(jobId, {
+        status: 'completed',
+        total_units: totalUnits,
+        completed_units: totalUnits,
+        failed_units: 0,
+        progress_percentage: 100,
+        started_at: demoJob?.started_at || now,
+        completed_at: now,
+        metadata: {
+          ...(demoJob?.metadata || {}),
+          analysisType: 'timeline_and_conflicts',
+          fallbackReason: reason,
+          completedBy: 'timeline-fallback-engine',
+          summary,
+        },
+      });
+    } else {
+      const job = addProcessingJob({
+        case_id: caseId,
+        job_type: 'ai_analysis',
+        status: 'completed',
+        total_units: totalUnits,
+        completed_units: totalUnits,
+        failed_units: 0,
+        progress_percentage: 100,
+        started_at: now,
+        completed_at: now,
+        metadata: {
+          analysisType: 'timeline_and_conflicts',
+          fallbackReason: reason,
+          completedBy: 'timeline-fallback-engine',
+          summary,
+        },
+      });
+      jobId = job?.id || null;
+    }
+
+    const [analysisRecord] = addCaseAnalysis({
+      case_id: caseId,
+      analysis_type: 'timeline_and_conflicts',
+      analysis_data: finalAnalysis,
+      confidence_score: 0.68,
+      created_at: now,
+      updated_at: now,
+      used_prompt: 'Fallback timeline analysis',
+    });
+    analysisRecordId = analysisRecord?.id || null;
+  }
+
+  return withCors(
+    NextResponse.json(
+      {
+        success: true,
+        mode: 'instant',
+        jobId,
+        analysis: finalAnalysis,
+        analysisId: analysisRecordId,
+        message: 'Generated using local timeline analysis engine.',
       },
       { status: 200 }
     )
@@ -42,26 +394,42 @@ export async function POST(
 ) {
   const useSupabase = hasSupabaseServiceConfig();
   let resolvedCaseId = '';
+  let createdJobId: string | null = null;
 
-    console.log('[Timeline Analysis API] Starting analysis for case:', caseId);
+  try {
+    const params = await Promise.resolve(context.params);
+    const { caseId } = params;
 
-    // Fail-fast: Validate API keys before doing any expensive work
-    const anthropicKey =
-      process.env.ANTHROPIC_API_KEY || process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY;
-
-    if (!anthropicKey) {
-      console.error('[Timeline Analysis API] Missing Anthropic API key');
+    if (!caseId) {
       return withCors(
         NextResponse.json(
-          {
-            error: 'No documents available for analysis. Upload files or configure Supabase connection.',
-          },
+          { error: 'Case ID is required' },
           { status: 400 }
         )
       );
     }
 
-    // Verify the case exists first
+    resolvedCaseId = caseId;
+    console.log('[Timeline Analysis API] Starting analysis for case:', caseId);
+
+    if (!useSupabase) {
+      return await runFallbackAnalysis(caseId, {
+        reason: 'supabase-not-configured',
+        useSupabase,
+      });
+    }
+
+    const anthropicKey =
+      process.env.ANTHROPIC_API_KEY || process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY;
+
+    if (!anthropicKey) {
+      console.warn('[Timeline Analysis API] Missing Anthropic API key - using fallback analysis.');
+      return await runFallbackAnalysis(caseId, {
+        reason: 'missing-anthropic-key',
+        useSupabase,
+      });
+    }
+
     console.log('[Timeline Analysis API] Checking if case exists:', caseId);
     const { data: existingCase, error: caseCheckError } = await supabaseServer
       .from('cases')
@@ -71,16 +439,10 @@ export async function POST(
 
     if (caseCheckError) {
       console.error('[Timeline Analysis API] Error checking case:', caseCheckError);
-      return withCors(
-        NextResponse.json(
-          {
-            error: 'Failed to verify case exists',
-            details: caseCheckError.message,
-            caseId,
-          },
-          { status: 500 }
-        )
-      );
+      return await runFallbackAnalysis(caseId, {
+        reason: 'case-lookup-failed',
+        useSupabase,
+      });
     }
 
     if (!existingCase) {
@@ -99,7 +461,6 @@ export async function POST(
 
     console.log('[Timeline Analysis API] Case found:', existingCase.title);
 
-    // Create processing job record
     const now = new Date().toISOString();
     const initialMetadata = {
       analysisType: 'timeline_and_conflicts',
@@ -113,44 +474,35 @@ export async function POST(
         case_id: caseId,
         job_type: 'ai_analysis',
         status: 'pending',
-        total_units: 5, // Fetch, Extract, Analyze, Save Events, Save Conflicts
+        total_units: 5,
         completed_units: 0,
         failed_units: 0,
         metadata: initialMetadata,
       })
-      .select()
+      .select('id')
       .single();
 
     if (jobError || !job) {
-      console.error('[Timeline Analysis API] Failed to create processing job:', {
-        error: jobError,
-        code: jobError?.code,
-        message: jobError?.message,
-        details: jobError?.details,
-        hint: jobError?.hint,
+      console.error('[Timeline Analysis API] Failed to create processing job:', jobError);
+      return await runFallbackAnalysis(caseId, {
+        reason: 'job-create-failed',
+        useSupabase,
       });
-
-      // Provide more detailed error message
-      const errorDetails = jobError
-        ? `${jobError.message || 'Unknown error'} (Code: ${jobError.code || 'N/A'})`
-        : 'Job creation returned no data';
-
-      return withCors(
-        NextResponse.json(
-          {
-            error: 'Unable to schedule timeline analysis job.',
-            details: errorDetails,
-            hint: jobError?.hint || 'Check that the processing_jobs table exists in your Supabase database',
-            dbError: jobError,
-          },
-          { status: 500 }
-        )
-      );
     }
 
-    console.log('[Timeline Analysis API] Processing job created:', job.id);
+    createdJobId = job.id;
 
-    // Trigger Inngest background job (optional - gracefully handles missing Inngest config)
+    const hasInngest = process.env.INNGEST_EVENT_KEY || process.env.INNGEST_SIGNING_KEY;
+
+    if (!hasInngest) {
+      console.warn('[Timeline Analysis API] Inngest not configured - running analysis synchronously.');
+      return await runFallbackAnalysis(caseId, {
+        reason: 'inngest-not-configured',
+        useSupabase,
+        existingJobId: createdJobId,
+      });
+    }
+
     try {
       await sendInngestEvent('analysis/timeline', {
         jobId: job.id,
@@ -158,24 +510,21 @@ export async function POST(
       });
     } catch (inngestError) {
       console.error('[Timeline Analysis API] Inngest event failed:', inngestError);
-      // Don't fail the entire request if Inngest fails
-      // The job is created and can be processed manually or later
+      return await runFallbackAnalysis(caseId, {
+        reason: 'inngest-dispatch-failed',
+        useSupabase,
+        existingJobId: createdJobId,
+      });
     }
 
-    // Check if Inngest is configured
-    const hasInngest = process.env.INNGEST_EVENT_KEY || process.env.INNGEST_SIGNING_KEY;
-
-    // Return immediately with job ID
     return withCors(
       NextResponse.json(
         {
           success: true,
           jobId: job.id,
           status: 'pending',
-          message: hasInngest
-            ? 'Timeline analysis has been scheduled. Check processing job status for progress.'
-            : 'Timeline analysis job created. Note: Inngest not configured - job will not auto-process. Set INNGEST_EVENT_KEY to enable background processing.',
-          inngestConfigured: !!hasInngest,
+          message: 'Timeline analysis has been scheduled. Check processing job status for progress.',
+          inngestConfigured: true,
         },
         { status: 202 }
       )
@@ -184,14 +533,18 @@ export async function POST(
     console.error('[Timeline Analysis API] Error:', error);
     if (resolvedCaseId) {
       try {
-        return await runFallbackAnalysis(resolvedCaseId);
+        return await runFallbackAnalysis(resolvedCaseId, {
+          reason: 'exception',
+          useSupabase,
+          existingJobId: createdJobId,
+        });
       } catch (fallbackError) {
         console.error('[Timeline Analysis API] Fallback also failed:', fallbackError);
       }
     }
     return withCors(
       NextResponse.json(
-        { error: error.message || 'Analysis failed' },
+        { error: error?.message || 'Analysis failed' },
         { status: 500 }
       )
     );
