@@ -118,18 +118,54 @@ export default function AnalysisPage() {
 
       if (result.success) {
         if (result.mode === 'instant' && result.analysis) {
-          alert('Analysis generated immediately using local engine.');
+          // Instant analysis completed - provide clear feedback and navigation
           await loadOverview();
+
+          // Show helpful message based on analysis type
+          if (analysisType === 'timeline') {
+            const eventCount = result.analysis?.timeline?.length || 0;
+            const viewBoard = confirm(
+              'Timeline analysis completed successfully!\n\n' +
+              `${eventCount} timeline events have been extracted and saved.\n\n` +
+              'Click OK to view the timeline on the Investigation Board, or Cancel to stay here and see results below.'
+            );
+            if (viewBoard) {
+              router.push(`/cases/${caseId}/board`);
+              return;
+            }
+          } else if (analysisType === 'victim-timeline') {
+            const viewBoard = confirm(
+              'Victim timeline reconstruction completed successfully!\n\n' +
+              'Click OK to view the timeline on the Investigation Board, or Cancel to stay here and see results below.'
+            );
+            if (viewBoard) {
+              router.push(`/cases/${caseId}/board`);
+              return;
+            }
+          } else {
+            alert(
+              `${getAnalysisTitle(analysisType)} completed successfully!\n\n` +
+              'Results are now available in the Analysis History section below.'
+            );
+          }
+
+          // Scroll to analysis history section after a brief delay
+          setTimeout(() => {
+            const historySection = document.querySelector('.bg-white.rounded-lg.border:last-of-type');
+            if (historySection) {
+              historySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          }, 500);
+
           return;
         }
         // Show different messages based on analysis type
         if (analysisType === 'timeline') {
           if (result.jobId) {
             alert(
-              [
-                'Timeline analysis has been scheduled.',
-                'Track progress from the Processing Jobs panel or refresh this page once complete.',
-              ].join(' ')
+              'Timeline analysis has been scheduled.\n\n' +
+              'Track progress from the Processing Jobs panel. ' +
+              'Results will appear in the Analysis History section below when complete, and can be viewed on the Investigation Board.'
             );
           } else {
             // Legacy synchronous response (shouldn't happen anymore)
@@ -146,10 +182,9 @@ export default function AnalysisPage() {
         } else if (analysisType === 'victim-timeline') {
           if (result.jobId) {
             alert(
-              [
-                'Victim timeline reconstruction has been scheduled.',
-                'Track progress from the Processing Jobs panel or refresh this page once complete.',
-              ].join(' ')
+              'Victim timeline reconstruction has been scheduled.\n\n' +
+              'Track progress from the Processing Jobs panel. ' +
+              'Results will appear in the Analysis History section below when complete, and can be viewed on the Investigation Board.'
             );
           } else {
             const viewBoard = confirm(
@@ -164,16 +199,29 @@ export default function AnalysisPage() {
         } else if (analysisType === 'deep-analysis') {
           if (result.jobId) {
             alert(
-              [
-                'Deep analysis has been scheduled.',
-                'Track progress from the Processing Jobs panel or refresh this page once complete.',
-              ].join(' ')
+              'Deep analysis has been scheduled.\n\n' +
+              'Track progress from the Processing Jobs panel. ' +
+              'Results will appear in the Analysis History section below when complete.'
             );
           } else {
-            alert(`Deep analysis completed successfully!`);
+            alert(
+              'Deep analysis completed successfully!\n\n' +
+              'Results are now available in the Analysis History section below.'
+            );
           }
         } else {
-          alert(`${analysisType} completed successfully!`);
+          if (result.jobId) {
+            alert(
+              `${getAnalysisTitle(analysisType)} has been scheduled.\n\n` +
+              'Track progress from the Processing Jobs panel. ' +
+              'Results will appear in the Analysis History section below when complete.'
+            );
+          } else {
+            alert(
+              `${getAnalysisTitle(analysisType)} completed successfully!\n\n` +
+              'Results are now available in the Analysis History section below.'
+            );
+          }
         }
         await loadOverview();
       }
@@ -394,9 +442,9 @@ export default function AnalysisPage() {
               return (
                 <button
                   key={id}
-                  onClick={() => available && runAnalysis(id)}
-                  disabled={!available || isRunning}
-                  className={`flex flex-col p-4 border-2 ${colors.border} ${colors.hover} rounded-lg transition-colors text-left relative ${!available ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  onClick={() => available && !isLoading && runAnalysis(id)}
+                  disabled={!available || isRunning || isLoading}
+                  className={`flex flex-col p-4 border-2 ${colors.border} ${colors.hover} rounded-lg transition-colors text-left relative ${!available || isLoading ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
                   {!available && (
                     <div className="absolute top-3 right-3">
