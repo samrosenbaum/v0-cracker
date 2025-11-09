@@ -53,8 +53,29 @@ export async function POST(
       return withCors(
         NextResponse.json(
           {
-            error:
-              'Anthropic API key is not configured. Please set ANTHROPIC_API_KEY before running timeline analysis.',
+            error: 'Anthropic API key is not configured. Please set ANTHROPIC_API_KEY in Vercel environment variables.',
+          },
+          { status: 503 }
+        )
+      );
+    }
+
+    // Check for Inngest configuration (required for background job processing)
+    const hasInngest = process.env.INNGEST_EVENT_KEY || process.env.INNGEST_SIGNING_KEY;
+
+    if (!hasInngest) {
+      console.error('[Timeline Analysis API] Missing Inngest configuration');
+      return withCors(
+        NextResponse.json(
+          {
+            error: 'Background job system not configured',
+            details: 'Timeline analysis requires Inngest for background processing. Without it, jobs will be created but never run.',
+            setup: {
+              step1: 'Sign up at https://app.inngest.com (free)',
+              step2: 'Get your INNGEST_EVENT_KEY and INNGEST_SIGNING_KEY',
+              step3: 'Add them to Vercel Environment Variables',
+              step4: 'Redeploy your app'
+            }
           },
           { status: 503 }
         )

@@ -21,9 +21,12 @@ cp .env.example .env.local
 ```
 
 Edit `.env.local` with your actual API keys:
-- Supabase URL and keys
-- Anthropic API key
-- (Optional) OpenAI and Inngest keys
+- Supabase URL and keys (required)
+- Anthropic API key (required)
+- Inngest event key and signing key (required for timeline analysis)
+- OpenAI API key (optional)
+
+**Check your configuration:** Visit `/api/health` after starting the server to see if all dependencies are configured.
 
 See [.env.example](./.env.example) for details.
 
@@ -36,10 +39,13 @@ Visit http://localhost:3000
 
 ## Required Services
 
+### Core Requirements (App won't work without these)
 - **Supabase**: Database and storage
 - **Anthropic API**: AI-powered analysis
-- **OpenAI** (optional): Embeddings and additional AI features
-- **Inngest** (optional): Background job processing
+- **Inngest**: Background job processing for timeline analysis, deep analysis, and document processing
+
+### Optional Services
+- **OpenAI**: Embeddings and additional AI features (not required)
 
 ## Documentation
 
@@ -57,6 +63,18 @@ Visit http://localhost:3000
 - Victim timeline analysis
 
 ## Troubleshooting
+
+**Check your configuration first:**
+```bash
+# Visit this endpoint after starting the server
+curl http://localhost:3000/api/health
+# Or visit in browser: http://localhost:3000/api/health
+```
+
+**Timeline analysis stuck at 0% progress?**
+- You need to configure Inngest (see `.env.example`)
+- Sign up at https://app.inngest.com (free)
+- Add INNGEST_EVENT_KEY and INNGEST_SIGNING_KEY to your environment variables
 
 **Getting 404 errors for logo?**
 - Fixed: Logo is now in `public/fresh-eyes-logo.png`
