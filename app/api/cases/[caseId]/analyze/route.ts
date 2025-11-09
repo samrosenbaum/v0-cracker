@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { analyzeCaseDocuments, detectTimeConflicts, identifyOverlookedSuspects, generateConflictSummary } from '@/lib/ai-analysis';
 import { extractMultipleDocuments, queueDocumentForReview } from '@/lib/document-parser';
+import { optionsPreflight, withCorsHeaders } from '@/lib/cors';
+
+export async function OPTIONS(request: NextRequest) {
+  return optionsPreflight(request);
+}
 
 export async function POST(
   request: NextRequest,
@@ -17,13 +22,19 @@ export async function POST(
       .eq('case_id', caseId);
 
     if (docError) {
-      return NextResponse.json({ error: docError.message }, { status: 500 });
+      return withCorsHeaders(
+        request,
+        NextResponse.json({ error: docError.message }, { status: 500 })
+      );
     }
 
     if (!documents || documents.length === 0) {
-      return NextResponse.json(
-        { error: 'No documents found for this case' },
-        { status: 404 }
+      return withCorsHeaders(
+        request,
+        NextResponse.json(
+          { error: 'No documents found for this case' },
+          { status: 404 }
+        )
       );
     }
 
@@ -179,23 +190,29 @@ export async function POST(
       });
 
     if (analysisError) {
-      return NextResponse.json({ error: analysisError.message }, { status: 500 });
+      return withCorsHeaders(
+        request,
+        NextResponse.json({ error: analysisError.message }, { status: 500 })
+      );
     }
 
-    return NextResponse.json({
+    return withCorsHeaders(request, NextResponse.json({
       success: true,
       analysis: {
         ...analysis,
         overlookedSuspects,
         conflictSummary: generateConflictSummary(analysis.conflicts),
       },
-    });
+    }));
 
   } catch (error: any) {
     console.error('Analysis error:', error);
-    return NextResponse.json(
-      { error: error.message || 'Analysis failed' },
-      { status: 500 }
+    return withCorsHeaders(
+      request,
+      NextResponse.json(
+        { error: error.message || 'Analysis failed' },
+        { status: 500 }
+      )
     );
   }
 }
