@@ -42,11 +42,14 @@ export async function POST(
     const params = await Promise.resolve(context.params);
     const { caseId } = params;
 
+    console.log('[Timeline Analysis API] Starting analysis for case:', caseId);
+
     // Fail-fast: Validate API keys before doing any expensive work
     const anthropicKey =
       process.env.ANTHROPIC_API_KEY || process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY;
 
     if (!anthropicKey) {
+      console.error('[Timeline Analysis API] Missing Anthropic API key');
       return withCors(
         NextResponse.json(
           {
@@ -58,6 +61,44 @@ export async function POST(
       );
     }
 
+    // Verify the case exists first
+    console.log('[Timeline Analysis API] Checking if case exists:', caseId);
+    const { data: existingCase, error: caseCheckError } = await supabaseServer
+      .from('cases')
+      .select('id, title')
+      .eq('id', caseId)
+      .maybeSingle();
+
+    if (caseCheckError) {
+      console.error('[Timeline Analysis API] Error checking case:', caseCheckError);
+      return withCors(
+        NextResponse.json(
+          {
+            error: 'Failed to verify case exists',
+            details: caseCheckError.message,
+            caseId,
+          },
+          { status: 500 }
+        )
+      );
+    }
+
+    if (!existingCase) {
+      console.error('[Timeline Analysis API] Case not found:', caseId);
+      return withCors(
+        NextResponse.json(
+          {
+            error: 'Case not found',
+            details: `No case exists with ID: ${caseId}`,
+            caseId,
+          },
+          { status: 404 }
+        )
+      );
+    }
+
+    console.log('[Timeline Analysis API] Case found:', existingCase.title);
+
     // Create processing job record
     const now = new Date().toISOString();
     const initialMetadata = {
@@ -65,6 +106,7 @@ export async function POST(
       requestedAt: now,
     };
 
+    console.log('[Timeline Analysis API] Creating processing job...');
     const { data: job, error: jobError } = await supabaseServer
       .from('processing_jobs')
       .insert({
@@ -74,18 +116,23 @@ export async function POST(
         total_units: 5, // Fetch, Extract, Analyze, Save Events, Save Conflicts
         completed_units: 0,
         failed_units: 0,
-        progress_percentage: 0,
         metadata: initialMetadata,
       })
       .select()
       .single();
 
     if (jobError || !job) {
-      console.error('[Timeline Analysis API] Failed to create processing job:', jobError);
+      console.error('[Timeline Analysis API] Failed to create processing job:', {
+        error: jobError,
+        code: jobError?.code,
+        message: jobError?.message,
+        details: jobError?.details,
+        hint: jobError?.hint,
+      });
 
       // Provide more detailed error message
       const errorDetails = jobError
-        ? `Database error: ${jobError.message || JSON.stringify(jobError)}`
+        ? `${jobError.message || 'Unknown error'} (Code: ${jobError.code || 'N/A'})`
         : 'Job creation returned no data';
 
       return withCors(
@@ -93,12 +140,15 @@ export async function POST(
           {
             error: 'Unable to schedule timeline analysis job.',
             details: errorDetails,
-            hint: 'Check that the processing_jobs table exists in your Supabase database'
+            hint: jobError?.hint || 'Check that the processing_jobs table exists in your Supabase database',
+            dbError: jobError,
           },
           { status: 500 }
         )
       );
     }
+
+    console.log('[Timeline Analysis API] Processing job created:', job.id);
 
     // Trigger Inngest background job (optional - gracefully handles missing Inngest config)
     try {
