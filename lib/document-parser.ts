@@ -364,13 +364,30 @@ async function transcribeAudio(
 async function getCachedExtraction(storagePath: string): Promise<ExtractionResult | null> {
 
   try {
-    const { data, error } = await supabaseServer
-      .from('case_files')
+    // Try case_documents first (primary table for uploaded documents)
+    let data: any = null;
+    const { data: documentsData, error: docsError } = await supabaseServer
+      .from('case_documents')
       .select('ai_extracted_text, ai_transcription, metadata')
       .eq('storage_path', storagePath)
-      .single();
+      .maybeSingle();
 
-    if (error || !data) {
+    if (documentsData) {
+      data = documentsData;
+    } else {
+      // Fallback to case_files table
+      const { data: filesData, error: filesError } = await supabaseServer
+        .from('case_files')
+        .select('ai_extracted_text, ai_transcription, metadata')
+        .eq('storage_path', storagePath)
+        .maybeSingle();
+
+      if (filesData) {
+        data = filesData;
+      }
+    }
+
+    if (!data) {
       return null;
     }
 
@@ -378,6 +395,7 @@ async function getCachedExtraction(storagePath: string): Promise<ExtractionResul
     const extractedText = data.ai_extracted_text || data.ai_transcription;
 
     if (extractedText && extractedText.length > 10) {
+      console.log('[Document Parser] ✓ Using cached extraction');
       return {
         text: extractedText,
         method: 'cached',
@@ -420,15 +438,29 @@ async function cacheExtraction(
       updateData.ai_extracted_text = result.text;
     }
 
-    const { error } = await supabaseServer
+    // Try updating case_documents first
+    const { error: docsError, count: docsCount } = await supabaseServer
+      .from('case_documents')
+      .update(updateData)
+      .eq('storage_path', storagePath);
+
+    if (!docsError && docsCount && docsCount > 0) {
+      console.log('[Document Parser] ✓ Cached extraction in case_documents');
+      return;
+    }
+
+    // Fallback to case_files
+    const { error: filesError, count: filesCount } = await supabaseServer
       .from('case_files')
       .update(updateData)
       .eq('storage_path', storagePath);
 
-    if (error) {
-      console.error('[Document Parser] Error caching extraction:', error);
+    if (!filesError && filesCount && filesCount > 0) {
+      console.log('[Document Parser] ✓ Cached extraction in case_files');
+    } else if (filesError) {
+      console.error('[Document Parser] Error caching extraction:', filesError);
     } else {
-      console.log('[Document Parser] Cached extraction in database');
+      console.warn('[Document Parser] ⚠️  No document found with storage_path:', storagePath);
     }
 
   } catch (error) {
@@ -538,25 +570,34 @@ function calculateReviewPriority(result: ExtractionResult): number {
  */
 export async function getExtractionStats(caseId: string) {
 
+  // Get stats from case_documents (primary table)
+  const { data: documents } = await supabaseServer
+    .from('case_documents')
+    .select('ai_analyzed, ai_extracted_text, ai_transcription, document_type')
+    .eq('case_id', caseId);
+
+  // Also get stats from case_files (secondary table)
   const { data: files } = await supabaseServer
     .from('case_files')
     .select('ai_analyzed, ai_extracted_text, ai_transcription, file_type')
     .eq('case_id', caseId);
 
-  if (!files) return null;
+  const allFiles = [...(documents || []), ...(files || [])];
+
+  if (allFiles.length === 0) return null;
 
   const stats = {
-    total: files.length,
-    extracted: files.filter(f => f.ai_analyzed).length,
-    pending: files.filter(f => !f.ai_analyzed).length,
+    total: allFiles.length,
+    extracted: allFiles.filter(f => f.ai_analyzed).length,
+    pending: allFiles.filter(f => !f.ai_analyzed).length,
     byType: {
-      documents: files.filter(f => f.file_type === 'document').length,
-      images: files.filter(f => f.file_type === 'image').length,
-      audio: files.filter(f => f.file_type === 'audio').length,
-      video: files.filter(f => f.file_type === 'video').length,
+      documents: allFiles.filter(f => (f as any).document_type || (f as any).file_type === 'document').length,
+      images: allFiles.filter(f => (f as any).file_type === 'image').length,
+      audio: allFiles.filter(f => (f as any).file_type === 'audio').length,
+      video: allFiles.filter(f => (f as any).file_type === 'video').length,
     },
-    totalCharacters: files.reduce((sum, f) => {
-      const text = f.ai_extracted_text || f.ai_transcription || '';
+    totalCharacters: allFiles.reduce((sum, f) => {
+      const text = (f as any).ai_extracted_text || (f as any).ai_transcription || '';
       return sum + text.length;
     }, 0),
   };
