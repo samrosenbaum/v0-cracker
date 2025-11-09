@@ -306,21 +306,37 @@ ALTER TABLE public.suspects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.evidence_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.quality_flags ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view their agencies" ON public.agencies FOR SELECT USING (id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid()));
-CREATE POLICY "Users can view their agency memberships" ON public.agency_members FOR SELECT USING (user_id = auth.uid());
-CREATE POLICY "Users can view cases from their agency" ON public.cases FOR SELECT USING (agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid()));
-CREATE POLICY "Users can insert cases to their agency" ON public.cases FOR INSERT WITH CHECK (agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid()) AND user_id = auth.uid());
-CREATE POLICY "Users can update cases in their agency" ON public.cases FOR UPDATE USING (agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid()));
-CREATE POLICY "Users can delete their own cases" ON public.cases FOR DELETE USING (user_id = auth.uid());
-CREATE POLICY "Users can view case files from their agency cases" ON public.case_files FOR SELECT USING (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
-CREATE POLICY "Users can insert case files to their agency cases" ON public.case_files FOR INSERT WITH CHECK (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
-CREATE POLICY "Users can view case documents from their agency cases" ON public.case_documents FOR SELECT USING (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
-CREATE POLICY "Users can insert case documents to their agency cases" ON public.case_documents FOR INSERT WITH CHECK (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
-CREATE POLICY "Users can view analysis from their agency cases" ON public.case_analysis FOR SELECT USING (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
-CREATE POLICY "Users can insert analysis to their agency cases" ON public.case_analysis FOR INSERT WITH CHECK (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
-CREATE POLICY "Users can view suspects from their agency cases" ON public.suspects FOR SELECT USING (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
-CREATE POLICY "Users can manage suspects in their agency cases" ON public.suspects FOR ALL USING (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
-CREATE POLICY "Users can view evidence events from their agency cases" ON public.evidence_events FOR SELECT USING (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
-CREATE POLICY "Users can manage evidence events in their agency cases" ON public.evidence_events FOR ALL USING (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
-CREATE POLICY "Users can view quality flags from their agency cases" ON public.quality_flags FOR SELECT USING (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
-CREATE POLICY "Users can manage quality flags in their agency cases" ON public.quality_flags FOR ALL USING (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
+-- NOTE: These policies are DISABLED for development/testing
+-- Authentication is currently disabled in the app, so we use permissive policies
+-- See EMERGENCY-FIX.sql for the active policies that allow anonymous access
+--
+-- ORIGINAL AUTH-BASED POLICIES (commented out - DO NOT re-enable without re-enabling auth):
+-- CREATE POLICY "Users can view their agencies" ON public.agencies FOR SELECT USING (id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid()));
+-- CREATE POLICY "Users can view their agency memberships" ON public.agency_members FOR SELECT USING (user_id = auth.uid());
+-- CREATE POLICY "Users can view cases from their agency" ON public.cases FOR SELECT USING (agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid()));
+-- CREATE POLICY "Users can insert cases to their agency" ON public.cases FOR INSERT WITH CHECK (agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid()) AND user_id = auth.uid());
+-- CREATE POLICY "Users can update cases in their agency" ON public.cases FOR UPDATE USING (agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid()));
+-- CREATE POLICY "Users can delete their own cases" ON public.cases FOR DELETE USING (user_id = auth.uid());
+-- CREATE POLICY "Users can view case files from their agency cases" ON public.case_files FOR SELECT USING (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
+-- CREATE POLICY "Users can insert case files to their agency cases" ON public.case_files FOR INSERT WITH CHECK (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
+-- CREATE POLICY "Users can view case documents from their agency cases" ON public.case_documents FOR SELECT USING (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
+-- CREATE POLICY "Users can insert case documents to their agency cases" ON public.case_documents FOR INSERT WITH CHECK (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
+-- CREATE POLICY "Users can view analysis from their agency cases" ON public.case_analysis FOR SELECT USING (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
+-- CREATE POLICY "Users can insert analysis to their agency cases" ON public.case_analysis FOR INSERT WITH CHECK (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
+-- CREATE POLICY "Users can view suspects from their agency cases" ON public.suspects FOR SELECT USING (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
+-- CREATE POLICY "Users can manage suspects in their agency cases" ON public.suspects FOR ALL USING (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
+-- CREATE POLICY "Users can view evidence events from their agency cases" ON public.evidence_events FOR SELECT USING (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
+-- CREATE POLICY "Users can manage evidence events in their agency cases" ON public.evidence_events FOR ALL USING (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
+-- CREATE POLICY "Users can view quality flags from their agency cases" ON public.quality_flags FOR SELECT USING (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
+-- CREATE POLICY "Users can manage quality flags in their agency cases" ON public.quality_flags FOR ALL USING (case_id IN (SELECT id FROM public.cases WHERE agency_id IN (SELECT agency_id FROM public.agency_members WHERE user_id = auth.uid())));
+
+-- ACTIVE POLICIES: Allow anonymous access (auth is disabled)
+CREATE POLICY "Allow all for all users" ON public.agencies FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for all users" ON public.agency_members FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for all users" ON public.cases FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for all users" ON public.case_files FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for all users" ON public.case_documents FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for all users" ON public.case_analysis FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for all users" ON public.suspects FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for all users" ON public.evidence_events FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for all users" ON public.quality_flags FOR ALL USING (true) WITH CHECK (true);
