@@ -1,4 +1,43 @@
+import type Anthropic from '@anthropic-ai/sdk';
+
 import { DEFAULT_ANTHROPIC_MODEL, getAnthropicClient } from './anthropic-client';
+
+const DEFAULT_ANTHROPIC_TIMEOUT_MS = 120_000;
+
+type MessageCreateParams = Parameters<Anthropic['messages']['create']>[0];
+
+async function createAnthropicMessageWithTimeout(
+  params: MessageCreateParams,
+  label: string,
+  timeoutMs: number = DEFAULT_ANTHROPIC_TIMEOUT_MS
+) {
+  const anthropic = getAnthropicClient();
+
+  let timeoutHandle: NodeJS.Timeout | null = null;
+
+  try {
+    const result = await Promise.race([
+      anthropic.messages.create(params),
+      new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new Error(`Anthropic request timed out during ${label} after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+
+    return result;
+  } catch (error: any) {
+    if (error?.message?.includes('timed out during')) {
+      throw error;
+    }
+
+    throw new Error(`Anthropic ${label} failed: ${error?.message || error}`);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+}
 
 // ============================================================================
 // VICTIM LAST MOVEMENTS RECONSTRUCTION
@@ -238,13 +277,14 @@ Reconstruct the victim's timeline for the 24-48 hours preceding the incident. Fo
 
 Provide response as valid JSON only.`;
 
-  const anthropic = getAnthropicClient();
-
-  const message = await anthropic.messages.create({
-    model: DEFAULT_ANTHROPIC_MODEL,
-    max_tokens: 8000,
-    messages: [{ role: 'user', content: prompt }],
-  });
+  const message = await createAnthropicMessageWithTimeout(
+    {
+      model: DEFAULT_ANTHROPIC_MODEL,
+      max_tokens: 8000,
+      messages: [{ role: 'user', content: prompt }],
+    },
+    'victim timeline reconstruction'
+  );
 
   const content = message.content[0];
   if (content.type !== 'text') {
@@ -386,13 +426,14 @@ Each deviation could be significant - it might indicate:
 
 Return array of RoutineDeviation objects.`;
 
-  const anthropic = getAnthropicClient();
-
-  const message = await anthropic.messages.create({
-    model: DEFAULT_ANTHROPIC_MODEL,
-    max_tokens: 4000,
-    messages: [{ role: 'user', content: prompt }],
-  });
+  const message = await createAnthropicMessageWithTimeout(
+    {
+      model: DEFAULT_ANTHROPIC_MODEL,
+      max_tokens: 4000,
+      messages: [{ role: 'user', content: prompt }],
+    },
+    'routine deviation analysis'
+  );
 
   const content = message.content[0];
   if (content.type !== 'text') throw new Error('Unexpected response type');
@@ -470,13 +511,14 @@ Focus on digital evidence that:
 
 Return JSON with footprints, lastCommunications, and suspiciousActivity arrays.`;
 
-  const anthropic = getAnthropicClient();
-
-  const message = await anthropic.messages.create({
-    model: DEFAULT_ANTHROPIC_MODEL,
-    max_tokens: 4000,
-    messages: [{ role: 'user', content: prompt }],
-  });
+  const message = await createAnthropicMessageWithTimeout(
+    {
+      model: DEFAULT_ANTHROPIC_MODEL,
+      max_tokens: 4000,
+      messages: [{ role: 'user', content: prompt }],
+    },
+    'digital footprint analysis'
+  );
 
   const content = message.content[0];
   if (content.type !== 'text') throw new Error('Unexpected response type');
@@ -552,13 +594,14 @@ Calculate credibility score and recommend reliability level.
 
 Return array of WitnessAccountValidation objects.`;
 
-  const anthropic = getAnthropicClient();
-
-  const message = await anthropic.messages.create({
-    model: DEFAULT_ANTHROPIC_MODEL,
-    max_tokens: 4000,
-    messages: [{ role: 'user', content: prompt }],
-  });
+  const message = await createAnthropicMessageWithTimeout(
+    {
+      model: DEFAULT_ANTHROPIC_MODEL,
+      max_tokens: 4000,
+      messages: [{ role: 'user', content: prompt }],
+    },
+    'witness validation analysis'
+  );
 
   const content = message.content[0];
   if (content.type !== 'text') throw new Error('Unexpected response type');

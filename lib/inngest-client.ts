@@ -90,6 +90,26 @@ type Events = {
     };
   };
 
+  // Triggered to run the long-form victim timeline reconstruction
+  'analysis/victim-timeline': {
+    data: {
+      jobId: string;
+      caseId: string;
+      victimInfo: {
+        name: string;
+        incidentTime: string;
+        incidentLocation?: string | null;
+        typicalRoutine?: string | null;
+        knownHabits?: string | null;
+        regularContacts?: string[] | null;
+      };
+      requestContext?: {
+        digitalRecords?: any;
+      };
+      requestedAt: string;
+    };
+  };
+
   // Triggered to populate Investigation Board from case documents
   'board/populate': {
     data: {
