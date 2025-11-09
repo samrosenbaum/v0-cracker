@@ -8,20 +8,20 @@ export const metadata: Metadata = {
   title: "FreshEyes Intelligence Platform",
   description: "AI-powered investigative intelligence for modern casework",
   icons: {
-    icon: "/fresheyes-favicon.svg",
-    shortcut: "/fresheyes-favicon.png",
-    apple: "/fresheyes-apple-touch.png",
+    icon: "/fresh-eyes-logo.png",
+    shortcut: "/fresh-eyes-logo.png",
+    apple: "/fresh-eyes-logo.png",
   },
   openGraph: {
     title: "FreshEyes Intelligence Platform",
     description: "AI-powered investigative intelligence for modern casework",
-    images: ["/fresheyes-og.png"],
+    images: ["/fresh-eyes-logo.png"],
   },
   twitter: {
     card: "summary_large_image",
     title: "FreshEyes Intelligence Platform",
     description: "AI-powered investigative intelligence for modern casework",
-    images: ["/fresheyes-og.png"],
+    images: ["/fresh-eyes-logo.png"],
   },
 }
 

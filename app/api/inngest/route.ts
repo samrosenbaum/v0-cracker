@@ -22,16 +22,27 @@ import {
 } from '@/lib/jobs/process-document-chunks';
 
 import { populateInvestigationBoardJob } from '@/lib/jobs/populate-investigation-board';
+import { processVictimTimelineJob } from '@/lib/jobs/victim-timeline';
+import { processTimelineAnalysisJob } from '@/lib/jobs/timeline-analysis';
+import { processDeepAnalysisJob } from '@/lib/jobs/deep-analysis';
 
 /**
  * Register all Inngest functions (jobs) here
  */
 const inngestFunctions = [
+  // Document processing
   chunkDocumentJob,
   processChunkJob,
   aggregateDocumentJob,
   generateEmbeddingsJob,
+
+  // Investigation board
   populateInvestigationBoardJob,
+
+  // AI Analysis jobs (async to avoid timeouts)
+  processVictimTimelineJob,
+  processTimelineAnalysisJob,
+  processDeepAnalysisJob,
 ];
 
 /**

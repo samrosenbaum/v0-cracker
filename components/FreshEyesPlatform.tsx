@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { Upload, Search, Eye, FileText, Users, Calendar, AlertTriangle, Brain, Plus, Filter, Download, Share2, LogOut } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { useRouter } from 'next/navigation';
@@ -456,7 +457,13 @@ const FreshEyesPlatform = () => {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-blue-600 rounded-lg"></div>
+                <Image
+                  src="/fresh-eyes-logo.png"
+                  alt="FreshEyes Logo"
+                  width={32}
+                  height={32}
+                  className="rounded-lg"
+                />
                 <h1 className="text-xl font-bold text-gray-900">FreshEyes</h1>
               </div>
 

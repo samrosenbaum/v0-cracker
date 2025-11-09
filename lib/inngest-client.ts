@@ -90,11 +90,67 @@ type Events = {
     };
   };
 
+  // Triggered to run the long-form victim timeline reconstruction
+  'analysis/victim-timeline': {
+    data: {
+      jobId: string;
+      caseId: string;
+      victimInfo: {
+        name: string;
+        incidentTime: string;
+        incidentLocation?: string | null;
+        typicalRoutine?: string | null;
+        knownHabits?: string | null;
+        regularContacts?: string[] | null;
+      };
+      requestContext?: {
+        digitalRecords?: any;
+      };
+      requestedAt: string;
+    };
+  };
+
   // Triggered to populate Investigation Board from case documents
   'board/populate': {
     data: {
       caseId: string;
       caseFileId?: string; // Optional: populate from specific file, otherwise all files
+    };
+  };
+
+  // ============================================================================
+  // ASYNC ANALYSIS JOBS
+  // These events trigger background analysis jobs that avoid API timeouts
+  // ============================================================================
+
+  // Triggered to run timeline analysis
+  'analysis/timeline': {
+    data: {
+      jobId: string;
+      caseId: string;
+    };
+  };
+
+  // Triggered to run deep/comprehensive analysis
+  'analysis/deep-analysis': {
+    data: {
+      jobId: string;
+      caseId: string;
+    };
+  };
+
+  // Triggered to run victim timeline reconstruction
+  'analysis/victim-timeline': {
+    data: {
+      jobId: string;
+      caseId: string;
+      victimName: string;
+      incidentTime: string;
+      incidentLocation?: string;
+      typicalRoutine?: string;
+      knownHabits?: string[];
+      regularContacts?: string[];
+      digitalRecords?: any;
     };
   };
 };
