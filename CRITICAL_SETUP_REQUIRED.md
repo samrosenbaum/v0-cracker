@@ -13,9 +13,17 @@ Your application is failing with these errors:
 ## WHERE Are You Seeing These Errors?
 
 ### 🌐 On Vercel Deployed Site (*.vercel.app)?
+
+**MOST COMMON ISSUE**: Missing database tables!
+
+Even if your environment variables are configured correctly in Vercel, you need to run database migrations.
+
+**→ See [SUPABASE_DATABASE_SETUP.md](./SUPABASE_DATABASE_SETUP.md)** - START HERE!
+
+If you've already run migrations and still have issues:
 **→ See [VERCEL_ENV_CHECKLIST.md](./VERCEL_ENV_CHECKLIST.md)**
 
-Your Vercel environment variables need to be configured. Even though you may have added them, check:
+Your Vercel environment variables need to be configured:
 - All required variables are set in Vercel dashboard
 - Variables are enabled for the right environment (Production/Preview)
 - You redeployed after adding variables

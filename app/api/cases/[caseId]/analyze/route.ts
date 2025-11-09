@@ -82,19 +82,38 @@ export async function POST(
 
     if (jobError || !job) {
       console.error('[Timeline Analysis API] Failed to create processing job:', jobError);
+
+      // Provide more detailed error message
+      const errorDetails = jobError
+        ? `Database error: ${jobError.message || JSON.stringify(jobError)}`
+        : 'Job creation returned no data';
+
       return withCors(
         NextResponse.json(
-          { error: 'Unable to schedule timeline analysis job.' },
+          {
+            error: 'Unable to schedule timeline analysis job.',
+            details: errorDetails,
+            hint: 'Check that the processing_jobs table exists in your Supabase database'
+          },
           { status: 500 }
         )
       );
     }
 
-    // Trigger Inngest background job
-    await sendInngestEvent('analysis/timeline', {
-      jobId: job.id,
-      caseId,
-    });
+    // Trigger Inngest background job (optional - gracefully handles missing Inngest config)
+    try {
+      await sendInngestEvent('analysis/timeline', {
+        jobId: job.id,
+        caseId,
+      });
+    } catch (inngestError) {
+      console.error('[Timeline Analysis API] Inngest event failed:', inngestError);
+      // Don't fail the entire request if Inngest fails
+      // The job is created and can be processed manually or later
+    }
+
+    // Check if Inngest is configured
+    const hasInngest = process.env.INNGEST_EVENT_KEY || process.env.INNGEST_SIGNING_KEY;
 
     // Return immediately with job ID
     return withCors(
@@ -103,8 +122,10 @@ export async function POST(
           success: true,
           jobId: job.id,
           status: 'pending',
-          message:
-            'Timeline analysis has been scheduled. Check processing job status for progress.',
+          message: hasInngest
+            ? 'Timeline analysis has been scheduled. Check processing job status for progress.'
+            : 'Timeline analysis job created. Note: Inngest not configured - job will not auto-process. Set INNGEST_EVENT_KEY to enable background processing.',
+          inngestConfigured: !!hasInngest,
         },
         { status: 202 }
       )
