@@ -92,15 +92,23 @@ export default function CaseFilesPage() {
   };
 
   const runAnalysis = async (analysisType: 'timeline' | 'deep-analysis' | 'victim-timeline') => {
-    const endpoint = `/api/cases/${caseId}/${analysisType}`;
-
     try {
-      const body = analysisType === 'victim-timeline'
-        ? {
-            victimName: caseInfo?.victim_name || 'Unknown',
-            incidentTime: caseInfo?.incident_date || new Date().toISOString(),
-          }
-        : {};
+      let endpoint: string;
+      let body: any = {};
+
+      if (analysisType === 'victim-timeline') {
+        endpoint = `/api/cases/${caseId}/victim-timeline`;
+        body = {
+          victimName: caseInfo?.victim_name || 'Unknown',
+          incidentTime: caseInfo?.incident_date || new Date().toISOString(),
+        };
+      } else if (analysisType === 'timeline') {
+        endpoint = `/api/cases/${caseId}/analyze`;
+      } else if (analysisType === 'deep-analysis') {
+        endpoint = `/api/cases/${caseId}/deep-analysis`;
+      } else {
+        endpoint = `/api/cases/${caseId}/${analysisType}`;
+      }
 
       const response = await fetch(endpoint, {
         method: 'POST',

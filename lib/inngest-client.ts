@@ -186,7 +186,7 @@ export const inngest = new Inngest({
 export async function sendInngestEvent<K extends keyof Events>(
   eventName: K,
   data: Events[K]['data']
-) {
+): Promise<boolean> {
   // Check if Inngest is configured
   const hasInngestKey = process.env.INNGEST_EVENT_KEY || process.env.INNGEST_SIGNING_KEY;
 
@@ -196,7 +196,7 @@ export async function sendInngestEvent<K extends keyof Events>(
       '\nTo enable background jobs, set INNGEST_EVENT_KEY or INNGEST_SIGNING_KEY',
       '\nFor now, this job will not be processed.'
     );
-    return; // Don't throw, just return
+    return false; // Don't throw, just return
   }
 
   try {
@@ -205,6 +205,7 @@ export async function sendInngestEvent<K extends keyof Events>(
       data,
     });
     console.log(`[Inngest] Event sent: ${eventName}`, data);
+    return true;
   } catch (error) {
     console.error(`[Inngest] Failed to send event: ${eventName}`, error);
     // Only throw in production if Inngest is expected to work
@@ -213,6 +214,7 @@ export async function sendInngestEvent<K extends keyof Events>(
     }
     // In development or if not configured, just warn
     console.warn('[Inngest] Continuing without background job processing');
+    return false;
   }
 }
 

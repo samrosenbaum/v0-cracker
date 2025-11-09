@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { sendInngestEvent } from '@/lib/inngest-client';
+import { runTimelineAnalysis } from '@/lib/jobs/timeline-analysis';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -150,20 +151,40 @@ export async function POST(
 
     console.log('[Timeline Analysis API] Processing job created:', job.id);
 
+    // Check if Inngest is configured
+    const hasInngest = process.env.INNGEST_EVENT_KEY || process.env.INNGEST_SIGNING_KEY;
+
+    let inlineProcessing = false;
+
     // Trigger Inngest background job (optional - gracefully handles missing Inngest config)
+    let eventQueued = false;
     try {
-      await sendInngestEvent('analysis/timeline', {
+      eventQueued = await sendInngestEvent('analysis/timeline', {
         jobId: job.id,
         caseId,
       });
     } catch (inngestError) {
       console.error('[Timeline Analysis API] Inngest event failed:', inngestError);
-      // Don't fail the entire request if Inngest fails
-      // The job is created and can be processed manually or later
     }
 
-    // Check if Inngest is configured
-    const hasInngest = process.env.INNGEST_EVENT_KEY || process.env.INNGEST_SIGNING_KEY;
+    if (!eventQueued) {
+      inlineProcessing = true;
+      console.log('[Timeline Analysis API] Running timeline analysis inline (Inngest unavailable).');
+      try {
+        await runTimelineAnalysis(job.id, caseId);
+      } catch (inlineError: any) {
+        console.error('[Timeline Analysis API] Inline timeline analysis failed:', inlineError);
+        return withCors(
+          NextResponse.json(
+            {
+              error: inlineError?.message || 'Timeline analysis failed to run inline.',
+              jobId: job.id,
+            },
+            { status: 500 }
+          )
+        );
+      }
+    }
 
     // Return immediately with job ID
     return withCors(
@@ -171,13 +192,16 @@ export async function POST(
         {
           success: true,
           jobId: job.id,
-          status: 'pending',
-          message: hasInngest
+          status: inlineProcessing ? 'completed' : 'pending',
+          message: inlineProcessing
+            ? 'Timeline analysis completed inline because background workers were unavailable.'
+            : hasInngest
             ? 'Timeline analysis has been scheduled. Check processing job status for progress.'
-            : 'Timeline analysis job created. Note: Inngest not configured - job will not auto-process. Set INNGEST_EVENT_KEY to enable background processing.',
+            : 'Timeline analysis job created. Note: Inngest not configured - job will be processed inline when triggered.',
           inngestConfigured: !!hasInngest,
+          processedInline: inlineProcessing,
         },
-        { status: 202 }
+        { status: inlineProcessing ? 200 : 202 }
       )
     );
   } catch (error: any) {
