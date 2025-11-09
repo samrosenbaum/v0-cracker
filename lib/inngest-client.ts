@@ -153,6 +153,62 @@ type Events = {
       digitalRecords?: any;
     };
   };
+
+  // Triggered to run behavioral pattern analysis
+  'analysis/behavioral-patterns': {
+    data: {
+      jobId: string;
+      caseId: string;
+    };
+  };
+
+  // Triggered to run evidence gap analysis
+  'analysis/evidence-gaps': {
+    data: {
+      jobId: string;
+      caseId: string;
+    };
+  };
+
+  // Triggered to run relationship network mapping
+  'analysis/relationship-network': {
+    data: {
+      jobId: string;
+      caseId: string;
+    };
+  };
+
+  // Triggered to run similar cases finder
+  'analysis/similar-cases': {
+    data: {
+      jobId: string;
+      caseId: string;
+    };
+  };
+
+  // Triggered to run overlooked details detection
+  'analysis/overlooked-details': {
+    data: {
+      jobId: string;
+      caseId: string;
+    };
+  };
+
+  // Triggered to run interrogation question generator
+  'analysis/interrogation-questions': {
+    data: {
+      jobId: string;
+      caseId: string;
+    };
+  };
+
+  // Triggered to run forensic retesting recommendations
+  'analysis/forensic-retesting': {
+    data: {
+      jobId: string;
+      caseId: string;
+    };
+  };
 };
 
 /**
