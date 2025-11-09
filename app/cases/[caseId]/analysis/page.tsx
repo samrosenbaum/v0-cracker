@@ -176,12 +176,14 @@ export default function AnalysisPage() {
           }
         } else if (analysisType === 'deep-analysis') {
           if (result.jobId) {
-            alert(
-              [
-                'Deep analysis has been scheduled.',
-                'Track progress from the Processing Jobs panel or refresh this page once complete.',
-              ].join(' ')
+            const viewProcessing = confirm(
+              'Deep analysis has been scheduled and is now running in the background.\n\n' +
+              'Click OK to view real-time progress on the Processing Dashboard, or Cancel to stay here.'
             );
+            if (viewProcessing) {
+              router.push(`/cases/${caseId}/processing`);
+              return;
+            }
           } else {
             alert(`Deep analysis completed successfully!`);
           }
