@@ -115,18 +115,22 @@ export default function CaseFilesPage() {
         return;
       }
 
-      if (analysisType === 'victim-timeline') {
-        if (result.jobId) {
-          alert(
-            [
-              'Victim timeline reconstruction has been scheduled.',
-              'You can monitor progress from the Processing Jobs panel.',
-            ].join(' ')
-          );
-        } else {
-          alert('Victim timeline analysis completed successfully!');
-        }
+      // Handle job-based responses (async analysis)
+      if (result.jobId) {
+        const analysisTypeNames = {
+          'timeline': 'Timeline analysis',
+          'deep-analysis': 'Deep analysis',
+          'victim-timeline': 'Victim timeline reconstruction',
+        };
+
+        alert(
+          [
+            `${analysisTypeNames[analysisType] || analysisType} has been scheduled.`,
+            'You can monitor progress from the Processing Jobs panel.',
+          ].join(' ')
+        );
       } else {
+        // Legacy synchronous responses (shouldn't happen anymore)
         alert(`${analysisType} analysis completed successfully!`);
       }
     } catch (error) {
