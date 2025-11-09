@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:inngest": "npx inngest-cli@latest dev",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:inngest\"",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

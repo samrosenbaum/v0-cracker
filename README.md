@@ -34,6 +34,24 @@ npm run dev
 
 Visit http://localhost:3000
 
+### 4. Enable Document Processing (Required for file uploads)
+
+**For document processing to work**, you must also run the Inngest Dev Server:
+
+```bash
+# In a separate terminal
+npm run dev:inngest
+```
+
+This enables background job processing for:
+- Document chunking and extraction
+- Progress tracking
+- AI analysis jobs
+
+See [INNGEST_SETUP.md](./INNGEST_SETUP.md) for details.
+
+**Without Inngest running, document upload jobs will be stuck at 0% forever.**
+
 ## Required Services
 
 - **Supabase**: Database and storage
@@ -44,6 +62,7 @@ Visit http://localhost:3000
 ## Documentation
 
 - [Critical Setup Guide](./CRITICAL_SETUP_REQUIRED.md) - Start here if you have errors
+- [Inngest Setup Guide](./INNGEST_SETUP.md) - Fix document processing stuck at 0%
 - [Environment Variables](./.env.example) - Configuration reference
 - [Testing Checklist](./TESTING_CHECKLIST.md) - Feature testing guide
 
@@ -57,6 +76,10 @@ Visit http://localhost:3000
 - Victim timeline analysis
 
 ## Troubleshooting
+
+**Document processing jobs stuck at 0%?**
+- You need to run the Inngest Dev Server: `npm run dev:inngest`
+- See [INNGEST_SETUP.md](./INNGEST_SETUP.md)
 
 **Getting 404 errors for logo?**
 - Fixed: Logo is now in `public/fresh-eyes-logo.png`
