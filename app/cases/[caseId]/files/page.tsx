@@ -110,10 +110,28 @@ export default function CaseFilesPage() {
 
       const result = await response.json();
 
-      if (result.success) {
-        alert(`${analysisType} analysis completed successfully!`);
-      } else {
+      if (!result.success) {
         alert(`Analysis failed: ${result.error}`);
+        return;
+      }
+
+      // Handle job-based responses (async analysis)
+      if (result.jobId) {
+        const analysisTypeNames = {
+          'timeline': 'Timeline analysis',
+          'deep-analysis': 'Deep analysis',
+          'victim-timeline': 'Victim timeline reconstruction',
+        };
+
+        alert(
+          [
+            `${analysisTypeNames[analysisType] || analysisType} has been scheduled.`,
+            'You can monitor progress from the Processing Jobs panel.',
+          ].join(' ')
+        );
+      } else {
+        // Legacy synchronous responses (shouldn't happen anymore)
+        alert(`${analysisType} analysis completed successfully!`);
       }
     } catch (error) {
       console.error('Analysis error:', error);

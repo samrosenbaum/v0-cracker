@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
-import { performComprehensiveAnalysis } from '@/lib/cold-case-analyzer';
-import { extractMultipleDocuments, queueDocumentForReview } from '@/lib/document-parser';
+import { sendInngestEvent } from '@/lib/inngest-client';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -27,7 +26,7 @@ export async function GET() {
         message: 'Deep Analysis endpoint is ready. Use POST method to run analysis.',
         endpoint: '/api/cases/[caseId]/deep-analysis',
         method: 'POST',
-        description: 'Performs comprehensive cold case analysis with 8 analytical dimensions'
+        description: 'Performs comprehensive cold case analysis with 8 analytical dimensions (async job)'
       },
       { status: 200 }
     )
@@ -43,145 +42,77 @@ export async function POST(
     const params = await Promise.resolve(context.params);
     const { caseId } = params;
 
-    console.log('Deep analysis requested for case:', caseId);
-    console.log('Case ID type:', typeof caseId);
-    console.log('Case ID length:', caseId?.length);
+    console.log('[Deep Analysis API] Deep analysis requested for case:', caseId);
 
-    // First check if case exists without .single()
-    const { data: caseCheck, error: checkError } = await supabaseServer
-      .from('cases')
-      .select('*')
-      .eq('id', caseId);
+    // Fail-fast: Validate API keys before doing any expensive work
+    const anthropicKey =
+      process.env.ANTHROPIC_API_KEY || process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY;
 
-    console.log('Case check results:', {
-      found: caseCheck?.length || 0,
-      error: checkError?.message,
-      caseId
-    });
-
-    if (checkError) {
-      console.error('Error checking case:', checkError);
-      return withCors(NextResponse.json({
-        error: `Database error: ${checkError.message}`,
-        details: checkError
-      }, { status: 500 }));
+    if (!anthropicKey) {
+      return withCors(
+        NextResponse.json(
+          {
+            error:
+              'Anthropic API key is not configured. Please set ANTHROPIC_API_KEY before running deep analysis.',
+          },
+          { status: 503 }
+        )
+      );
     }
 
-    if (!caseCheck || caseCheck.length === 0) {
-      console.error('Case not found with ID:', caseId);
-      return withCors(NextResponse.json({
-        error: 'Case not found',
-        caseId: caseId,
-        message: 'No case exists with this ID'
-      }, { status: 404 }));
-    }
-
-    if (caseCheck.length > 1) {
-      console.error('Multiple cases found with ID:', caseId);
-      return withCors(NextResponse.json({
-        error: 'Multiple cases found',
-        count: caseCheck.length
-      }, { status: 500 }));
-    }
-
-    const caseData = caseCheck[0];
-
-    // Fetch all case data
-    const [
-      { data: documents, error: docsError },
-      { data: suspects, error: suspectsError },
-      { data: evidence, error: evidenceError },
-    ] = await Promise.all([
-      supabaseServer.from('case_documents').select('*').eq('case_id', caseId),
-      supabaseServer.from('suspects').select('*').eq('case_id', caseId),
-      supabaseServer.from('case_files').select('*').eq('case_id', caseId),
-    ]);
-
-    console.log('Found case:', caseData.title || caseData.id);
-    console.log('Documents:', documents?.length || 0);
-    console.log('Suspects:', suspects?.length || 0);
-    console.log('Evidence:', evidence?.length || 0);
-
-    // EXTRACT REAL DOCUMENT CONTENT
-    console.log(`[Deep Analysis] Extracting content from ${documents?.length || 0} documents...`);
-    const storagePaths = documents?.map(d => d.storage_path).filter(Boolean) as string[] || [];
-    const extractionResults = await extractMultipleDocuments(storagePaths, 5);
-
-    // Queue documents that need human review (low confidence OCR)
-    console.log(`[Deep Analysis] Checking for documents that need human review...`);
-    let queuedForReview = 0;
-    for (const doc of (documents || [])) {
-      const extractionResult = extractionResults.get(doc.storage_path);
-      if (extractionResult && extractionResult.needsReview) {
-        const queued = await queueDocumentForReview(doc.id, caseId, extractionResult);
-        if (queued) {
-          queuedForReview++;
-        }
-      }
-    }
-    if (queuedForReview > 0) {
-      console.log(`[Deep Analysis] ⚠️  ${queuedForReview} document(s) queued for human review`);
-    }
-
-    // Prepare data for analysis with REAL extracted content
-    const analysisInput = {
-      incidentType: caseData.description || 'Unknown',
-      date: caseData.created_at,
-      location: 'Unknown', // Would come from case data
-      availableEvidence: evidence?.map(e => e.file_name) || [],
-      suspects: suspects?.map(s => s.name) || [],
-      witnesses: [], // Would be extracted from documents
-      interviews: [], // Would be extracted from documents
-      documents: documents?.map(d => {
-        const extraction = extractionResults.get(d.storage_path);
-        return {
-          filename: d.file_name,
-          content: extraction?.text || '[Could not extract content]',
-        };
-      }) || [],
-      evidence: evidence?.map(e => ({
-        item: e.file_name,
-        dateCollected: e.created_at,
-        testingPerformed: e.notes || 'Unknown',
-        results: 'Unknown',
-      })) || [],
+    // Create processing job record
+    const now = new Date().toISOString();
+    const initialMetadata = {
+      analysisType: 'comprehensive_cold_case',
+      requestedAt: now,
     };
 
-    console.log(`[Deep Analysis] Extracted ${analysisInput.documents.reduce((sum, d) => sum + d.content.length, 0)} total characters`);
-
-    // Run comprehensive analysis
-    const analysis = await performComprehensiveAnalysis(caseId, analysisInput);
-
-    // Save analysis to database
-    const { error: saveError } = await supabaseServer
-      .from('case_analysis')
+    const { data: job, error: jobError } = await supabaseServer
+      .from('processing_jobs')
       .insert({
         case_id: caseId,
-        analysis_type: 'comprehensive_cold_case',
-        analysis_data: analysis as any,
-        confidence_score: 0.9,
-        used_prompt: 'Comprehensive cold case analysis with 8 analytical dimensions',
-      });
+        job_type: 'ai_analysis',
+        status: 'pending',
+        total_units: 4, // Fetch, Extract, Analyze, Save
+        completed_units: 0,
+        failed_units: 0,
+        progress_percentage: 0,
+        metadata: initialMetadata,
+      })
+      .select()
+      .single();
 
-    if (saveError) {
-      console.error('Error saving analysis:', saveError);
+    if (jobError || !job) {
+      console.error('[Deep Analysis API] Failed to create processing job:', jobError);
+      return withCors(
+        NextResponse.json(
+          { error: 'Unable to schedule deep analysis job.' },
+          { status: 500 }
+        )
+      );
     }
 
-    return withCors(NextResponse.json({
-      success: true,
-      analysis,
-      summary: {
-        totalPatterns: analysis.behavioralPatterns.length,
-        criticalGaps: analysis.evidenceGaps.filter(g => g.priority === 'critical').length,
-        hiddenConnections: analysis.relationshipNetwork.hiddenConnections.length,
-        overlookedDetails: analysis.overlookedDetails.length,
-        topPriorities: analysis.topPriorities.length,
-        likelyBreakthroughs: analysis.likelyBreakthroughs.length,
-      },
-    }));
+    // Trigger Inngest background job
+    await sendInngestEvent('analysis/deep-analysis', {
+      jobId: job.id,
+      caseId,
+    });
 
+    // Return immediately with job ID
+    return withCors(
+      NextResponse.json(
+        {
+          success: true,
+          jobId: job.id,
+          status: 'pending',
+          message:
+            'Deep analysis has been scheduled. Check processing job status for progress.',
+        },
+        { status: 202 }
+      )
+    );
   } catch (error: any) {
-    console.error('Deep analysis error:', error);
+    console.error('[Deep Analysis API] Error:', error);
     return withCors(
       NextResponse.json(
         { error: error.message || 'Analysis failed' },
