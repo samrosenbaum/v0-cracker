@@ -137,23 +137,53 @@ export default function AnalysisPage() {
       if (result.success) {
         // Show different messages based on analysis type
         if (analysisType === 'timeline') {
-          const viewBoard = confirm(
-            'Timeline analysis completed successfully!\n\n' +
-            `${result.analysis?.timeline?.length || 0} timeline events have been extracted and saved.\n\n` +
-            'Click OK to view the timeline on the Investigation Board, or Cancel to stay here.'
-          );
-          if (viewBoard) {
-            router.push(`/cases/${caseId}/board`);
-            return;
+          if (result.jobId) {
+            alert(
+              [
+                'Timeline analysis has been scheduled.',
+                'Track progress from the Processing Jobs panel or refresh this page once complete.',
+              ].join(' ')
+            );
+          } else {
+            // Legacy synchronous response (shouldn't happen anymore)
+            const viewBoard = confirm(
+              'Timeline analysis completed successfully!\n\n' +
+              `${result.analysis?.timeline?.length || 0} timeline events have been extracted and saved.\n\n` +
+              'Click OK to view the timeline on the Investigation Board, or Cancel to stay here.'
+            );
+            if (viewBoard) {
+              router.push(`/cases/${caseId}/board`);
+              return;
+            }
           }
         } else if (analysisType === 'victim-timeline') {
-          const viewBoard = confirm(
-            'Victim timeline reconstruction completed successfully!\n\n' +
-            'Click OK to view the timeline on the Investigation Board, or Cancel to stay here.'
-          );
-          if (viewBoard) {
-            router.push(`/cases/${caseId}/board`);
-            return;
+          if (result.jobId) {
+            alert(
+              [
+                'Victim timeline reconstruction has been scheduled.',
+                'Track progress from the Processing Jobs panel or refresh this page once complete.',
+              ].join(' ')
+            );
+          } else {
+            const viewBoard = confirm(
+              'Victim timeline reconstruction completed successfully!\n\n' +
+              'Click OK to view the timeline on the Investigation Board, or Cancel to stay here.'
+            );
+            if (viewBoard) {
+              router.push(`/cases/${caseId}/board`);
+              return;
+            }
+          }
+        } else if (analysisType === 'deep-analysis') {
+          if (result.jobId) {
+            alert(
+              [
+                'Deep analysis has been scheduled.',
+                'Track progress from the Processing Jobs panel or refresh this page once complete.',
+              ].join(' ')
+            );
+          } else {
+            alert(`Deep analysis completed successfully!`);
           }
         } else {
           alert(`${analysisType} completed successfully!`);

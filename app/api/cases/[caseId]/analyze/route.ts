@@ -1,217 +1,188 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
-import { analyzeCaseDocuments, detectTimeConflicts, identifyOverlookedSuspects, generateConflictSummary } from '@/lib/ai-analysis';
-import { extractMultipleDocuments, queueDocumentForReview } from '@/lib/document-parser';
-import { optionsPreflight, withCorsHeaders } from '@/lib/cors';
+import { sendInngestEvent } from '@/lib/inngest-client';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+const CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
 
-export async function OPTIONS(request: NextRequest) {
-  return optionsPreflight(request);
+function withCors(response: NextResponse) {
+  Object.entries(CORS_HEADERS).forEach(([key, value]) => {
+    response.headers.set(key, value);
+  });
+  return response;
+}
+
+export async function OPTIONS() {
+  return withCors(new NextResponse(null, { status: 204 }));
+}
+
+export async function GET() {
+  return withCors(
+    NextResponse.json(
+      {
+        message: 'Analysis endpoint is ready. Use POST method to run analysis.',
+        endpoint: '/api/cases/[caseId]/analyze',
+        method: 'POST',
+        description: 'Analyzes case documents and extracts timeline events and conflicts (async job)'
+      },
+      { status: 200 }
+    )
+  );
 }
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { caseId: string } }
+  context: { params: Promise<{ caseId: string }> | { caseId: string } }
 ) {
   try {
+    // Handle both sync and async params for Next.js 14/15 compatibility
+    const params = await Promise.resolve(context.params);
     const { caseId } = params;
 
-    // Fetch all case documents
-    const { data: documents, error: docError } = await supabaseServer
-      .from('case_documents')
-      .select('*')
-      .eq('case_id', caseId);
+    console.log('[Timeline Analysis API] Starting analysis for case:', caseId);
 
-    if (docError) {
-      return withCorsHeaders(
-        request,
-        NextResponse.json({ error: docError.message }, { status: 500 })
+    // Fail-fast: Validate API keys before doing any expensive work
+    const anthropicKey =
+      process.env.ANTHROPIC_API_KEY || process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY;
+
+    if (!anthropicKey) {
+      console.error('[Timeline Analysis API] Missing Anthropic API key');
+      return withCors(
+        NextResponse.json(
+          {
+            error:
+              'Anthropic API key is not configured. Please set ANTHROPIC_API_KEY before running timeline analysis.',
+          },
+          { status: 503 }
+        )
       );
     }
 
-    if (!documents || documents.length === 0) {
-      return withCorsHeaders(
-        request,
+    // Verify the case exists first
+    console.log('[Timeline Analysis API] Checking if case exists:', caseId);
+    const { data: existingCase, error: caseCheckError } = await supabaseServer
+      .from('cases')
+      .select('id, title')
+      .eq('id', caseId)
+      .maybeSingle();
+
+    if (caseCheckError) {
+      console.error('[Timeline Analysis API] Error checking case:', caseCheckError);
+      return withCors(
         NextResponse.json(
-          { error: 'No documents found for this case' },
+          {
+            error: 'Failed to verify case exists',
+            details: caseCheckError.message,
+            caseId,
+          },
+          { status: 500 }
+        )
+      );
+    }
+
+    if (!existingCase) {
+      console.error('[Timeline Analysis API] Case not found:', caseId);
+      return withCors(
+        NextResponse.json(
+          {
+            error: 'Case not found',
+            details: `No case exists with ID: ${caseId}`,
+            caseId,
+          },
           { status: 404 }
         )
       );
     }
 
-    console.log(`[Analyze API] Found ${documents.length} documents to analyze`);
+    console.log('[Timeline Analysis API] Case found:', existingCase.title);
 
-    // REAL DOCUMENT EXTRACTION - Extract text from all uploaded files
-    const storagePaths = documents.map(doc => doc.storage_path).filter(Boolean) as string[];
+    // Create processing job record
+    const now = new Date().toISOString();
+    const initialMetadata = {
+      analysisType: 'timeline_and_conflicts',
+      requestedAt: now,
+    };
 
-    console.log(`[Analyze API] Extracting content from ${storagePaths.length} files...`);
-    const extractionResults = await extractMultipleDocuments(storagePaths, 5); // Process 5 at a time
-
-    // Queue documents that need human review (low confidence OCR)
-    console.log(`[Analyze API] Checking for documents that need human review...`);
-    let queuedForReview = 0;
-    for (const doc of documents) {
-      const extractionResult = extractionResults.get(doc.storage_path);
-      if (extractionResult && extractionResult.needsReview) {
-        const queued = await queueDocumentForReview(doc.id, caseId, extractionResult);
-        if (queued) {
-          queuedForReview++;
-        }
-      }
-    }
-    if (queuedForReview > 0) {
-      console.log(`[Analyze API] ⚠️  ${queuedForReview} document(s) queued for human review`);
-    }
-
-    // Build documents for AI analysis with REAL extracted content
-    const docsForAnalysis = documents.map(doc => {
-      const extractionResult = extractionResults.get(doc.storage_path);
-
-      return {
-        content: extractionResult?.text || `[Could not extract text from ${doc.file_name}]`,
-        filename: doc.file_name,
-        type: doc.document_type,
-        confidence: extractionResult?.confidence || 0,
-        extractionMethod: extractionResult?.method || 'unknown',
-      };
-    });
-
-    // Log extraction results
-    const totalChars = docsForAnalysis.reduce((sum, doc) => sum + doc.content.length, 0);
-    const successfulExtractions = docsForAnalysis.filter(doc => doc.confidence > 0.5).length;
-
-    console.log(`[Analyze API] Extraction complete:`);
-    console.log(`  - ${successfulExtractions}/${documents.length} documents extracted successfully`);
-    console.log(`  - Total characters extracted: ${totalChars.toLocaleString()}`);
-
-    // Run AI analysis on REAL document content
-    console.log(`[Analyze API] Running AI analysis...`);
-    const analysis = await analyzeCaseDocuments(docsForAnalysis);
-
-    // Detect additional conflicts using our algorithm
-    const timeConflicts = detectTimeConflicts(analysis.timeline);
-    analysis.conflicts.push(...timeConflicts);
-
-    // Identify overlooked suspects
-    const { data: formalSuspects } = await supabaseServer
-      .from('suspects')
-      .select('name')
-      .eq('case_id', caseId);
-
-    const overlookedSuspects = identifyOverlookedSuspects(
-      analysis.personMentions,
-      formalSuspects?.map(s => s.name) || []
-    );
-
-    // Save timeline events to database
-    // Map AI analysis timeline events to the timeline_events table schema
-    const timelineInserts = analysis.timeline.map(event => {
-      // Map sourceType to event_type enum
-      const eventTypeMap: Record<string, string> = {
-        'interview': 'witness_account',
-        'witness_statement': 'witness_account',
-        'police_report': 'other',
-        'forensic_report': 'evidence_found',
-        'tip': 'other',
-        'other': 'other'
-      };
-
-      return {
-        case_id: caseId,
-        event_type: eventTypeMap[event.sourceType] || 'other',
-        title: event.description?.substring(0, 100) || 'Timeline Event',
-        description: event.description || null,
-        event_time: event.time || event.startTime || null,
-        event_date: event.date || null,
-        time_precision: event.startTime && event.endTime ? 'approximate' as const :
-                       event.time ? 'exact' as const : 'estimated' as const,
-        time_range_start: event.startTime || null,
-        time_range_end: event.endTime || null,
-        location: event.location || null,
-        primary_entity_id: null, // Will be linked later if entities are created
-        verification_status: 'unverified' as const,
-        confidence_score: event.confidence || 0.5,
-        source_type: event.sourceType,
-        source_notes: event.source || null,
-        metadata: event.metadata || {},
-      };
-    });
-
-    const { error: timelineError } = await supabaseServer
-      .from('timeline_events')
-      .insert(timelineInserts);
-
-    if (timelineError) {
-      console.error('Error saving timeline:', timelineError);
-    }
-
-    // Save conflicts as quality flags
-    const conflictInserts = analysis.conflicts.map(conflict => ({
-      case_id: caseId,
-      type: (conflict.type === 'time_inconsistency' ? 'inconsistency' :
-            conflict.type === 'statement_contradiction' ? 'inconsistency' :
-            conflict.type === 'alibi_conflict' ? 'inconsistency' : 'incomplete_analysis') as 'inconsistency' | 'incomplete_analysis',
-      severity: conflict.severity as 'low' | 'medium' | 'high' | 'critical',
-      title: conflict.description,
-      description: conflict.details,
-      recommendation: conflict.recommendation,
-      affected_findings: conflict.affectedPersons,
-      metadata: {
-        conflictType: conflict.type,
-        eventIds: conflict.events.map(e => e.id),
-      } as any,
-    }));
-
-    const { error: flagError } = await supabaseServer
-      .from('quality_flags')
-      .insert(conflictInserts);
-
-    if (flagError) {
-      console.error('Error saving quality flags:', flagError);
-    }
-
-    // Save analysis results
-    const { error: analysisError } = await supabaseServer
-      .from('case_analysis')
+    console.log('[Timeline Analysis API] Creating processing job...');
+    const { data: job, error: jobError } = await supabaseServer
+      .from('processing_jobs')
       .insert({
         case_id: caseId,
-        analysis_type: 'timeline_and_conflicts',
-        analysis_data: {
-          timeline: analysis.timeline,
-          conflicts: analysis.conflicts,
-          personMentions: analysis.personMentions,
-          unfollowedTips: analysis.unfollowedTips,
-          keyInsights: analysis.keyInsights,
-          suspectAnalysis: analysis.suspectAnalysis,
-          overlookedSuspects,
-          conflictSummary: generateConflictSummary(analysis.conflicts),
-        } as any,
-        confidence_score: 0.85,
-        used_prompt: 'Timeline and conflict analysis',
+        job_type: 'ai_analysis',
+        status: 'pending',
+        total_units: 5, // Fetch, Extract, Analyze, Save Events, Save Conflicts
+        completed_units: 0,
+        failed_units: 0,
+        metadata: initialMetadata,
+      })
+      .select()
+      .single();
+
+    if (jobError || !job) {
+      console.error('[Timeline Analysis API] Failed to create processing job:', {
+        error: jobError,
+        code: jobError?.code,
+        message: jobError?.message,
+        details: jobError?.details,
+        hint: jobError?.hint,
       });
 
-    if (analysisError) {
-      return withCorsHeaders(
-        request,
-        NextResponse.json({ error: analysisError.message }, { status: 500 })
+      // Provide more detailed error message
+      const errorDetails = jobError
+        ? `${jobError.message || 'Unknown error'} (Code: ${jobError.code || 'N/A'})`
+        : 'Job creation returned no data';
+
+      return withCors(
+        NextResponse.json(
+          {
+            error: 'Unable to schedule timeline analysis job.',
+            details: errorDetails,
+            hint: jobError?.hint || 'Check that the processing_jobs table exists in your Supabase database',
+            dbError: jobError,
+          },
+          { status: 500 }
+        )
       );
     }
 
-    return withCorsHeaders(request, NextResponse.json({
-      success: true,
-      analysis: {
-        ...analysis,
-        overlookedSuspects,
-        conflictSummary: generateConflictSummary(analysis.conflicts),
-      },
-    }));
+    console.log('[Timeline Analysis API] Processing job created:', job.id);
 
+    // Trigger Inngest background job (optional - gracefully handles missing Inngest config)
+    try {
+      await sendInngestEvent('analysis/timeline', {
+        jobId: job.id,
+        caseId,
+      });
+    } catch (inngestError) {
+      console.error('[Timeline Analysis API] Inngest event failed:', inngestError);
+      // Don't fail the entire request if Inngest fails
+      // The job is created and can be processed manually or later
+    }
+
+    // Check if Inngest is configured
+    const hasInngest = process.env.INNGEST_EVENT_KEY || process.env.INNGEST_SIGNING_KEY;
+
+    // Return immediately with job ID
+    return withCors(
+      NextResponse.json(
+        {
+          success: true,
+          jobId: job.id,
+          status: 'pending',
+          message: hasInngest
+            ? 'Timeline analysis has been scheduled. Check processing job status for progress.'
+            : 'Timeline analysis job created. Note: Inngest not configured - job will not auto-process. Set INNGEST_EVENT_KEY to enable background processing.',
+          inngestConfigured: !!hasInngest,
+        },
+        { status: 202 }
+      )
+    );
   } catch (error: any) {
-    console.error('Analysis error:', error);
-    return withCorsHeaders(
-      request,
+    console.error('[Timeline Analysis API] Error:', error);
+    return withCors(
       NextResponse.json(
         { error: error.message || 'Analysis failed' },
         { status: 500 }

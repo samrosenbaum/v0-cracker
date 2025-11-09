@@ -12,9 +12,10 @@ import { supabaseServer } from '@/lib/supabase-server';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { jobId: string } }
+  context: { params: Promise<{ jobId: string }> | { jobId: string } }
 ) {
   try {
+    const params = await Promise.resolve(context.params);
     const { jobId } = params;
 
     if (!jobId) {

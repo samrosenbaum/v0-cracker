@@ -13,9 +13,10 @@ import { getProcessingSummary } from '@/lib/progress-tracker';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { jobId: string } }
+  context: { params: Promise<{ jobId: string }> | { jobId: string } }
 ) {
   try {
+    const params = await Promise.resolve(context.params);
     const { jobId } = params;
 
     if (!jobId) {

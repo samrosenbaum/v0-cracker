@@ -14,9 +14,10 @@ import { supabaseServer } from '@/lib/supabase-server';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { reviewId: string } }
+  context: { params: Promise<{ reviewId: string }> | { reviewId: string } }
 ) {
   try {
+    const params = await Promise.resolve(context.params);
     const { reviewId } = params;
     const body = await request.json();
 
