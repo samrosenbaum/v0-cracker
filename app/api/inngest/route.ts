@@ -22,6 +22,7 @@ import {
 } from '@/lib/jobs/process-document-chunks';
 
 import { populateInvestigationBoardJob } from '@/lib/jobs/populate-investigation-board';
+import { processVictimTimelineJob } from '@/lib/jobs/victim-timeline';
 
 /**
  * Register all Inngest functions (jobs) here
@@ -32,6 +33,7 @@ const inngestFunctions = [
   aggregateDocumentJob,
   generateEmbeddingsJob,
   populateInvestigationBoardJob,
+  processVictimTimelineJob,
 ];
 
 /**
