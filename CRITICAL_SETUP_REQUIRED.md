@@ -10,7 +10,22 @@ Your application is failing with these errors:
 2. **500 Error: `/api/cases/.../analyze`** - ⚠️ **REQUIRES CONFIGURATION**
    - Missing environment variables
 
-## What You Need to Do Now
+## WHERE Are You Seeing These Errors?
+
+### 🌐 On Vercel Deployed Site (*.vercel.app)?
+**→ See [VERCEL_ENV_CHECKLIST.md](./VERCEL_ENV_CHECKLIST.md)**
+
+Your Vercel environment variables need to be configured. Even though you may have added them, check:
+- All required variables are set in Vercel dashboard
+- Variables are enabled for the right environment (Production/Preview)
+- You redeployed after adding variables
+
+### 💻 On Local Development (localhost:3000)?
+**→ Continue reading below**
+
+You need to set up `.env.local` for local development. Vercel env vars only work on Vercel deployments.
+
+## What You Need to Do Now (Local Development)
 
 ### Step 1: Install Dependencies
 
