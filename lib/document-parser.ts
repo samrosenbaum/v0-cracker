@@ -9,9 +9,35 @@
  */
 
 import { supabaseServer } from './supabase-server';
-import pdf from 'pdf-parse';
 import Tesseract from 'tesseract.js';
 import OpenAI from 'openai';
+
+type PdfjsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
+
+let pdfjsModulePromise: Promise<PdfjsModule | null> | null = null;
+
+async function loadPdfJsModule(): Promise<PdfjsModule | null> {
+  if (!pdfjsModulePromise) {
+    pdfjsModulePromise = import('pdfjs-dist/legacy/build/pdf.mjs')
+      .then(mod => {
+        try {
+          if (mod.GlobalWorkerOptions) {
+            mod.GlobalWorkerOptions.workerSrc = '';
+          }
+        } catch (workerError) {
+          console.warn('[Document Parser] Unable to configure pdfjs worker', workerError);
+        }
+        return mod;
+      })
+      .catch(error => {
+        console.error('[Document Parser] Failed to load pdfjs module:', error);
+        pdfjsModulePromise = null;
+        return null;
+      });
+  }
+
+  return pdfjsModulePromise;
+}
 
 // Initialize OpenAI client for Whisper transcription
 const openai = new OpenAI({
@@ -39,7 +65,7 @@ export interface ExtractionResult {
   text: string;
   pageCount?: number;
   confidence?: number; // 0-1 score for OCR
-  method: 'pdf-parse' | 'ocr-tesseract' | 'ocr-google' | 'whisper-transcription' | 'cached';
+  method: 'pdf-parse' | 'pdfjs-dist' | 'ocr-tesseract' | 'ocr-google' | 'whisper-transcription' | 'cached';
   metadata?: any;
   error?: string;
   uncertainSegments?: UncertainSegment[]; // Segments that need human review
@@ -161,53 +187,85 @@ async function extractFromPDF(buffer: Buffer): Promise<ExtractionResult> {
 
   console.log('[Document Parser] Processing PDF...');
 
+  const pdfjs = await loadPdfJsModule();
+
+  if (!pdfjs) {
+    return {
+      text: '[Unable to load PDF parser module]',
+      method: 'pdfjs-dist',
+      confidence: 0,
+      error: 'pdfjs module failed to load',
+      needsReview: true,
+    };
+  }
+
+  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer) });
+
   try {
-    // First, try standard PDF text extraction
-    const pdfData = await pdf(buffer);
+    const pdfDocument = await loadingTask.promise;
+    const pageTexts: string[] = [];
 
-    console.log(`[Document Parser] PDF has ${pdfData.numpages} pages`);
+    for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
+      const page = await pdfDocument.getPage(pageNum);
+      const textContent = await page.getTextContent();
 
-    // Check if PDF has actual text (not just scanned image)
-    const hasText = pdfData.text && pdfData.text.trim().length > 100;
+      const pageText = textContent.items
+        .map(item => {
+          const anyItem = item as any;
+          if (typeof anyItem.str === 'string') return anyItem.str;
+          if (typeof anyItem.text === 'string') return anyItem.text;
+          if (typeof anyItem.unicode === 'string') return anyItem.unicode;
+          return '';
+        })
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
 
-    if (hasText) {
-      // Digital PDF with text layer
-      console.log(`[Document Parser] Extracted ${pdfData.text.length} characters from digital PDF`);
-      return {
-        text: pdfData.text,
-        pageCount: pdfData.numpages,
-        method: 'pdf-parse',
-        confidence: 1.0,
-        metadata: pdfData.info,
-      };
-    } else {
-      // Scanned PDF - need OCR
-      console.log('[Document Parser] PDF appears to be scanned, attempting OCR...');
+      if (pageText) {
+        pageTexts.push(pageText);
+      }
 
-      // For scanned PDFs, we'd need to:
-      // 1. Convert PDF pages to images
-      // 2. Run OCR on each page
-      // This requires pdf-to-img library (pdf-poppler or similar)
-
-      // For now, return what we got with low confidence
-      return {
-        text: pdfData.text || '[Scanned PDF - OCR not fully implemented yet]',
-        pageCount: pdfData.numpages,
-        method: 'pdf-parse',
-        confidence: 0.3,
-        metadata: pdfData.info,
-        error: 'Scanned PDF detected - full OCR requires pdf-to-image conversion',
-      };
+      try {
+        page.cleanup();
+      } catch (cleanupError) {
+        console.warn('[Document Parser] Failed to cleanup PDF page', cleanupError);
+      }
     }
 
+    const combinedText = pageTexts.join('\n\n');
+    const hasMeaningfulText = combinedText.trim().length > 0;
+    const pageCount = pdfDocument.numPages;
+
+    const confidence = hasMeaningfulText
+      ? Math.min(0.95, Math.max(0.4, combinedText.length / (pageCount * 1500)))
+      : 0.1;
+
+    return {
+      text: hasMeaningfulText ? combinedText : '[No extractable text found in this PDF]',
+      pageCount,
+      method: 'pdfjs-dist',
+      confidence,
+      metadata: { pageCount },
+      needsReview: !hasMeaningfulText,
+      uncertainSegments: hasMeaningfulText ? [] : undefined,
+    };
   } catch (error: any) {
     console.error('[Document Parser] PDF extraction failed:', error);
     return {
       text: '',
-      method: 'pdf-parse',
+      method: 'pdfjs-dist',
       confidence: 0,
       error: `PDF extraction failed: ${error.message}`,
+      needsReview: true,
     };
+  } finally {
+    try {
+      if (typeof loadingTask.destroy === 'function') {
+        await loadingTask.destroy();
+      }
+    } catch (destroyError) {
+      console.warn('[Document Parser] Failed to destroy PDF loading task', destroyError);
+    }
   }
 }
 
