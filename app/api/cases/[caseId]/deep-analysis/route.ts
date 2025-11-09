@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { performComprehensiveAnalysis } from '@/lib/cold-case-analyzer';
 import { extractMultipleDocuments, queueDocumentForReview } from '@/lib/document-parser';
+import { optionsPreflight, withCorsHeaders } from '@/lib/cors';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+export async function OPTIONS(request: NextRequest) {
+  return optionsPreflight(request);
+}
 
 export async function POST(
   request: NextRequest,
@@ -28,27 +36,27 @@ export async function POST(
 
     if (checkError) {
       console.error('Error checking case:', checkError);
-      return NextResponse.json({
+      return withCorsHeaders(request, NextResponse.json({
         error: `Database error: ${checkError.message}`,
         details: checkError
-      }, { status: 500 });
+      }, { status: 500 }));
     }
 
     if (!caseCheck || caseCheck.length === 0) {
       console.error('Case not found with ID:', caseId);
-      return NextResponse.json({
+      return withCorsHeaders(request, NextResponse.json({
         error: 'Case not found',
         caseId: caseId,
         message: 'No case exists with this ID'
-      }, { status: 404 });
+      }, { status: 404 }));
     }
 
     if (caseCheck.length > 1) {
       console.error('Multiple cases found with ID:', caseId);
-      return NextResponse.json({
+      return withCorsHeaders(request, NextResponse.json({
         error: 'Multiple cases found',
         count: caseCheck.length
-      }, { status: 500 });
+      }, { status: 500 }));
     }
 
     const caseData = caseCheck[0];
@@ -134,7 +142,7 @@ export async function POST(
       console.error('Error saving analysis:', saveError);
     }
 
-    return NextResponse.json({
+    return withCorsHeaders(request, NextResponse.json({
       success: true,
       analysis,
       summary: {
@@ -145,13 +153,16 @@ export async function POST(
         topPriorities: analysis.topPriorities.length,
         likelyBreakthroughs: analysis.likelyBreakthroughs.length,
       },
-    });
+    }));
 
   } catch (error: any) {
     console.error('Deep analysis error:', error);
-    return NextResponse.json(
-      { error: error.message || 'Analysis failed' },
-      { status: 500 }
+    return withCorsHeaders(
+      request,
+      NextResponse.json(
+        { error: error.message || 'Analysis failed' },
+        { status: 500 }
+      )
     );
   }
 }

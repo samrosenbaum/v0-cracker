@@ -90,14 +90,30 @@ export default function CaseDetailPage() {
 
   const fetchPendingReviewCount = async () => {
     // Get pending review count
-    const { count: reviewCount } = await supabase
+    const { count: reviewCount, error } = await supabase
       .from('document_review_queue')
       .select('*', { count: 'exact', head: true })
       .eq('case_id', caseId)
       .eq('status', 'pending');
 
+    if (error) {
+      const isMissingTable =
+        error.code === '42P01' ||
+        error.message?.toLowerCase().includes('does not exist');
+
+      if (isMissingTable) {
+        console.warn('Document review queue table not found. Skipping pending review count.');
+        setPendingReviewCount(0);
+      } else {
+        console.error('Error fetching pending review count:', error);
+      }
+      return;
+    }
+
     if (reviewCount !== null) {
       setPendingReviewCount(reviewCount);
+    } else {
+      setPendingReviewCount(0);
     }
   };
 
