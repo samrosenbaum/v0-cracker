@@ -178,11 +178,27 @@ export const inngest = new Inngest({
 
 /**
  * Helper function to send events with error handling
+ *
+ * In development/production without Inngest:
+ * - Logs a warning instead of throwing
+ * - Allows the app to work without Inngest configured
  */
 export async function sendInngestEvent<K extends keyof Events>(
   eventName: K,
   data: Events[K]['data']
 ) {
+  // Check if Inngest is configured
+  const hasInngestKey = process.env.INNGEST_EVENT_KEY || process.env.INNGEST_SIGNING_KEY;
+
+  if (!hasInngestKey) {
+    console.warn(
+      `[Inngest] Event not sent (Inngest not configured): ${eventName}`,
+      '\nTo enable background jobs, set INNGEST_EVENT_KEY or INNGEST_SIGNING_KEY',
+      '\nFor now, this job will not be processed.'
+    );
+    return; // Don't throw, just return
+  }
+
   try {
     await inngest.send({
       name: eventName,
@@ -191,7 +207,12 @@ export async function sendInngestEvent<K extends keyof Events>(
     console.log(`[Inngest] Event sent: ${eventName}`, data);
   } catch (error) {
     console.error(`[Inngest] Failed to send event: ${eventName}`, error);
-    throw error;
+    // Only throw in production if Inngest is expected to work
+    if (process.env.NODE_ENV === 'production' && hasInngestKey) {
+      throw error;
+    }
+    // In development or if not configured, just warn
+    console.warn('[Inngest] Continuing without background job processing');
   }
 }
 
