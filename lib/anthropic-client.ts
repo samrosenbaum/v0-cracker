@@ -7,6 +7,10 @@ export const DEFAULT_ANTHROPIC_MODEL =
   process.env.NEXT_PUBLIC_ANTHROPIC_MODEL ||
   'claude-sonnet-4-5-20250929';
 
+export function isAnthropicConfigured(): boolean {
+  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY);
+}
+
 export function getAnthropicClient(): Anthropic {
   if (anthropicInstance) {
     return anthropicInstance;

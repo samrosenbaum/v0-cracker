@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { sendInngestEvent } from '@/lib/inngest-client';
+import { hasSupabaseServiceConfig } from '@/lib/environment';
+import { listCaseDocuments, getStorageObject, addCaseAnalysis, getCaseById } from '@/lib/demo-data';
+import { analyzeCaseDocuments } from '@/lib/ai-analysis';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -37,10 +40,8 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ caseId: string }> | { caseId: string } }
 ) {
-  try {
-    // Handle both sync and async params for Next.js 14/15 compatibility
-    const params = await Promise.resolve(context.params);
-    const { caseId } = params;
+  const useSupabase = hasSupabaseServiceConfig();
+  let resolvedCaseId = '';
 
     console.log('[Timeline Analysis API] Starting analysis for case:', caseId);
 
@@ -53,10 +54,9 @@ export async function POST(
       return withCors(
         NextResponse.json(
           {
-            error:
-              'Anthropic API key is not configured. Please set ANTHROPIC_API_KEY before running timeline analysis.',
+            error: 'No documents available for analysis. Upload files or configure Supabase connection.',
           },
-          { status: 503 }
+          { status: 400 }
         )
       );
     }
@@ -182,6 +182,13 @@ export async function POST(
     );
   } catch (error: any) {
     console.error('[Timeline Analysis API] Error:', error);
+    if (resolvedCaseId) {
+      try {
+        return await runFallbackAnalysis(resolvedCaseId);
+      } catch (fallbackError) {
+        console.error('[Timeline Analysis API] Fallback also failed:', fallbackError);
+      }
+    }
     return withCors(
       NextResponse.json(
         { error: error.message || 'Analysis failed' },

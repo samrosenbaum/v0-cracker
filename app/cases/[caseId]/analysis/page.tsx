@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase-client';
 import {
   ArrowLeft,
   PlayCircle,
@@ -40,42 +39,25 @@ export default function AnalysisPage() {
   const [documentCount, setDocumentCount] = useState(0);
 
   useEffect(() => {
-    fetchCaseInfo();
-    fetchAnalyses();
-    fetchDocumentCount();
+    loadOverview();
   }, [caseId]);
 
-  const fetchCaseInfo = async () => {
-    const { data } = await supabase
-      .from('cases')
-      .select('*')
-      .eq('id', caseId)
-      .single();
-
-    setCaseInfo(data);
-  };
-
-  const fetchAnalyses = async () => {
+  const loadOverview = async () => {
     setIsLoading(true);
-    const { data } = await supabase
-      .from('case_analysis')
-      .select('*')
-      .eq('case_id', caseId)
-      .order('created_at', { ascending: false });
-
-    if (data) {
-      setAnalyses(data);
+    try {
+      const response = await fetch(`/api/cases/${caseId}/analysis/overview`);
+      if (!response.ok) {
+        throw new Error(`Failed to load analysis overview: ${response.status}`);
+      }
+      const payload = await response.json();
+      setCaseInfo(payload.case);
+      setAnalyses(payload.analyses || []);
+      setDocumentCount(payload.documentCount || 0);
+    } catch (error) {
+      console.error('Failed to load analysis overview:', error);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
-  };
-
-  const fetchDocumentCount = async () => {
-    const { count } = await supabase
-      .from('case_documents')
-      .select('*', { count: 'exact', head: true })
-      .eq('case_id', caseId);
-
-    setDocumentCount(count || 0);
   };
 
   const runAnalysis = async (analysisType: string) => {
@@ -135,6 +117,11 @@ export default function AnalysisPage() {
       const result = await response.json();
 
       if (result.success) {
+        if (result.mode === 'instant' && result.analysis) {
+          alert('Analysis generated immediately using local engine.');
+          await loadOverview();
+          return;
+        }
         // Show different messages based on analysis type
         if (analysisType === 'timeline') {
           if (result.jobId) {
@@ -188,7 +175,7 @@ export default function AnalysisPage() {
         } else {
           alert(`${analysisType} completed successfully!`);
         }
-        fetchAnalyses(); // Refresh the list
+        await loadOverview();
       }
     } catch (error) {
       console.error('Analysis error:', error);
