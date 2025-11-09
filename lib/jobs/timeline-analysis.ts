@@ -142,7 +142,7 @@ export const processTimelineAnalysisJob = inngest.createFunction(
 
         // Run AI analysis on REAL document content
         console.log(`[Timeline Analysis] Running AI analysis...`);
-        const analysis = await analyzeCaseDocuments(docsForAnalysis);
+        const analysis = await analyzeCaseDocuments(docsForAnalysis, caseId);
 
         // Detect additional conflicts using our algorithm
         const timeConflicts = detectTimeConflicts(analysis.timeline);

@@ -115,6 +115,11 @@ export default function CaseFilesPage() {
         return;
       }
 
+      if (result.mode === 'instant' && result.analysis) {
+        alert('Analysis completed immediately using local engine. Refresh the analysis tab to review the results.');
+        return;
+      }
+
       // Handle job-based responses (async analysis)
       if (result.jobId) {
         const analysisTypeNames = {

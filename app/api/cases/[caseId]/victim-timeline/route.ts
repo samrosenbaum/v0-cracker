@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { sendInngestEvent } from '@/lib/inngest-client';
+import { hasSupabaseServiceConfig } from '@/lib/environment';
+import { listCaseDocuments, getStorageObject, addCaseAnalysis, getCaseById } from '@/lib/demo-data';
+import { buildVictimTimelineFallback } from '@/lib/victim-timeline-fallback';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -37,11 +40,13 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ caseId: string }> | { caseId: string } }
 ) {
+  let requestBody: any = null;
   try {
+    const useSupabase = hasSupabaseServiceConfig();
     const params = await Promise.resolve(context.params);
     const { caseId } = params;
     const body = await request.json();
-
+    requestBody = body;
     // Get victim information from request
     const {
       victimName,
@@ -59,17 +64,64 @@ export async function POST(
       ));
     }
 
-    const anthropicKey =
-      process.env.ANTHROPIC_API_KEY || process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY;
+    if (!useSupabase) {
+      const caseExists = getCaseById(caseId);
+      if (!caseExists) {
+        return withCors(
+          NextResponse.json(
+            { error: `Case ${caseId} not found in local dataset.` },
+            { status: 404 }
+          )
+        );
+      }
 
-    if (!anthropicKey) {
-      return withCors(NextResponse.json(
+      const documents = listCaseDocuments(caseId).map((doc) => {
+        const storage = doc.storage_path
+          ? getStorageObject('case-files', doc.storage_path)
+          : null;
+        return {
+          file_name: doc.file_name,
+          storage_path: doc.storage_path,
+          content:
+            storage?.content ||
+            (typeof doc.metadata?.extracted_text === 'string' ? doc.metadata.extracted_text : ''),
+        };
+      });
+
+      const fallbackResult = buildVictimTimelineFallback(
         {
-          error:
-            'Anthropic API key is not configured. Please set ANTHROPIC_API_KEY before running victim timeline analysis.',
+          name: victimName,
+          incidentTime,
+          incidentLocation,
+          typicalRoutine,
+          knownHabits,
+          regularContacts,
         },
-        { status: 503 }
-      ));
+        { documents, witnesses: [], digitalRecords: body.digitalRecords || null, physicalEvidence: [] }
+      );
+
+      const now = new Date().toISOString();
+      addCaseAnalysis({
+        case_id: caseId,
+        analysis_type: 'victim_timeline',
+        analysis_data: fallbackResult,
+        confidence_score: 0.66,
+        created_at: now,
+        updated_at: now,
+        used_prompt: 'Fallback victim timeline reconstruction',
+      });
+
+      return withCors(
+        NextResponse.json(
+          {
+            success: true,
+            mode: 'instant',
+            analysis: fallbackResult,
+            message: 'Generated using local victim timeline engine.',
+          },
+          { status: 200 }
+        )
+      );
     }
 
     const now = new Date().toISOString();
@@ -136,6 +188,65 @@ export async function POST(
     );
   } catch (error: any) {
     console.error('Victim timeline error:', error);
+    const params = await Promise.resolve(context.params);
+    const { caseId } = params;
+    try {
+      const documents = listCaseDocuments(caseId).map((doc) => {
+        const storage = doc.storage_path
+          ? getStorageObject('case-files', doc.storage_path)
+          : null;
+        return {
+          file_name: doc.file_name,
+          storage_path: doc.storage_path,
+          content:
+            storage?.content ||
+            (typeof doc.metadata?.extracted_text === 'string' ? doc.metadata.extracted_text : ''),
+        };
+      });
+
+      const fallbackResult = buildVictimTimelineFallback(
+        {
+          name: requestBody?.victimName || 'Unknown Victim',
+          incidentTime: requestBody?.incidentTime || new Date().toISOString(),
+          incidentLocation: requestBody?.incidentLocation,
+          typicalRoutine: requestBody?.typicalRoutine,
+          knownHabits: requestBody?.knownHabits,
+          regularContacts: requestBody?.regularContacts,
+        },
+        {
+          documents,
+          witnesses: [],
+          digitalRecords: requestBody?.digitalRecords || null,
+          physicalEvidence: [],
+        }
+      );
+
+      const now = new Date().toISOString();
+      addCaseAnalysis({
+        case_id: caseId,
+        analysis_type: 'victim_timeline',
+        analysis_data: fallbackResult,
+        confidence_score: 0.66,
+        created_at: now,
+        updated_at: now,
+        used_prompt: 'Fallback victim timeline reconstruction',
+      });
+
+      return withCors(
+        NextResponse.json(
+          {
+            success: true,
+            mode: 'instant',
+            analysis: fallbackResult,
+            message: 'Generated using local victim timeline engine after primary failure.',
+          },
+          { status: 200 }
+        )
+      );
+    } catch (fallbackError) {
+      console.error('Fallback victim timeline generation failed:', fallbackError);
+    }
+
     return withCors(NextResponse.json(
       { error: error.message || 'Timeline analysis failed' },
       { status: 500 }

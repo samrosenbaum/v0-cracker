@@ -1,4 +1,6 @@
-import { DEFAULT_ANTHROPIC_MODEL, getAnthropicClient } from './anthropic-client';
+import { DEFAULT_ANTHROPIC_MODEL, getAnthropicClient, isAnthropicConfigured } from './anthropic-client';
+import { fallbackCaseAnalysis, fallbackDeepCaseAnalysis } from './ai-fallback';
+import { getCaseById } from './demo-data';
 
 export interface TimelineEvent {
   id: string;
@@ -100,65 +102,78 @@ Return your analysis as a JSON object matching the CaseAnalysis interface.
 Be thorough, objective, and flag anything suspicious or requiring attention.`;
 
 export async function analyzeCaseDocuments(
-  documents: { content: string; filename: string; type: string }[]
+  documents: { content: string; filename: string; type: string }[],
+  caseId?: string
 ): Promise<CaseAnalysis> {
+  const baseCase = caseId ? getCaseById(caseId) : null;
+  const baseDate = baseCase?.incident_date || new Date().toISOString();
 
-  const documentsText = documents.map((doc, idx) =>
-    `=== DOCUMENT ${idx + 1}: ${doc.filename} (${doc.type}) ===\n${doc.content}\n`
-  ).join('\n\n');
-
-  const anthropic = getAnthropicClient();
-
-  const message = await anthropic.messages.create({
-    model: DEFAULT_ANTHROPIC_MODEL,
-    max_tokens: 8000,
-    messages: [
-      {
-        role: 'user',
-        content: `${ANALYSIS_PROMPT}\n\nCASE DOCUMENTS:\n\n${documentsText}\n\nProvide your analysis as valid JSON only, no other text.`
-      }
-    ],
-  });
-
-  const content = message.content[0];
-  if (content.type !== 'text') {
-    throw new Error('Unexpected response type from Claude');
+  if (!isAnthropicConfigured()) {
+    console.warn('[AI Analysis] Anthropic key not configured. Using deterministic fallback analysis.');
+    return fallbackCaseAnalysis(documents, baseDate);
   }
 
-  // Extract JSON from the response
-  const jsonMatch = content.text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    console.error('Claude response text:', content.text.substring(0, 500));
-    throw new Error('Could not parse JSON from Claude response');
-  }
-
-  let analysis: CaseAnalysis;
   try {
-    analysis = JSON.parse(jsonMatch[0]);
-  } catch (parseError) {
-    console.error('JSON parse error:', parseError);
-    console.error('Attempted to parse:', jsonMatch[0].substring(0, 500));
-    throw new Error('Failed to parse JSON from Claude response');
+    const documentsText = documents
+      .map((doc, idx) => `=== DOCUMENT ${idx + 1}: ${doc.filename} (${doc.type}) ===\n${doc.content}\n`)
+      .join('\n\n');
+
+    const anthropic = getAnthropicClient();
+
+    const message = await anthropic.messages.create({
+      model: DEFAULT_ANTHROPIC_MODEL,
+      max_tokens: 8000,
+      messages: [
+        {
+          role: 'user',
+          content: `${ANALYSIS_PROMPT}\n\nCASE DOCUMENTS:\n\n${documentsText}\n\nProvide your analysis as valid JSON only, no other text.`,
+        },
+      ],
+    });
+
+    const content = message.content[0];
+    if (content.type !== 'text') {
+      throw new Error('Unexpected response type from Claude');
+    }
+
+    // Extract JSON from the response
+    const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error('Claude response text:', content.text.substring(0, 500));
+      throw new Error('Could not parse JSON from Claude response');
+    }
+
+    let analysis: CaseAnalysis;
+    try {
+      analysis = JSON.parse(jsonMatch[0]);
+    } catch (parseError) {
+      console.error('JSON parse error:', parseError);
+      console.error('Attempted to parse:', jsonMatch[0].substring(0, 500));
+      throw new Error('Failed to parse JSON from Claude response');
+    }
+
+    // Validate and provide defaults for missing fields
+    if (!analysis.timeline) {
+      console.warn('Claude response missing timeline array');
+      analysis.timeline = [];
+    }
+    if (!analysis.conflicts) analysis.conflicts = [];
+    if (!analysis.personMentions) analysis.personMentions = [];
+    if (!analysis.unfollowedTips) analysis.unfollowedTips = [];
+    if (!analysis.keyInsights) analysis.keyInsights = [];
+    if (!analysis.suspectAnalysis) analysis.suspectAnalysis = [];
+
+    // Add unique IDs to timeline events if not present
+    analysis.timeline = analysis.timeline.map((event, idx) => ({
+      ...event,
+      id: event.id || `event-${idx}`,
+    }));
+
+    return analysis;
+  } catch (error) {
+    console.error('[AI Analysis] Falling back to heuristic analysis due to error:', error);
+    return fallbackCaseAnalysis(documents, baseDate);
   }
-
-  // Validate and provide defaults for missing fields
-  if (!analysis.timeline) {
-    console.warn('Claude response missing timeline array');
-    analysis.timeline = [];
-  }
-  if (!analysis.conflicts) analysis.conflicts = [];
-  if (!analysis.personMentions) analysis.personMentions = [];
-  if (!analysis.unfollowedTips) analysis.unfollowedTips = [];
-  if (!analysis.keyInsights) analysis.keyInsights = [];
-  if (!analysis.suspectAnalysis) analysis.suspectAnalysis = [];
-
-  // Add unique IDs to timeline events if not present
-  analysis.timeline = analysis.timeline.map((event, idx) => ({
-    ...event,
-    id: event.id || `event-${idx}`,
-  }));
-
-  return analysis;
 }
 
 export function detectTimeConflicts(timeline: TimelineEvent[]): Conflict[] {
