@@ -54,6 +54,7 @@ export default function AllCasesPage() {
   const [cases, setCases] = useState<Case[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState(statusFilter || 'all');
+  const [agencyError, setAgencyError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchCases();
@@ -61,6 +62,24 @@ export default function AllCasesPage() {
 
   const fetchCases = async () => {
     setIsLoading(true);
+    setAgencyError(null);
+
+    // First check if user has agency membership
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id || '00000000-0000-0000-0000-000000000000';
+
+    const { data: membership, error: membershipError } = await supabase
+      .from('agency_members')
+      .select('agency_id')
+      .eq('user_id', userId)
+      .limit(1);
+
+    if (!membership || membership.length === 0) {
+      setAgencyError(
+        'You are not a member of any agency. This may cause cases to be invisible. ' +
+        'Please contact your administrator or run the fix-case-visibility.sql migration.'
+      );
+    }
 
     let query = supabase
       .from('cases')
@@ -116,6 +135,24 @@ export default function AllCasesPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">All Cases</h1>
           <p className="text-gray-600">View and manage all your cases</p>
         </div>
+
+        {/* Agency Error Warning */}
+        {agencyError && (
+          <div className="mb-6 p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded-lg">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-yellow-700">
+                  <span className="font-medium">Warning:</span> {agencyError}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Filters */}
         <div className="mb-6 flex items-center space-x-2">
