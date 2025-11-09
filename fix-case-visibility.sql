@@ -39,15 +39,6 @@ FROM auth.users
 WHERE id NOT IN (SELECT user_id FROM public.agency_members)
 ON CONFLICT DO NOTHING;
 
--- Step 5: Also add the default test user to agency_members (for testing without auth)
-INSERT INTO public.agency_members (user_id, agency_id, role)
-VALUES (
-  '00000000-0000-0000-0000-000000000000'::UUID,
-  '00000000-0000-0000-0000-000000000000'::UUID,
-  'member'
-)
-ON CONFLICT DO NOTHING;
-
 -- Verification query (you can run this to check):
 -- SELECT
 --   u.id as user_id,
