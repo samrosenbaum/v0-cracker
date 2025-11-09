@@ -89,7 +89,6 @@ export async function POST(
         total_units: 4,
         completed_units: 0,
         failed_units: 0,
-        progress_percentage: 0,
         metadata: initialMetadata,
       })
       .select()

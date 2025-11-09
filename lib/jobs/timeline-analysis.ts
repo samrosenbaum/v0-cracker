@@ -80,7 +80,6 @@ export const processTimelineAnalysisJob = inngest.createFunction(
 
         await updateProcessingJob(jobId, {
           completed_units: 1,
-          progress_percentage: Math.round((1 / totalUnits) * 100),
         });
 
         return documents;
@@ -111,7 +110,6 @@ export const processTimelineAnalysisJob = inngest.createFunction(
 
         await updateProcessingJob(jobId, {
           completed_units: 2,
-          progress_percentage: Math.round((2 / totalUnits) * 100),
         });
 
         return { extractionResults, queuedForReview };
@@ -150,7 +148,6 @@ export const processTimelineAnalysisJob = inngest.createFunction(
 
         await updateProcessingJob(jobId, {
           completed_units: 3,
-          progress_percentage: Math.round((3 / totalUnits) * 100),
         });
 
         return analysis;
@@ -206,7 +203,6 @@ export const processTimelineAnalysisJob = inngest.createFunction(
 
         await updateProcessingJob(jobId, {
           completed_units: 4,
-          progress_percentage: Math.round((4 / totalUnits) * 100),
         });
       });
 
@@ -284,7 +280,6 @@ export const processTimelineAnalysisJob = inngest.createFunction(
         await updateProcessingJob(jobId, {
           status: 'completed',
           completed_units: totalUnits,
-          progress_percentage: 100,
           completed_at: new Date().toISOString(),
           metadata: {
             ...initialMetadata,
@@ -306,9 +301,7 @@ export const processTimelineAnalysisJob = inngest.createFunction(
     } catch (error: any) {
       await updateProcessingJob(jobId, {
         status: 'failed',
-        completed_units: totalUnits,
         failed_units: 1,
-        progress_percentage: 100,
         completed_at: new Date().toISOString(),
         metadata: {
           ...initialMetadata,

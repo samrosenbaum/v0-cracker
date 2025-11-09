@@ -87,7 +87,6 @@ export const processVictimTimelineJob = inngest.createFunction(
 
         await updateProcessingJob(jobId, {
           completed_units: 1,
-          progress_percentage: Math.round((1 / totalUnits) * 100),
         });
 
         return { documents: documents || [], files: files || [] };
@@ -121,7 +120,6 @@ export const processVictimTimelineJob = inngest.createFunction(
 
         await updateProcessingJob(jobId, {
           completed_units: 2,
-          progress_percentage: Math.round((2 / totalUnits) * 100),
         });
 
         return result;
@@ -195,7 +193,6 @@ export const processVictimTimelineJob = inngest.createFunction(
 
         await updateProcessingJob(jobId, {
           completed_units: 3,
-          progress_percentage: Math.round((3 / totalUnits) * 100),
         });
       });
 
@@ -203,7 +200,6 @@ export const processVictimTimelineJob = inngest.createFunction(
         await updateProcessingJob(jobId, {
           status: 'completed',
           completed_units: totalUnits,
-          progress_percentage: 100,
           completed_at: new Date().toISOString(),
           metadata: {
             ...initialMetadata,
@@ -224,9 +220,7 @@ export const processVictimTimelineJob = inngest.createFunction(
     } catch (error: any) {
       await updateProcessingJob(jobId, {
         status: 'failed',
-        completed_units: totalUnits,
         failed_units: 1,
-        progress_percentage: 100,
         completed_at: new Date().toISOString(),
         metadata: {
           ...initialMetadata,
