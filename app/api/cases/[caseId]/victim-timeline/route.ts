@@ -2,6 +2,37 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { generateComprehensiveVictimTimeline } from '@/lib/victim-timeline';
 
+const CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+function withCors(response: NextResponse) {
+  Object.entries(CORS_HEADERS).forEach(([key, value]) => {
+    response.headers.set(key, value);
+  });
+  return response;
+}
+
+export async function OPTIONS() {
+  return withCors(new NextResponse(null, { status: 204 }));
+}
+
+export async function GET() {
+  return withCors(
+    NextResponse.json(
+      {
+        message: 'Victim Timeline endpoint is ready. Use POST method to run analysis.',
+        endpoint: '/api/cases/[caseId]/victim-timeline',
+        method: 'POST',
+        description: 'Reconstructs victim\'s last 24-48 hours with gap detection'
+      },
+      { status: 200 }
+    )
+  );
+}
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ caseId: string }> | { caseId: string } }
@@ -22,10 +53,10 @@ export async function POST(
     } = body;
 
     if (!victimName || !incidentTime) {
-      return NextResponse.json(
+      return withCors(NextResponse.json(
         { error: 'victimName and incidentTime are required' },
         { status: 400 }
-      );
+      ));
     }
 
     // Fetch case documents
@@ -35,7 +66,7 @@ export async function POST(
       .eq('case_id', caseId);
 
     if (docError) {
-      return NextResponse.json({ error: docError.message }, { status: 500 });
+      return withCors(NextResponse.json({ error: docError.message }, { status: 500 }));
     }
 
     // Fetch case files (for evidence)
@@ -138,7 +169,7 @@ export async function POST(
       console.error('Error saving analysis:', analysisError);
     }
 
-    return NextResponse.json({
+    return withCors(NextResponse.json({
       success: true,
       timeline: result.timeline,
       routineDeviations: result.routineDeviations,
@@ -152,13 +183,13 @@ export async function POST(
         criticalAreas: result.timeline.criticalAreas.length,
         routineDeviations: result.routineDeviations.length,
       },
-    });
+    }));
 
   } catch (error: any) {
     console.error('Victim timeline error:', error);
-    return NextResponse.json(
+    return withCors(NextResponse.json(
       { error: error.message || 'Timeline analysis failed' },
       { status: 500 }
-    );
+    ));
   }
 }

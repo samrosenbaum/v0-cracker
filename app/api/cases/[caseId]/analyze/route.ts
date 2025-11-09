@@ -20,6 +20,20 @@ export async function OPTIONS() {
   return withCors(new NextResponse(null, { status: 204 }));
 }
 
+export async function GET() {
+  return withCors(
+    NextResponse.json(
+      {
+        message: 'Analysis endpoint is ready. Use POST method to run analysis.',
+        endpoint: '/api/cases/[caseId]/analyze',
+        method: 'POST',
+        description: 'Analyzes case documents and extracts timeline events and conflicts'
+      },
+      { status: 200 }
+    )
+  );
+}
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ caseId: string }> | { caseId: string } }
