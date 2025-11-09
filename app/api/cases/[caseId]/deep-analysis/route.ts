@@ -20,6 +20,20 @@ export async function OPTIONS() {
   return withCors(new NextResponse(null, { status: 204 }));
 }
 
+export async function GET() {
+  return withCors(
+    NextResponse.json(
+      {
+        message: 'Deep Analysis endpoint is ready. Use POST method to run analysis.',
+        endpoint: '/api/cases/[caseId]/deep-analysis',
+        method: 'POST',
+        description: 'Performs comprehensive cold case analysis with 8 analytical dimensions'
+      },
+      { status: 200 }
+    )
+  );
+}
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ caseId: string }> | { caseId: string } }
