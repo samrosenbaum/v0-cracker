@@ -110,10 +110,24 @@ export default function CaseFilesPage() {
 
       const result = await response.json();
 
-      if (result.success) {
-        alert(`${analysisType} analysis completed successfully!`);
-      } else {
+      if (!result.success) {
         alert(`Analysis failed: ${result.error}`);
+        return;
+      }
+
+      if (analysisType === 'victim-timeline') {
+        if (result.jobId) {
+          alert(
+            [
+              'Victim timeline reconstruction has been scheduled.',
+              'You can monitor progress from the Processing Jobs panel.',
+            ].join(' ')
+          );
+        } else {
+          alert('Victim timeline analysis completed successfully!');
+        }
+      } else {
+        alert(`${analysisType} analysis completed successfully!`);
       }
     } catch (error) {
       console.error('Analysis error:', error);

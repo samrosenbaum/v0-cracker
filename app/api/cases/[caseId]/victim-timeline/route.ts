@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
-import { generateComprehensiveVictimTimeline } from '@/lib/victim-timeline';
+import { sendInngestEvent } from '@/lib/inngest-client';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -59,40 +59,56 @@ export async function POST(
       ));
     }
 
-    // Fetch case documents
-    const { data: documents, error: docError } = await supabaseServer
-      .from('case_documents')
-      .select('*')
-      .eq('case_id', caseId);
+    const anthropicKey =
+      process.env.ANTHROPIC_API_KEY || process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY;
 
-    if (docError) {
-      return withCors(NextResponse.json({ error: docError.message }, { status: 500 }));
+    if (!anthropicKey) {
+      return withCors(NextResponse.json(
+        {
+          error:
+            'Anthropic API key is not configured. Please set ANTHROPIC_API_KEY before running victim timeline analysis.',
+        },
+        { status: 503 }
+      ));
     }
 
-    // Fetch case files (for evidence)
-    const { data: files } = await supabaseServer
-      .from('case_files')
-      .select('*')
-      .eq('case_id', caseId);
-
-    // Prepare documents for analysis
-    const docsForAnalysis = documents?.map(doc => ({
-      filename: doc.file_name,
-      content: `[Document content would be loaded from: ${doc.storage_path}]`,
-      type: doc.document_type as any,
-    })) || [];
-
-    // Prepare case data
-    const caseData = {
-      documents: docsForAnalysis,
-      witnesses: [], // Would be extracted from documents
-      digitalRecords: body.digitalRecords || undefined,
-      physicalEvidence: files?.map(f => f.file_name) || [],
+    const now = new Date().toISOString();
+    const initialMetadata = {
+      analysisType: 'victim_timeline',
+      victimName,
+      incidentTime,
+      incidentLocation,
     };
 
-    // Run comprehensive timeline analysis
-    const result = await generateComprehensiveVictimTimeline(
-      {
+    const { data: job, error: jobError } = await supabaseServer
+      .from('processing_jobs')
+      .insert({
+        case_id: caseId,
+        job_type: 'ai_analysis',
+        status: 'pending',
+        total_units: 4,
+        completed_units: 0,
+        failed_units: 0,
+        progress_percentage: 0,
+        metadata: initialMetadata,
+      })
+      .select()
+      .single();
+
+    if (jobError || !job) {
+      console.error('Failed to create processing job for victim timeline:', jobError);
+      return withCors(
+        NextResponse.json(
+          { error: 'Unable to schedule victim timeline analysis job.' },
+          { status: 500 }
+        )
+      );
+    }
+
+    await sendInngestEvent('analysis/victim-timeline', {
+      jobId: job.id,
+      caseId,
+      victimInfo: {
         name: victimName,
         incidentTime,
         incidentLocation,
@@ -100,91 +116,24 @@ export async function POST(
         knownHabits,
         regularContacts,
       },
-      caseData
-    );
-
-    // Save timeline to database
-    const timelineInserts = result.timeline.movements.map(movement => ({
-      case_id: caseId,
-      title: movement.activity.substring(0, 100),
-      description: movement.activity,
-      type: 'victim_movement',
-      date: movement.timestamp.split('T')[0],
-      time: new Date(movement.timestamp).toLocaleTimeString(),
-      location: movement.location,
-      personnel: [...movement.witnessedBy, ...movement.accompaniedBy].join(', '),
-      tags: [...movement.witnessedBy, ...movement.accompaniedBy],
-      status: movement.significance,
-      priority: movement.significance,
-    }));
-
-    const { error: timelineError } = await supabaseServer
-      .from('evidence_events')
-      .insert(timelineInserts);
-
-    if (timelineError) {
-      console.error('Error saving timeline:', timelineError);
-    }
-
-    // Save timeline gaps as quality flags
-    const gapFlags = result.timeline.timelineGaps
-      .filter(gap => gap.significance === 'critical' || gap.significance === 'high')
-      .map(gap => ({
-        case_id: caseId,
-        type: 'missing_data' as 'missing_data',
-        severity: gap.significance as 'low' | 'medium' | 'high' | 'critical',
-        title: `Timeline gap: ${gap.durationMinutes} minutes unaccounted`,
-        description: `Victim's whereabouts unknown between ${gap.lastKnownLocation} and ${gap.nextKnownLocation}`,
-        recommendation: gap.questionsToAnswer.join('; '),
-        metadata: {
-          startTime: gap.startTime,
-          endTime: gap.endTime,
-          durationMinutes: gap.durationMinutes,
-          potentialEvidence: gap.potentialEvidence,
-        } as any,
-      }));
-
-    if (gapFlags.length > 0) {
-      const { error: flagError } = await supabaseServer
-        .from('quality_flags')
-        .insert(gapFlags);
-
-      if (flagError) {
-        console.error('Error saving gap flags:', flagError);
-      }
-    }
-
-    // Save complete analysis
-    const { error: analysisError } = await supabaseServer
-      .from('case_analysis')
-      .insert({
-        case_id: caseId,
-        analysis_type: 'victim_timeline',
-        analysis_data: result as any,
-        confidence_score: 0.85,
-        used_prompt: 'Victim last movements reconstruction with gap analysis',
-      });
-
-    if (analysisError) {
-      console.error('Error saving analysis:', analysisError);
-    }
-
-    return withCors(NextResponse.json({
-      success: true,
-      timeline: result.timeline,
-      routineDeviations: result.routineDeviations,
-      digitalFootprint: result.digitalFootprint,
-      witnessValidation: result.witnessValidation,
-      executiveSummary: result.executiveSummary,
-      stats: {
-        totalMovements: result.timeline.movements.length,
-        criticalGaps: result.timeline.timelineGaps.filter(g => g.significance === 'critical').length,
-        lastSeenPersons: result.timeline.lastSeenPersons.length,
-        criticalAreas: result.timeline.criticalAreas.length,
-        routineDeviations: result.routineDeviations.length,
+      requestContext: {
+        digitalRecords: body.digitalRecords || null,
       },
-    }));
+      requestedAt: now,
+    });
 
+    return withCors(
+      NextResponse.json(
+        {
+          success: true,
+          jobId: job.id,
+          status: 'pending',
+          message:
+            'Victim timeline reconstruction has been scheduled. Check processing job status for progress.',
+        },
+        { status: 202 }
+      )
+    );
   } catch (error: any) {
     console.error('Victim timeline error:', error);
     return withCors(NextResponse.json(
