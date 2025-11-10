@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { runInBackground } from '@/lib/run-in-background';
 import { supabaseServer } from '@/lib/supabase-server';
 import { hasSupabaseServiceConfig } from '@/lib/environment';
 import { processVictimTimeline } from '@/lib/workflows/victim-timeline';
@@ -156,25 +157,29 @@ export async function POST(
       );
     }
 
-    // Trigger workflow in background (fire and forget)
-    processVictimTimeline({
-      jobId: job.id,
-      caseId,
-      victimInfo: {
-        name: victimName,
-        incidentTime,
-        incidentLocation,
-        typicalRoutine,
-        knownHabits,
-        regularContacts,
-      },
-      requestContext: {
-        digitalRecords: body.digitalRecords || null,
-      },
-      requestedAt: now,
-    }).catch((error) => {
-      console.error('[Victim Timeline API] Workflow failed:', error);
-      // Workflow will update job status to 'failed' internally
+    // Trigger workflow in background after the response flushes
+    runInBackground(async () => {
+      try {
+        await processVictimTimeline({
+          jobId: job.id,
+          caseId,
+          victimInfo: {
+            name: victimName,
+            incidentTime,
+            incidentLocation,
+            typicalRoutine,
+            knownHabits,
+            regularContacts,
+          },
+          requestContext: {
+            digitalRecords: body.digitalRecords || null,
+          },
+          requestedAt: now,
+        });
+      } catch (error) {
+        console.error('[Victim Timeline API] Workflow failed:', error);
+        // Workflow will update job status to 'failed' internally
+      }
     });
 
     return withCors(

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { runInBackground } from '@/lib/run-in-background';
 import { supabaseServer } from '@/lib/supabase-server';
 import { processForensicRetesting } from '@/lib/workflows/forensic-retesting';
 
@@ -88,13 +89,17 @@ export async function POST(
       );
     }
 
-    // Trigger workflow in background (fire and forget)
-    processForensicRetesting({
-      jobId: job.id,
-      caseId,
-    }).catch((error) => {
-      console.error('[Forensic Retesting API] Workflow failed:', error);
-      // Workflow will update job status to 'failed' internally
+    // Trigger workflow in background after the response completes
+    runInBackground(async () => {
+      try {
+        await processForensicRetesting({
+          jobId: job.id,
+          caseId,
+        });
+      } catch (error) {
+        console.error('[Forensic Retesting API] Workflow failed:', error);
+        // Workflow will update job status to 'failed' internally
+      }
     });
 
     return withCors(

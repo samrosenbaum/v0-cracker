@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { runInBackground } from '@/lib/run-in-background';
 import { supabaseServer } from '@/lib/supabase-server';
 import { processEvidenceGaps } from '@/lib/workflows/evidence-gaps';
 
@@ -88,13 +89,17 @@ export async function POST(
       );
     }
 
-    // Trigger workflow in background (fire and forget)
-    processEvidenceGaps({
-      jobId: job.id,
-      caseId,
-    }).catch((error) => {
-      console.error('[Evidence Gaps API] Workflow failed:', error);
-      // Workflow will update job status to 'failed' internally
+    // Trigger workflow in background after response flushes
+    runInBackground(async () => {
+      try {
+        await processEvidenceGaps({
+          jobId: job.id,
+          caseId,
+        });
+      } catch (error) {
+        console.error('[Evidence Gaps API] Workflow failed:', error);
+        // Workflow will update job status to 'failed' internally
+      }
     });
 
     return withCors(

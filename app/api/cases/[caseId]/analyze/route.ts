@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { runInBackground } from '@/lib/run-in-background';
 import { supabaseServer } from '@/lib/supabase-server';
 import { hasSupabaseServiceConfig } from '@/lib/environment';
 import { processTimelineAnalysis } from '@/lib/workflows/timeline-analysis';
@@ -490,13 +491,17 @@ export async function POST(
 
     createdJobId = job.id;
 
-    // Trigger workflow in background (fire and forget)
-    processTimelineAnalysis({
-      jobId: job.id,
-      caseId,
-    }).catch((error) => {
-      console.error('[Timeline Analysis API] Workflow failed:', error);
-      // Workflow will update job status to 'failed' internally
+    // Trigger workflow in background after response completes
+    runInBackground(async () => {
+      try {
+        await processTimelineAnalysis({
+          jobId: job.id,
+          caseId,
+        });
+      } catch (error) {
+        console.error('[Timeline Analysis API] Workflow failed:', error);
+        // Workflow will update job status to 'failed' internally
+      }
     });
 
     return withCors(

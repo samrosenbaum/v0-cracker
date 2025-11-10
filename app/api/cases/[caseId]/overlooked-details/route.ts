@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { runInBackground } from '@/lib/run-in-background';
 import { supabaseServer } from '@/lib/supabase-server';
 import { processOverlookedDetails } from '@/lib/workflows/overlooked-details';
 
@@ -88,13 +89,17 @@ export async function POST(
       );
     }
 
-    // Trigger workflow in background (fire and forget)
-    processOverlookedDetails({
-      jobId: job.id,
-      caseId,
-    }).catch((error) => {
-      console.error('[Overlooked Details API] Workflow failed:', error);
-      // Workflow will update job status to 'failed' internally
+    // Trigger workflow in background after response completes
+    runInBackground(async () => {
+      try {
+        await processOverlookedDetails({
+          jobId: job.id,
+          caseId,
+        });
+      } catch (error) {
+        console.error('[Overlooked Details API] Workflow failed:', error);
+        // Workflow will update job status to 'failed' internally
+      }
     });
 
     return withCors(
