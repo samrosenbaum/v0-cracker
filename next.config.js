@@ -1,11 +1,12 @@
 // Workflow DevKit Integration
-// PACKAGE REMOVED: Due to critical beta bugs (webpack loader + 331MB size causing stack overflow)
-// The workflow code in lib/workflows/ is ready and works as regular async functions.
+// Requires extensive refactoring to wrap all Node.js module usage in step functions
+// The workflow code in lib/workflows/ works as regular async functions for now
 //
-// To re-enable when stable version is available:
-// 1. npm install workflow@latest
+// To enable when refactored:
+// 1. npm install workflow@latest --legacy-peer-deps
 // 2. Uncomment: const { withWorkflow } = require('workflow/next');
 // 3. Replace module.exports line with: module.exports = withWorkflow(nextConfig)
+// 4. Wrap all Supabase/OpenAI/Node.js calls in step.run()
 //
 // const { withWorkflow } = require('workflow/next');
 
@@ -32,7 +33,6 @@ const nextConfig = {
   },
 }
 
-// STANDARD CONFIG (Workflow DevKit package removed due to beta issues)
-// The workflow functions in lib/workflows/ execute as regular async functions.
-// They work perfectly, just without auto-durability/retries until stable release.
+// STANDARD CONFIG (Workflow DevKit disabled - requires refactoring)
+// The workflow functions in lib/workflows/ execute as regular async functions
 module.exports = nextConfig
