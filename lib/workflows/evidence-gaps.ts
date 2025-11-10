@@ -8,22 +8,12 @@
  */
 
 import { supabaseServer } from '@/lib/supabase-server';
+import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { identifyEvidenceGaps } from '@/lib/cold-case-analyzer';
 
 interface EvidenceGapsParams {
   jobId: string;
   caseId: string;
-}
-
-async function updateProcessingJob(jobId: string, updates: Record<string, any>) {
-  const { error } = await supabaseServer
-    .from('processing_jobs')
-    .update(updates)
-    .eq('id', jobId);
-
-  if (error) {
-    console.error('[EvidenceGapsWorkflow] Failed to update job', jobId, error);
-  }
 }
 
 export async function processEvidenceGaps(params: EvidenceGapsParams) {
@@ -40,12 +30,12 @@ export async function processEvidenceGaps(params: EvidenceGapsParams) {
   try {
     async function initializeJob() {
       'use step';
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         status: 'running',
         total_units: totalUnits,
         started_at: new Date().toISOString(),
         metadata: initialMetadata,
-      });
+      }, 'EvidenceGapsWorkflow');
     }
     await initializeJob();
 
@@ -77,9 +67,9 @@ export async function processEvidenceGaps(params: EvidenceGapsParams) {
 
       console.log(`[Evidence Gaps] Found: ${evidence?.length || 0} evidence items, ${suspects?.length || 0} suspects, ${witnesses?.length || 0} witnesses`);
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 1,
-      });
+      }, 'EvidenceGapsWorkflow');
 
       return { caseData, evidence: evidence || [], suspects: suspects || [], witnesses: witnesses || [] };
     }
@@ -96,9 +86,9 @@ export async function processEvidenceGaps(params: EvidenceGapsParams) {
         witnesses: witnesses.map((w) => w.name),
       };
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 2,
-      });
+      }, 'EvidenceGapsWorkflow');
 
       return caseInput;
     }
@@ -109,9 +99,9 @@ export async function processEvidenceGaps(params: EvidenceGapsParams) {
       console.log('[Evidence Gaps] Identifying missing evidence...');
       const gaps = await identifyEvidenceGaps(caseInput);
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 3,
-      });
+      }, 'EvidenceGapsWorkflow');
 
       return gaps;
     }
@@ -136,7 +126,7 @@ export async function processEvidenceGaps(params: EvidenceGapsParams) {
       }
 
       // Mark job as completed
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         status: 'completed',
         completed_units: totalUnits,
         completed_at: new Date().toISOString(),
@@ -148,7 +138,7 @@ export async function processEvidenceGaps(params: EvidenceGapsParams) {
             highPriorityGaps: gaps.filter((g) => g.priority === 'high').length,
           },
         },
-      });
+      }, 'EvidenceGapsWorkflow');
     }
     await saveResults();
 
@@ -157,7 +147,7 @@ export async function processEvidenceGaps(params: EvidenceGapsParams) {
       jobId,
     };
   } catch (error: any) {
-    await updateProcessingJob(jobId, {
+    await updateProcessingJobRecord(jobId, {
       status: 'failed',
       completed_units: totalUnits,
       failed_units: 1,
@@ -166,7 +156,7 @@ export async function processEvidenceGaps(params: EvidenceGapsParams) {
         ...initialMetadata,
         error: error?.message || 'Evidence gap analysis failed',
       },
-    });
+    }, 'EvidenceGapsWorkflow');
 
     console.error('[EvidenceGapsWorkflow] Failed to process evidence gaps:', error);
     throw error;

@@ -8,6 +8,7 @@
  */
 
 import { supabaseServer } from '@/lib/supabase-server';
+import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { mapRelationshipNetwork } from '@/lib/cold-case-analyzer';
 import { extractMultipleDocuments } from '@/lib/document-parser';
 
@@ -17,14 +18,7 @@ interface RelationshipNetworkParams {
 }
 
 async function updateProcessingJob(jobId: string, updates: Record<string, any>) {
-  const { error } = await supabaseServer
-    .from('processing_jobs')
-    .update(updates)
-    .eq('id', jobId);
-
-  if (error) {
-    console.error('[RelationshipNetworkWorkflow] Failed to update job', jobId, error);
-  }
+  await updateProcessingJobRecord(jobId, updates, 'RelationshipNetworkWorkflow');
 }
 
 /**

@@ -8,23 +8,13 @@
  */
 
 import { supabaseServer } from '@/lib/supabase-server';
+import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { performComprehensiveAnalysis } from '@/lib/cold-case-analyzer';
 import { extractMultipleDocuments, queueDocumentForReview } from '@/lib/document-parser';
 
 interface DeepAnalysisParams {
   jobId: string;
   caseId: string;
-}
-
-async function updateProcessingJob(jobId: string, updates: Record<string, any>) {
-  const { error } = await supabaseServer
-    .from('processing_jobs')
-    .update(updates)
-    .eq('id', jobId);
-
-  if (error) {
-    console.error('[DeepAnalysisWorkflow] Failed to update job', jobId, error);
-  }
 }
 
 export async function processDeepAnalysis(params: DeepAnalysisParams) {
@@ -41,12 +31,12 @@ export async function processDeepAnalysis(params: DeepAnalysisParams) {
   try {
     async function initializeJob() {
       'use step';
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         status: 'running',
         total_units: totalUnits,
         started_at: new Date().toISOString(),
         metadata: initialMetadata,
-      });
+      }, 'DeepAnalysisWorkflow');
     }
     await initializeJob();
 
@@ -95,10 +85,9 @@ export async function processDeepAnalysis(params: DeepAnalysisParams) {
       console.log(`  - Suspects: ${suspects?.length || 0}`);
       console.log(`  - Evidence: ${evidence?.length || 0}`);
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 1,
-        progress_percentage: Math.round((1 / totalUnits) * 100),
-      });
+      }, 'DeepAnalysisWorkflow');
 
       return { caseData, documents: documents || [], suspects: suspects || [], evidence: evidence || [] };
     }
@@ -134,10 +123,9 @@ export async function processDeepAnalysis(params: DeepAnalysisParams) {
 
       console.log(`[Deep Analysis] Extracted ${totalChars.toLocaleString()} total characters`);
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 2,
-        progress_percentage: Math.round((2 / totalUnits) * 100),
-      });
+      }, 'DeepAnalysisWorkflow');
 
       return { extractionResults, queuedForReview };
     }
@@ -172,10 +160,9 @@ export async function processDeepAnalysis(params: DeepAnalysisParams) {
       console.log('[Deep Analysis] Running comprehensive analysis...');
       const analysis = await performComprehensiveAnalysis(caseId, analysisInput);
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 3,
-        progress_percentage: Math.round((3 / totalUnits) * 100),
-      });
+      }, 'DeepAnalysisWorkflow');
 
       return analysis;
     }
@@ -200,10 +187,9 @@ export async function processDeepAnalysis(params: DeepAnalysisParams) {
       }
 
       // Mark job as completed
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         status: 'completed',
         completed_units: totalUnits,
-        progress_percentage: 100,
         completed_at: new Date().toISOString(),
         metadata: {
           ...initialMetadata,
@@ -217,7 +203,7 @@ export async function processDeepAnalysis(params: DeepAnalysisParams) {
             documentsReviewed: queuedForReview,
           },
         },
-      });
+      }, 'DeepAnalysisWorkflow');
     }
     await saveResults();
 
@@ -226,17 +212,16 @@ export async function processDeepAnalysis(params: DeepAnalysisParams) {
       jobId,
     };
   } catch (error: any) {
-    await updateProcessingJob(jobId, {
+    await updateProcessingJobRecord(jobId, {
       status: 'failed',
       completed_units: totalUnits,
       failed_units: 1,
-      progress_percentage: 100,
       completed_at: new Date().toISOString(),
       metadata: {
         ...initialMetadata,
         error: error?.message || 'Deep analysis failed',
       },
-    });
+    }, 'DeepAnalysisWorkflow');
 
     console.error('[DeepAnalysisWorkflow] Failed to process deep analysis:', error);
     throw error;

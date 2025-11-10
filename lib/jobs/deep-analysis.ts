@@ -7,6 +7,7 @@
 
 import { inngest } from '@/lib/inngest-client';
 import { supabaseServer } from '@/lib/supabase-server';
+import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { performComprehensiveAnalysis } from '@/lib/cold-case-analyzer';
 import { extractMultipleDocuments, queueDocumentForReview } from '@/lib/document-parser';
 
@@ -16,14 +17,7 @@ interface DeepAnalysisEventData {
 }
 
 async function updateProcessingJob(jobId: string, updates: Record<string, any>) {
-  const { error } = await supabaseServer
-    .from('processing_jobs')
-    .update(updates)
-    .eq('id', jobId);
-
-  if (error) {
-    console.error('[DeepAnalysisJob] Failed to update job', jobId, error);
-  }
+  await updateProcessingJobRecord(jobId, updates, 'DeepAnalysisJob');
 }
 
 export const processDeepAnalysisJob = inngest.createFunction(
