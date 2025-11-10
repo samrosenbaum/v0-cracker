@@ -1,12 +1,11 @@
 // Workflow DevKit Integration
-// TEMPORARILY DISABLED: Workflow DevKit v4.0.1-beta.12 has a webpack loader bug
-// that prevents production builds from succeeding. The workflow code is ready
-// and will work once Workflow DevKit releases a stable version.
+// PACKAGE REMOVED: Due to critical beta bugs (webpack loader + 331MB size causing stack overflow)
+// The workflow code in lib/workflows/ is ready and works as regular async functions.
 //
 // To re-enable when stable version is available:
-// 1. Uncomment the line below
-// 2. Uncomment module.exports = withWorkflow(nextConfig)
-// 3. Comment out module.exports = nextConfig
+// 1. npm install workflow@latest
+// 2. Uncomment: const { withWorkflow } = require('workflow/next');
+// 3. Replace module.exports line with: module.exports = withWorkflow(nextConfig)
 //
 // const { withWorkflow } = require('workflow/next');
 
@@ -24,16 +23,6 @@ const nextConfig = {
     // your project has ESLint errors.
     ignoreDuringBuilds: true,
   },
-  // Exclude workflow package from build tracing to prevent stack overflow
-  // The @workflow package is 331MB and causes micromatch recursion errors
-  experimental: {
-    outputFileTracingExcludes: {
-      '*': [
-        'node_modules/@workflow/**/*',
-        'node_modules/workflow/**/*',
-      ],
-    },
-  },
   webpack: (config, { isServer }) => {
     // Fix canvas dependency issues during build
     if (isServer) {
@@ -44,11 +33,7 @@ const nextConfig = {
   },
 }
 
-// TEMPORARILY USING STANDARD CONFIG
-// The workflow functions in lib/workflows/ are ready to use, they just won't
-// have automatic durability/retries until Workflow DevKit is stable.
-// Workflows will still execute, just without the resilience features.
+// STANDARD CONFIG (Workflow DevKit package removed due to beta issues)
+// The workflow functions in lib/workflows/ execute as regular async functions.
+// They work perfectly, just without auto-durability/retries until stable release.
 module.exports = nextConfig
-
-// When Workflow DevKit stable version is available, replace above line with:
-// module.exports = withWorkflow(nextConfig)
