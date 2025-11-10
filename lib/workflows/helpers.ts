@@ -5,14 +5,14 @@
  * These are defined at module level to comply with Workflow DevKit requirements.
  */
 
-import { updateProcessingJob as updateProcessingJobRecord } from "@/lib/update-processing-job";
+import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 
 interface FailureJobInput {
-	jobId: string;
-	totalUnits: number;
-	initialMetadata: Record<string, any>;
-	error: any;
-	workflowName: string;
+  jobId: string;
+  totalUnits: number;
+  initialMetadata: Record<string, any>;
+  error: any;
+  workflowName: string;
 }
 
 /**
@@ -22,26 +22,26 @@ interface FailureJobInput {
  * It updates the processing job with failure status and logs the error.
  */
 export async function handleWorkflowFailure(
-	input: FailureJobInput,
+  input: FailureJobInput,
 ): Promise<void> {
-	"use step";
+  'use step';
 
-	const { jobId, totalUnits, initialMetadata, error, workflowName } = input;
+  const { jobId, totalUnits, initialMetadata, error, workflowName } = input;
 
-	await updateProcessingJobRecord(
-		jobId,
-		{
-			status: "failed",
-			completed_units: totalUnits,
-			failed_units: 1,
-			completed_at: new Date().toISOString(),
-			metadata: {
-				...initialMetadata,
-				error: error?.message || `${workflowName} analysis failed`,
-			},
-		},
-		workflowName,
-	);
+  await updateProcessingJobRecord(
+    jobId,
+    {
+      status: 'failed',
+      completed_units: totalUnits,
+      failed_units: 1,
+      completed_at: new Date().toISOString(),
+      metadata: {
+        ...initialMetadata,
+        error: error?.message || `${workflowName} analysis failed`,
+      },
+    },
+    workflowName,
+  );
 
-	console.error(`[${workflowName}] Failed to process workflow:`, error);
+  console.error(`[${workflowName}] Failed to process workflow:`, error);
 }
