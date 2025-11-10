@@ -7,6 +7,7 @@
 
 import { inngest } from '@/lib/inngest-client';
 import { supabaseServer } from '@/lib/supabase-server';
+import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import {
   analyzeCaseDocuments,
   detectTimeConflicts,
@@ -21,14 +22,7 @@ interface TimelineAnalysisEventData {
 }
 
 async function updateProcessingJob(jobId: string, updates: Record<string, any>) {
-  const { error } = await supabaseServer
-    .from('processing_jobs')
-    .update(updates)
-    .eq('id', jobId);
-
-  if (error) {
-    console.error('[TimelineAnalysisJob] Failed to update job', jobId, error);
-  }
+  await updateProcessingJobRecord(jobId, updates, 'TimelineAnalysisJob');
 }
 
 export const processTimelineAnalysisJob = inngest.createFunction(

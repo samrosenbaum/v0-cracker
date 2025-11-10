@@ -8,6 +8,7 @@
  */
 
 import { supabaseServer } from '@/lib/supabase-server';
+import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import {
   analyzeCaseDocuments,
   detectTimeConflicts,
@@ -19,17 +20,6 @@ import { extractMultipleDocuments, queueDocumentForReview } from '@/lib/document
 interface TimelineAnalysisParams {
   jobId: string;
   caseId: string;
-}
-
-async function updateProcessingJob(jobId: string, updates: Record<string, any>) {
-  const { error } = await supabaseServer
-    .from('processing_jobs')
-    .update(updates)
-    .eq('id', jobId);
-
-  if (error) {
-    console.error('[TimelineAnalysisWorkflow] Failed to update job', jobId, error);
-  }
 }
 
 /**
@@ -55,12 +45,12 @@ export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
     // Step 1: Initialize job
     async function initializeJob() {
       'use step';
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         status: 'running',
         total_units: totalUnits,
         started_at: new Date().toISOString(),
         metadata: initialMetadata,
-      });
+      }, 'TimelineAnalysisWorkflow');
     }
     await initializeJob();
 
@@ -82,10 +72,10 @@ export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
 
       console.log(`[Timeline Analysis] Found ${documents.length} documents to analyze`);
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 1,
         // progress_percentage auto-calculates from completed_units/total_units
-      });
+      }, 'TimelineAnalysisWorkflow');
 
       return documents;
     }
@@ -115,10 +105,10 @@ export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
         console.log(`[Timeline Analysis] ⚠️  ${queuedForReview} document(s) queued for human review`);
       }
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 2,
         // progress_percentage auto-calculates from completed_units/total_units
-      });
+      }, 'TimelineAnalysisWorkflow');
 
       return { extractionResults, queuedForReview };
     }
@@ -156,10 +146,10 @@ export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
       const timeConflicts = detectTimeConflicts(analysis.timeline);
       analysis.conflicts.push(...timeConflicts);
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 3,
         // progress_percentage auto-calculates from completed_units/total_units
-      });
+      }, 'TimelineAnalysisWorkflow');
 
       return analysis;
     }
@@ -214,10 +204,10 @@ export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
         }
       }
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 4,
         // progress_percentage auto-calculates from completed_units/total_units
-      });
+      }, 'TimelineAnalysisWorkflow');
     }
     await saveTimelineEvents();
 
@@ -293,7 +283,7 @@ export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
       }
 
       // Mark job as completed
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         status: 'completed',
         completed_units: totalUnits,
         // progress_percentage auto-calculates from completed_units/total_units
@@ -308,7 +298,7 @@ export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
             documentsReviewed: queuedForReview,
           },
         },
-      });
+      }, 'TimelineAnalysisWorkflow');
     }
     await saveConflictsAndFinalize();
 
@@ -317,7 +307,7 @@ export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
       jobId,
     };
   } catch (error: any) {
-    await updateProcessingJob(jobId, {
+    await updateProcessingJobRecord(jobId, {
       status: 'failed',
       completed_units: totalUnits,
       failed_units: 1,
@@ -327,7 +317,7 @@ export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
         ...initialMetadata,
         error: error?.message || 'Timeline analysis failed',
       },
-    });
+    }, 'TimelineAnalysisWorkflow');
 
     console.error('[TimelineAnalysisWorkflow] Failed to process timeline analysis:', error);
     throw error;

@@ -8,23 +8,13 @@
  */
 
 import { supabaseServer } from '@/lib/supabase-server';
+import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { analyzeBehavioralPatterns } from '@/lib/cold-case-analyzer';
 import { extractMultipleDocuments } from '@/lib/document-parser';
 
 interface BehavioralPatternsParams {
   jobId: string;
   caseId: string;
-}
-
-async function updateProcessingJob(jobId: string, updates: Record<string, any>) {
-  const { error } = await supabaseServer
-    .from('processing_jobs')
-    .update(updates)
-    .eq('id', jobId);
-
-  if (error) {
-    console.error('[BehavioralPatternsWorkflow] Failed to update job', jobId, error);
-  }
 }
 
 export async function processBehavioralPatterns(params: BehavioralPatternsParams) {
@@ -41,12 +31,12 @@ export async function processBehavioralPatterns(params: BehavioralPatternsParams
   try {
     async function initializeJob() {
       'use step';
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         status: 'running',
         total_units: totalUnits,
         started_at: new Date().toISOString(),
         metadata: initialMetadata,
-      });
+      }, 'BehavioralPatternsWorkflow');
     }
     await initializeJob();
 
@@ -63,9 +53,9 @@ export async function processBehavioralPatterns(params: BehavioralPatternsParams
 
       console.log(`[Behavioral Patterns] Found ${documents?.length || 0} documents`);
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 1,
-      });
+      }, 'BehavioralPatternsWorkflow');
 
       return { documents: documents || [] };
     }
@@ -91,9 +81,9 @@ export async function processBehavioralPatterns(params: BehavioralPatternsParams
 
       console.log(`[Behavioral Patterns] Found ${interviews.length} interview transcripts`);
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 2,
-      });
+      }, 'BehavioralPatternsWorkflow');
 
       return { interviews };
     }
@@ -108,9 +98,9 @@ export async function processBehavioralPatterns(params: BehavioralPatternsParams
       console.log('[Behavioral Patterns] Analyzing behavioral patterns...');
       const patterns = await analyzeBehavioralPatterns(interviews);
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 3,
-      });
+      }, 'BehavioralPatternsWorkflow');
 
       return patterns;
     }
@@ -135,7 +125,7 @@ export async function processBehavioralPatterns(params: BehavioralPatternsParams
       }
 
       // Mark job as completed
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         status: 'completed',
         completed_units: totalUnits,
         completed_at: new Date().toISOString(),
@@ -149,7 +139,7 @@ export async function processBehavioralPatterns(params: BehavioralPatternsParams
             interviewsAnalyzed: interviews.length,
           },
         },
-      });
+      }, 'BehavioralPatternsWorkflow');
     }
     await saveResults();
 
@@ -158,7 +148,7 @@ export async function processBehavioralPatterns(params: BehavioralPatternsParams
       jobId,
     };
   } catch (error: any) {
-    await updateProcessingJob(jobId, {
+    await updateProcessingJobRecord(jobId, {
       status: 'failed',
       completed_units: totalUnits,
       failed_units: 1,
@@ -168,7 +158,7 @@ export async function processBehavioralPatterns(params: BehavioralPatternsParams
         ...initialMetadata,
         error: error?.message || 'Behavioral pattern analysis failed',
       },
-    });
+    }, 'BehavioralPatternsWorkflow');
 
     console.error('[BehavioralPatternsWorkflow] Failed to process behavioral patterns:', error);
     throw error;

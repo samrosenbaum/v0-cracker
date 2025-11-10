@@ -8,22 +8,12 @@
  */
 
 import { supabaseServer } from '@/lib/supabase-server';
+import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { findSimilarCases } from '@/lib/cold-case-analyzer';
 
 interface SimilarCasesParams {
   jobId: string;
   caseId: string;
-}
-
-async function updateProcessingJob(jobId: string, updates: Record<string, any>) {
-  const { error } = await supabaseServer
-    .from('processing_jobs')
-    .update(updates)
-    .eq('id', jobId);
-
-  if (error) {
-    console.error('[SimilarCasesWorkflow] Failed to update job', jobId, error);
-  }
 }
 
 /**
@@ -49,12 +39,12 @@ export async function processSimilarCases(params: SimilarCasesParams) {
     // Step 1: Initialize job
     async function initializeJob() {
       'use step';
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         status: 'running',
         total_units: totalUnits,
         started_at: new Date().toISOString(),
         metadata: initialMetadata,
-      });
+      }, 'SimilarCasesWorkflow');
     }
     await initializeJob();
 
@@ -73,10 +63,10 @@ export async function processSimilarCases(params: SimilarCasesParams) {
 
       console.log(`[Similar Cases] Current case: ${currentCase.title || currentCase.name}`);
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 1,
         // progress_percentage auto-calculates from completed_units/total_units
-      });
+      }, 'SimilarCasesWorkflow');
 
       return { currentCase };
     }
@@ -97,10 +87,10 @@ export async function processSimilarCases(params: SimilarCasesParams) {
 
       console.log(`[Similar Cases] Found ${otherCases?.length || 0} other cases to compare`);
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 2,
         // progress_percentage auto-calculates from completed_units/total_units
-      });
+      }, 'SimilarCasesWorkflow');
 
       return { otherCases: otherCases || [] };
     }
@@ -133,10 +123,10 @@ export async function processSimilarCases(params: SimilarCasesParams) {
 
       console.log(`[Similar Cases] Found ${similarCases.length} similar cases`);
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 3,
         // progress_percentage auto-calculates from completed_units/total_units
-      });
+      }, 'SimilarCasesWorkflow');
 
       return similarCases;
     }
@@ -162,7 +152,7 @@ export async function processSimilarCases(params: SimilarCasesParams) {
       }
 
       // Mark job as completed
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         status: 'completed',
         completed_units: totalUnits,
         // progress_percentage auto-calculates from completed_units/total_units
@@ -175,7 +165,7 @@ export async function processSimilarCases(params: SimilarCasesParams) {
             commonPatterns: similarCases.reduce((sum, c) => sum + (c.commonPatterns?.length || 0), 0),
           },
         },
-      });
+      }, 'SimilarCasesWorkflow');
     }
     await saveResults();
 
@@ -184,7 +174,7 @@ export async function processSimilarCases(params: SimilarCasesParams) {
       jobId,
     };
   } catch (error: any) {
-    await updateProcessingJob(jobId, {
+    await updateProcessingJobRecord(jobId, {
       status: 'failed',
       completed_units: totalUnits,
       failed_units: 1,
@@ -194,7 +184,7 @@ export async function processSimilarCases(params: SimilarCasesParams) {
         ...initialMetadata,
         error: error?.message || 'Similar cases analysis failed',
       },
-    });
+    }, 'SimilarCasesWorkflow');
 
     console.error('[SimilarCasesWorkflow] Failed to process similar cases:', error);
     throw error;

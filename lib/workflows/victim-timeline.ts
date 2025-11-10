@@ -8,6 +8,7 @@
  */
 
 import { supabaseServer } from '@/lib/supabase-server';
+import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { generateComprehensiveVictimTimeline } from '@/lib/victim-timeline';
 
 interface VictimTimelineParams {
@@ -27,18 +28,8 @@ interface VictimTimelineParams {
   requestedAt: string;
 }
 
-async function updateProcessingJob(
-  jobId: string,
-  updates: Record<string, any>
-) {
-  const { error } = await supabaseServer
-    .from('processing_jobs')
-    .update(updates)
-    .eq('id', jobId);
-
-  if (error) {
-    console.error('[VictimTimelineWorkflow] Failed to update job', jobId, error);
-  }
+async function updateProcessingJob(jobId: string, updates: Record<string, any>) {
+  await updateProcessingJobRecord(jobId, updates, 'VictimTimelineWorkflow');
 }
 
 export async function processVictimTimeline(params: VictimTimelineParams) {

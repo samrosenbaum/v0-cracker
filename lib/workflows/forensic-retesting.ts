@@ -8,22 +8,12 @@
  */
 
 import { supabaseServer } from '@/lib/supabase-server';
+import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { recommendForensicRetesting } from '@/lib/cold-case-analyzer';
 
 interface ForensicRetestingParams {
   jobId: string;
   caseId: string;
-}
-
-async function updateProcessingJob(jobId: string, updates: Record<string, any>) {
-  const { error } = await supabaseServer
-    .from('processing_jobs')
-    .update(updates)
-    .eq('id', jobId);
-
-  if (error) {
-    console.error('[ForensicRetestingWorkflow] Failed to update job', jobId, error);
-  }
 }
 
 /**
@@ -49,12 +39,12 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
     // Step 1: Initialize job
     async function initializeJob() {
       'use step';
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         status: 'running',
         total_units: totalUnits,
         started_at: new Date().toISOString(),
         metadata: initialMetadata,
-      });
+      }, 'ForensicRetestingWorkflow');
     }
     await initializeJob();
 
@@ -73,10 +63,10 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
 
       console.log(`[Forensic Retesting] Case: ${caseData.title || caseData.name || 'Unnamed'}`);
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 1,
         // progress_percentage auto-calculates from completed_units/total_units
-      });
+      }, 'ForensicRetestingWorkflow');
 
       return { caseData };
     }
@@ -105,10 +95,10 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
 
       console.log(`[Forensic Retesting] Found ${evidenceItems.length} evidence items`);
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 2,
         // progress_percentage auto-calculates from completed_units/total_units
-      });
+      }, 'ForensicRetestingWorkflow');
 
       return { evidenceItems };
     }
@@ -125,10 +115,10 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
       const highPriority = recommendations.filter((r) => r.priority === 'high' || r.priority === 'critical').length;
       console.log(`[Forensic Retesting] Generated ${recommendations.length} recommendations (${highPriority} high priority)`);
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 3,
         // progress_percentage auto-calculates from completed_units/total_units
-      });
+      }, 'ForensicRetestingWorkflow');
 
       return recommendations;
     }
@@ -154,7 +144,7 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
       }
 
       // Mark job as completed
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         status: 'completed',
         completed_units: totalUnits,
         // progress_percentage auto-calculates from completed_units/total_units
@@ -164,10 +154,12 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
           summary: {
             totalRecommendations: recommendations.length,
             highPriority: recommendations.filter((r) => r.priority === 'high' || r.priority === 'critical').length,
-            modernTechniques: recommendations.map((r) => r.recommendedTest).filter((v, i, a) => a.indexOf(v) === i).length,
+            modernTechniques: recommendations
+              .map((r) => r.recommendedTest)
+              .filter((v, i, a) => a.indexOf(v) === i).length,
           },
         },
-      });
+      }, 'ForensicRetestingWorkflow');
     }
     await saveResults();
 
@@ -176,7 +168,7 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
       jobId,
     };
   } catch (error: any) {
-    await updateProcessingJob(jobId, {
+    await updateProcessingJobRecord(jobId, {
       status: 'failed',
       completed_units: totalUnits,
       failed_units: 1,
@@ -186,7 +178,7 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
         ...initialMetadata,
         error: error?.message || 'Forensic retesting analysis failed',
       },
-    });
+    }, 'ForensicRetestingWorkflow');
 
     console.error('[ForensicRetestingWorkflow] Failed to process forensic retesting:', error);
     throw error;
