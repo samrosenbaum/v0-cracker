@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
-import { sendInngestEvent } from '@/lib/inngest-client';
+import { processRelationshipNetwork } from '@/lib/workflows/relationship-network';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -88,9 +88,13 @@ export async function POST(
       );
     }
 
-    await sendInngestEvent('analysis/relationship-network', {
+    // Trigger workflow in background (fire and forget)
+    processRelationshipNetwork({
       jobId: job.id,
       caseId,
+    }).catch((error) => {
+      console.error('[Relationship Network API] Workflow failed:', error);
+      // Workflow will update job status to 'failed' internally
     });
 
     return withCors(
@@ -100,7 +104,7 @@ export async function POST(
           jobId: job.id,
           status: 'pending',
           message:
-            'Relationship network analysis has been scheduled. Check processing job status for progress.',
+            'Relationship network analysis workflow has been triggered. Check processing job status for progress.',
         },
         { status: 202 }
       )

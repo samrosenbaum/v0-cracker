@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
-import { sendInngestEvent } from '@/lib/inngest-client';
 import { hasSupabaseServiceConfig } from '@/lib/environment';
+import { processDeepAnalysis } from '@/lib/workflows/deep-analysis';
 import { listCaseDocuments, getStorageObject, addCaseAnalysis, getCaseById } from '@/lib/demo-data';
 import { analyzeCaseDocuments } from '@/lib/ai-analysis';
 import { fallbackDeepCaseAnalysis } from '@/lib/ai-fallback';
@@ -148,10 +148,13 @@ export async function POST(
       );
     }
 
-    // Trigger Inngest background job
-    await sendInngestEvent('analysis/deep-analysis', {
+    // Trigger workflow in background (fire and forget)
+    processDeepAnalysis({
       jobId: job.id,
       caseId,
+    }).catch((error) => {
+      console.error('[Deep Analysis API] Workflow failed:', error);
+      // Workflow will update job status to 'failed' internally
     });
 
     // Return immediately with job ID
@@ -162,7 +165,7 @@ export async function POST(
           jobId: job.id,
           status: 'pending',
           message:
-            'Deep analysis has been scheduled. Check processing job status for progress.',
+            'Deep analysis workflow has been triggered. Check processing job status for progress.',
         },
         { status: 202 }
       )
