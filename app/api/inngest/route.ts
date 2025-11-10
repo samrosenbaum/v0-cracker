@@ -13,34 +13,18 @@
 import { serve } from 'inngest/next';
 import { inngest } from '@/lib/inngest-client';
 
-// Import all job functions with error handling
-let processVictimTimelineJob: any;
-let processTimelineAnalysisJob: any;
-let processDeepAnalysisJob: any;
-let processBehavioralPatternsJob: any;
-let processEvidenceGapsJob: any;
-let processRelationshipNetworkJob: any;
-let processSimilarCasesJob: any;
-let processOverlookedDetailsJob: any;
-let processInterrogationQuestionsJob: any;
-let processForensicRetestingJob: any;
-
-try {
-  ({ processVictimTimelineJob } = require('@/lib/jobs/victim-timeline'));
-  ({ processTimelineAnalysisJob } = require('@/lib/jobs/timeline-analysis'));
-  ({ processDeepAnalysisJob } = require('@/lib/jobs/deep-analysis'));
-  ({ processBehavioralPatternsJob } = require('@/lib/jobs/behavioral-patterns'));
-  ({ processEvidenceGapsJob } = require('@/lib/jobs/evidence-gaps'));
-  ({ processRelationshipNetworkJob } = require('@/lib/jobs/relationship-network'));
-  ({ processSimilarCasesJob } = require('@/lib/jobs/similar-cases'));
-  ({ processOverlookedDetailsJob } = require('@/lib/jobs/overlooked-details'));
-  ({ processInterrogationQuestionsJob } = require('@/lib/jobs/interrogation-questions'));
-  ({ processForensicRetestingJob } = require('@/lib/jobs/forensic-retesting'));
-
-  console.log('[Inngest] Successfully loaded all job functions');
-} catch (error) {
-  console.error('[Inngest] Failed to load job functions:', error);
-}
+// Import job functions - using static imports instead of dynamic require
+// This ensures they're properly bundled by Vercel
+import { processVictimTimelineJob } from '@/lib/jobs/victim-timeline';
+import { processTimelineAnalysisJob } from '@/lib/jobs/timeline-analysis';
+import { processDeepAnalysisJob } from '@/lib/jobs/deep-analysis';
+import { processBehavioralPatternsJob } from '@/lib/jobs/behavioral-patterns';
+import { processEvidenceGapsJob } from '@/lib/jobs/evidence-gaps';
+import { processRelationshipNetworkJob } from '@/lib/jobs/relationship-network';
+import { processSimilarCasesJob } from '@/lib/jobs/similar-cases';
+import { processOverlookedDetailsJob } from '@/lib/jobs/overlooked-details';
+import { processInterrogationQuestionsJob } from '@/lib/jobs/interrogation-questions';
+import { processForensicRetestingJob } from '@/lib/jobs/forensic-retesting';
 
 /**
  * Register all Inngest functions (jobs) here
@@ -59,9 +43,9 @@ const inngestFunctions = [
   processOverlookedDetailsJob,
   processInterrogationQuestionsJob,
   processForensicRetestingJob,
-].filter(Boolean); // Remove any undefined functions
+];
 
-console.log(`[Inngest] Registering ${inngestFunctions.length} functions`);
+console.log(`[Inngest] Registering ${inngestFunctions.length} functions:`, inngestFunctions.map(f => f?.id || 'unknown'));
 
 /**
  * Create the Inngest handler
