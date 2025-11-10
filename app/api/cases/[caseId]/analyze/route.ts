@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
-import { sendInngestEvent } from '@/lib/inngest-client';
 import { hasSupabaseServiceConfig } from '@/lib/environment';
+import { processTimelineAnalysis } from '@/lib/workflows/timeline-analysis';
 import {
   listCaseDocuments,
   getStorageObject,
@@ -492,30 +492,14 @@ export async function POST(
 
     createdJobId = job.id;
 
-    const hasInngest = process.env.INNGEST_EVENT_KEY || process.env.INNGEST_SIGNING_KEY;
-
-    if (!hasInngest) {
-      console.warn('[Timeline Analysis API] Inngest not configured - running analysis synchronously.');
-      return await runFallbackAnalysis(caseId, {
-        reason: 'inngest-not-configured',
-        useSupabase,
-        existingJobId: createdJobId,
-      });
-    }
-
-    try {
-      await sendInngestEvent('analysis/timeline', {
-        jobId: job.id,
-        caseId,
-      });
-    } catch (inngestError) {
-      console.error('[Timeline Analysis API] Inngest event failed:', inngestError);
-      return await runFallbackAnalysis(caseId, {
-        reason: 'inngest-dispatch-failed',
-        useSupabase,
-        existingJobId: createdJobId,
-      });
-    }
+    // Trigger workflow in background (fire and forget)
+    processTimelineAnalysis({
+      jobId: job.id,
+      caseId,
+    }).catch((error) => {
+      console.error('[Timeline Analysis API] Workflow failed:', error);
+      // Workflow will update job status to 'failed' internally
+    });
 
     return withCors(
       NextResponse.json(
@@ -523,8 +507,7 @@ export async function POST(
           success: true,
           jobId: job.id,
           status: 'pending',
-          message: 'Timeline analysis has been scheduled. Check processing job status for progress.',
-          inngestConfigured: true,
+          message: 'Timeline analysis workflow has been triggered. Check processing job status for progress.',
         },
         { status: 202 }
       )

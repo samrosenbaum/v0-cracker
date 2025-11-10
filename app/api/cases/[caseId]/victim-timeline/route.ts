@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
-import { sendInngestEvent } from '@/lib/inngest-client';
 import { hasSupabaseServiceConfig } from '@/lib/environment';
+import { processVictimTimeline } from '@/lib/workflows/victim-timeline';
 import { listCaseDocuments, getStorageObject, addCaseAnalysis, getCaseById } from '@/lib/demo-data';
 import { buildVictimTimelineFallback } from '@/lib/victim-timeline-fallback';
 
@@ -156,7 +156,8 @@ export async function POST(
       );
     }
 
-    await sendInngestEvent('analysis/victim-timeline', {
+    // Trigger workflow in background (fire and forget)
+    processVictimTimeline({
       jobId: job.id,
       caseId,
       victimInfo: {
@@ -171,6 +172,9 @@ export async function POST(
         digitalRecords: body.digitalRecords || null,
       },
       requestedAt: now,
+    }).catch((error) => {
+      console.error('[Victim Timeline API] Workflow failed:', error);
+      // Workflow will update job status to 'failed' internally
     });
 
     return withCors(
@@ -180,7 +184,7 @@ export async function POST(
           jobId: job.id,
           status: 'pending',
           message:
-            'Victim timeline reconstruction has been scheduled. Check processing job status for progress.',
+            'Victim timeline workflow has been triggered. Check processing job status for progress.',
         },
         { status: 202 }
       )

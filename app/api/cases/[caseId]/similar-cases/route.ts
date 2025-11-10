@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
-import { sendInngestEvent } from '@/lib/inngest-client';
+import { processSimilarCases } from '@/lib/workflows/similar-cases';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -88,9 +88,13 @@ export async function POST(
       );
     }
 
-    await sendInngestEvent('analysis/similar-cases', {
+    // Trigger workflow in background (fire and forget)
+    processSimilarCases({
       jobId: job.id,
       caseId,
+    }).catch((error) => {
+      console.error('[Similar Cases API] Workflow failed:', error);
+      // Workflow will update job status to 'failed' internally
     });
 
     return withCors(
@@ -100,7 +104,7 @@ export async function POST(
           jobId: job.id,
           status: 'pending',
           message:
-            'Similar cases analysis has been scheduled. Check processing job status for progress.',
+            'Similar cases analysis workflow has been triggered. Check processing job status for progress.',
         },
         { status: 202 }
       )
