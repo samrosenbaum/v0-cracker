@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, unstable_after } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { hasSupabaseServiceConfig } from '@/lib/environment';
 import { processDeepAnalysis } from '@/lib/workflows/deep-analysis';
@@ -148,13 +148,17 @@ export async function POST(
       );
     }
 
-    // Trigger workflow in background (fire and forget)
-    processDeepAnalysis({
-      jobId: job.id,
-      caseId,
-    }).catch((error) => {
-      console.error('[Deep Analysis API] Workflow failed:', error);
-      // Workflow will update job status to 'failed' internally
+    // Trigger workflow in background after response flushes
+    unstable_after(async () => {
+      try {
+        await processDeepAnalysis({
+          jobId: job.id,
+          caseId,
+        });
+      } catch (error) {
+        console.error('[Deep Analysis API] Workflow failed:', error);
+        // Workflow will update job status to 'failed' internally
+      }
     });
 
     // Return immediately with job ID
