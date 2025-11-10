@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { hasSupabaseServiceConfig } from '@/lib/environment';
+import { start } from 'workflow/api';
 import { processDeepAnalysis } from '@/lib/workflows/deep-analysis';
-import { listCaseDocuments, getStorageObject, addCaseAnalysis, getCaseById } from '@/lib/demo-data';
+import {
+  listCaseDocuments,
+  getStorageObject,
+  addCaseAnalysis,
+  getCaseById,
+} from '@/lib/demo-data';
 import { analyzeCaseDocuments } from '@/lib/ai-analysis';
 import { fallbackDeepCaseAnalysis } from '@/lib/ai-fallback';
 
@@ -27,19 +33,21 @@ export async function GET() {
   return withCors(
     NextResponse.json(
       {
-        message: 'Deep Analysis endpoint is ready. Use POST method to run analysis.',
+        message:
+          'Deep Analysis endpoint is ready. Use POST method to run analysis.',
         endpoint: '/api/cases/[caseId]/deep-analysis',
         method: 'POST',
-        description: 'Performs comprehensive cold case analysis with 8 analytical dimensions (async job)'
+        description:
+          'Performs comprehensive cold case analysis with 8 analytical dimensions (async job)',
       },
-      { status: 200 }
-    )
+      { status: 200 },
+    ),
   );
 }
 
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> | { caseId: string } }
+  context: { params: Promise<{ caseId: string }> | { caseId: string } },
 ) {
   const useSupabase = hasSupabaseServiceConfig();
   let resolvedCaseId = '';
@@ -50,7 +58,10 @@ export async function POST(
         ? getStorageObject('case-files', doc.storage_path)
         : null;
       const content =
-        storage?.content || (typeof doc.metadata?.extracted_text === 'string' ? doc.metadata.extracted_text : '');
+        storage?.content ||
+        (typeof doc.metadata?.extracted_text === 'string'
+          ? doc.metadata.extracted_text
+          : '');
       return {
         content: content || `Summary unavailable for ${doc.file_name}.`,
         filename: doc.file_name,
@@ -62,15 +73,19 @@ export async function POST(
       return withCors(
         NextResponse.json(
           {
-            error: 'No documents available for deep analysis. Upload files or configure Supabase connection.',
+            error:
+              'No documents available for deep analysis. Upload files or configure Supabase connection.',
           },
-          { status: 400 }
-        )
+          { status: 400 },
+        ),
       );
     }
 
     const baseAnalysis = await analyzeCaseDocuments(documents, caseId);
-    const deepAnalysis = fallbackDeepCaseAnalysis(documents, baseAnalysis.timeline[0]?.date || new Date().toISOString());
+    const deepAnalysis = fallbackDeepCaseAnalysis(
+      documents,
+      baseAnalysis.timeline[0]?.date || new Date().toISOString(),
+    );
     const now = new Date().toISOString();
 
     addCaseAnalysis({
@@ -91,8 +106,8 @@ export async function POST(
           analysis: deepAnalysis,
           message: 'Generated using local deep analysis engine.',
         },
-        { status: 200 }
-      )
+        { status: 200 },
+      ),
     );
   };
 
@@ -102,7 +117,10 @@ export async function POST(
     const { caseId } = params;
     resolvedCaseId = caseId;
 
-    console.log('[Deep Analysis API] Deep analysis requested for case:', caseId);
+    console.log(
+      '[Deep Analysis API] Deep analysis requested for case:',
+      caseId,
+    );
 
     if (!useSupabase) {
       const caseExists = getCaseById(caseId);
@@ -110,8 +128,8 @@ export async function POST(
         return withCors(
           NextResponse.json(
             { error: `Case ${caseId} not found in local dataset.` },
-            { status: 404 }
-          )
+            { status: 404 },
+          ),
         );
       }
       return runFallbackDeepAnalysis(caseId);
@@ -139,20 +157,25 @@ export async function POST(
       .single();
 
     if (jobError || !job) {
-      console.error('[Deep Analysis API] Failed to create processing job:', jobError);
+      console.error(
+        '[Deep Analysis API] Failed to create processing job:',
+        jobError,
+      );
       return withCors(
         NextResponse.json(
           { error: 'Unable to schedule deep analysis job.' },
-          { status: 500 }
-        )
+          { status: 500 },
+        ),
       );
     }
 
     // Trigger workflow in background (fire and forget)
-    processDeepAnalysis({
-      jobId: job.id,
-      caseId,
-    }).catch((error) => {
+    start(processDeepAnalysis, [
+      {
+        jobId: job.id,
+        caseId,
+      },
+    ]).catch((error) => {
       console.error('[Deep Analysis API] Workflow failed:', error);
       // Workflow will update job status to 'failed' internally
     });
@@ -167,8 +190,8 @@ export async function POST(
           message:
             'Deep analysis workflow has been triggered. Check processing job status for progress.',
         },
-        { status: 202 }
-      )
+        { status: 202 },
+      ),
     );
   } catch (error: any) {
     console.error('[Deep Analysis API] Error:', error);
@@ -176,14 +199,17 @@ export async function POST(
       try {
         return await runFallbackDeepAnalysis(resolvedCaseId);
       } catch (fallbackError) {
-        console.error('[Deep Analysis API] Fallback also failed:', fallbackError);
+        console.error(
+          '[Deep Analysis API] Fallback also failed:',
+          fallbackError,
+        );
       }
     }
     return withCors(
       NextResponse.json(
         { error: error.message || 'Analysis failed' },
-        { status: 500 }
-      )
+        { status: 500 },
+      ),
     );
   }
 }

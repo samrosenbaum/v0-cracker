@@ -10,7 +10,7 @@ import { supabaseServer } from '@/lib/supabase-server';
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> | { caseId: string } }
+  context: { params: Promise<{ caseId: string }> | { caseId: string } },
 ) {
   try {
     const params = await Promise.resolve(context.params);
@@ -27,7 +27,9 @@ export async function GET(
       query = query.eq('subject_entity_id', subjectId);
     }
 
-    const { data, error } = await query.order('version_number', { ascending: true });
+    const { data, error } = await query.order('version_number', {
+      ascending: true,
+    });
 
     if (error) throw new Error(error.message);
 
@@ -39,7 +41,7 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> | { caseId: string } }
+  context: { params: Promise<{ caseId: string }> | { caseId: string } },
 ) {
   try {
     const params = await Promise.resolve(context.params);
