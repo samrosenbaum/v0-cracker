@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runInBackground } from '@/lib/run-in-background';
 import { supabaseServer } from '@/lib/supabase-server';
 import { processInterrogationQuestions } from '@/lib/workflows/interrogation-questions';
+import { getLatestAnalysisRecord, getProcessingJobRecord } from '@/lib/analysis-results';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -89,29 +89,28 @@ export async function POST(
       );
     }
 
-    // Trigger workflow in background after the response finishes
-    runInBackground(async () => {
-      try {
-        await processInterrogationQuestions({
-          jobId: job.id,
-          caseId,
-        });
-      } catch (error) {
-        console.error('[Interrogation Questions API] Workflow failed:', error);
-        // Workflow will update job status to 'failed' internally
-      }
+    await processInterrogationQuestions({
+      jobId: job.id,
+      caseId,
     });
+
+    const [jobRecord, analysisRecord] = await Promise.all([
+      getProcessingJobRecord(job.id),
+      getLatestAnalysisRecord(caseId, 'interrogation-questions'),
+    ]);
 
     return withCors(
       NextResponse.json(
         {
           success: true,
+          mode: 'instant',
           jobId: job.id,
-          status: 'pending',
-          message:
-            'Interrogation question generation workflow has been triggered. Check processing job status for progress.',
+          status: jobRecord?.status ?? 'completed',
+          message: 'Interrogation question generation completed successfully.',
+          metadata: jobRecord?.metadata ?? initialMetadata,
+          analysis: analysisRecord?.analysis_data ?? null,
         },
-        { status: 202 }
+        { status: 200 }
       )
     );
   } catch (error: any) {

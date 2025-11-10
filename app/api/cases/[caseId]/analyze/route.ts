@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runInBackground } from '@/lib/run-in-background';
 import { supabaseServer } from '@/lib/supabase-server';
 import { hasSupabaseServiceConfig } from '@/lib/environment';
 import { processTimelineAnalysis } from '@/lib/workflows/timeline-analysis';
+import { getLatestAnalysisRecord, getProcessingJobRecord } from '@/lib/analysis-results';
 import {
   listCaseDocuments,
   getStorageObject,
@@ -491,28 +491,28 @@ export async function POST(
 
     createdJobId = job.id;
 
-    // Trigger workflow in background after response completes
-    runInBackground(async () => {
-      try {
-        await processTimelineAnalysis({
-          jobId: job.id,
-          caseId,
-        });
-      } catch (error) {
-        console.error('[Timeline Analysis API] Workflow failed:', error);
-        // Workflow will update job status to 'failed' internally
-      }
+    await processTimelineAnalysis({
+      jobId: job.id,
+      caseId,
     });
+
+    const [jobRecord, analysisRecord] = await Promise.all([
+      getProcessingJobRecord(job.id),
+      getLatestAnalysisRecord(caseId, 'timeline_and_conflicts'),
+    ]);
 
     return withCors(
       NextResponse.json(
         {
           success: true,
+          mode: 'instant',
           jobId: job.id,
-          status: 'pending',
-          message: 'Timeline analysis workflow has been triggered. Check processing job status for progress.',
+          status: jobRecord?.status ?? 'completed',
+          message: 'Timeline analysis completed successfully.',
+          metadata: jobRecord?.metadata ?? initialMetadata,
+          analysis: analysisRecord?.analysis_data ?? null,
         },
-        { status: 202 }
+        { status: 200 }
       )
     );
   } catch (error: any) {

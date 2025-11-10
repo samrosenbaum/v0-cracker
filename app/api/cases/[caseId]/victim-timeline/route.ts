@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runInBackground } from '@/lib/run-in-background';
 import { supabaseServer } from '@/lib/supabase-server';
 import { hasSupabaseServiceConfig } from '@/lib/environment';
 import { processVictimTimeline } from '@/lib/workflows/victim-timeline';
 import { listCaseDocuments, getStorageObject, addCaseAnalysis, getCaseById } from '@/lib/demo-data';
 import { buildVictimTimelineFallback } from '@/lib/victim-timeline-fallback';
+import { getLatestAnalysisRecord, getProcessingJobRecord } from '@/lib/analysis-results';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -157,41 +157,40 @@ export async function POST(
       );
     }
 
-    // Trigger workflow in background after the response flushes
-    runInBackground(async () => {
-      try {
-        await processVictimTimeline({
-          jobId: job.id,
-          caseId,
-          victimInfo: {
-            name: victimName,
-            incidentTime,
-            incidentLocation,
-            typicalRoutine,
-            knownHabits,
-            regularContacts,
-          },
-          requestContext: {
-            digitalRecords: body.digitalRecords || null,
-          },
-          requestedAt: now,
-        });
-      } catch (error) {
-        console.error('[Victim Timeline API] Workflow failed:', error);
-        // Workflow will update job status to 'failed' internally
-      }
+    await processVictimTimeline({
+      jobId: job.id,
+      caseId,
+      victimInfo: {
+        name: victimName,
+        incidentTime,
+        incidentLocation,
+        typicalRoutine,
+        knownHabits,
+        regularContacts,
+      },
+      requestContext: {
+        digitalRecords: body.digitalRecords || null,
+      },
+      requestedAt: now,
     });
+
+    const [jobRecord, analysisRecord] = await Promise.all([
+      getProcessingJobRecord(job.id),
+      getLatestAnalysisRecord(caseId, 'victim_timeline'),
+    ]);
 
     return withCors(
       NextResponse.json(
         {
           success: true,
+          mode: 'instant',
           jobId: job.id,
-          status: 'pending',
-          message:
-            'Victim timeline workflow has been triggered. Check processing job status for progress.',
+          status: jobRecord?.status ?? 'completed',
+          message: 'Victim timeline reconstruction completed successfully.',
+          metadata: jobRecord?.metadata ?? initialMetadata,
+          analysis: analysisRecord?.analysis_data ?? null,
         },
-        { status: 202 }
+        { status: 200 }
       )
     );
   } catch (error: any) {

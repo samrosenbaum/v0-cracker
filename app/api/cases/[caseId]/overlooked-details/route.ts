@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runInBackground } from '@/lib/run-in-background';
 import { supabaseServer } from '@/lib/supabase-server';
 import { processOverlookedDetails } from '@/lib/workflows/overlooked-details';
+import { getLatestAnalysisRecord, getProcessingJobRecord } from '@/lib/analysis-results';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -89,29 +89,28 @@ export async function POST(
       );
     }
 
-    // Trigger workflow in background after response completes
-    runInBackground(async () => {
-      try {
-        await processOverlookedDetails({
-          jobId: job.id,
-          caseId,
-        });
-      } catch (error) {
-        console.error('[Overlooked Details API] Workflow failed:', error);
-        // Workflow will update job status to 'failed' internally
-      }
+    await processOverlookedDetails({
+      jobId: job.id,
+      caseId,
     });
+
+    const [jobRecord, analysisRecord] = await Promise.all([
+      getProcessingJobRecord(job.id),
+      getLatestAnalysisRecord(caseId, 'overlooked-details'),
+    ]);
 
     return withCors(
       NextResponse.json(
         {
           success: true,
+          mode: 'instant',
           jobId: job.id,
-          status: 'pending',
-          message:
-            'Overlooked details analysis workflow has been triggered. Check processing job status for progress.',
+          status: jobRecord?.status ?? 'completed',
+          message: 'Overlooked details analysis completed successfully.',
+          metadata: jobRecord?.metadata ?? initialMetadata,
+          analysis: analysisRecord?.analysis_data ?? null,
         },
-        { status: 202 }
+        { status: 200 }
       )
     );
   } catch (error: any) {

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runInBackground } from '@/lib/run-in-background';
 import { supabaseServer } from '@/lib/supabase-server';
 import { hasSupabaseServiceConfig } from '@/lib/environment';
 import { processDeepAnalysis } from '@/lib/workflows/deep-analysis';
 import { listCaseDocuments, getStorageObject, addCaseAnalysis, getCaseById } from '@/lib/demo-data';
+import { getLatestAnalysisRecord, getProcessingJobRecord } from '@/lib/analysis-results';
 import { analyzeCaseDocuments } from '@/lib/ai-analysis';
 import { fallbackDeepCaseAnalysis } from '@/lib/ai-fallback';
 
@@ -149,30 +149,28 @@ export async function POST(
       );
     }
 
-    // Trigger workflow in background after response flushes
-    runInBackground(async () => {
-      try {
-        await processDeepAnalysis({
-          jobId: job.id,
-          caseId,
-        });
-      } catch (error) {
-        console.error('[Deep Analysis API] Workflow failed:', error);
-        // Workflow will update job status to 'failed' internally
-      }
+    await processDeepAnalysis({
+      jobId: job.id,
+      caseId,
     });
 
-    // Return immediately with job ID
+    const [jobRecord, analysisRecord] = await Promise.all([
+      getProcessingJobRecord(job.id),
+      getLatestAnalysisRecord(caseId, 'comprehensive_cold_case'),
+    ]);
+
     return withCors(
       NextResponse.json(
         {
           success: true,
+          mode: 'instant',
           jobId: job.id,
-          status: 'pending',
-          message:
-            'Deep analysis workflow has been triggered. Check processing job status for progress.',
+          status: jobRecord?.status ?? 'completed',
+          message: 'Deep analysis completed successfully.',
+          metadata: jobRecord?.metadata ?? initialMetadata,
+          analysis: analysisRecord?.analysis_data ?? null,
         },
-        { status: 202 }
+        { status: 200 }
       )
     );
   } catch (error: any) {
