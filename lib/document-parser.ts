@@ -422,28 +422,9 @@ async function transcribeAudio(
 async function getCachedExtraction(storagePath: string): Promise<ExtractionResult | null> {
 
   try {
-    const { data, error } = await supabaseServer
-      .from('case_files')
-      .select('ai_extracted_text, ai_transcription, metadata')
-      .eq('storage_path', storagePath)
-      .single();
-
-    if (error || !data) {
-      return null;
-    }
-
-    // Check if extraction exists
-    const extractedText = data.ai_extracted_text || data.ai_transcription;
-
-    if (extractedText && extractedText.length > 10) {
-      return {
-        text: extractedText,
-        method: 'cached',
-        confidence: 1.0,
-        metadata: data.metadata,
-      };
-    }
-
+    // NOTE: Caching is currently disabled because the required columns
+    // (ai_extracted_text, ai_transcription) don't exist in case_files table
+    // Always return null to trigger fresh extraction
     return null;
 
   } catch (error) {
@@ -461,36 +442,21 @@ async function cacheExtraction(
 ): Promise<void> {
 
   try {
-    const updateData: any = {
-      ai_analyzed: true,
-      ai_analysis_confidence: result.confidence,
-      metadata: {
-        extraction_method: result.method,
-        extracted_at: new Date().toISOString(),
-        ...result.metadata,
-      },
-    };
+    // NOTE: Caching extraction results requires the following columns to be added to case_files:
+    // - ai_analyzed (boolean)
+    // - ai_analysis_confidence (numeric)
+    // - ai_extracted_text (text)
+    // - ai_transcription (text)
+    //
+    // Since these columns don't exist in the current schema, we'll skip caching
+    // and just log the extraction completion. This doesn't affect functionality,
+    // as extraction will work, it just won't be cached in the database.
 
-    // Store in appropriate column
-    if (result.method === 'whisper-transcription') {
-      updateData.ai_transcription = result.text;
-    } else {
-      updateData.ai_extracted_text = result.text;
-    }
-
-    const { error } = await supabaseServer
-      .from('case_files')
-      .update(updateData)
-      .eq('storage_path', storagePath);
-
-    if (error) {
-      console.error('[Document Parser] Error caching extraction:', error);
-    } else {
-      console.log('[Document Parser] Cached extraction in database');
-    }
+    console.log('[Document Parser] Extraction completed (caching skipped - schema columns not available)');
+    console.log(`[Document Parser] Extracted ${result.text.length} characters using ${result.method}`);
 
   } catch (error) {
-    console.error('[Document Parser] Error caching extraction:', error);
+    console.error('[Document Parser] Error in cacheExtraction:', error);
   }
 }
 

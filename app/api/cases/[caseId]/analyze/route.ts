@@ -256,7 +256,6 @@ async function runFallbackAnalysis(
           total_units: totalUnits,
           completed_units: totalUnits,
           failed_units: 0,
-          progress_percentage: 100,
           started_at: existingStartedAt || now,
           completed_at: now,
           metadata: {
@@ -282,7 +281,6 @@ async function runFallbackAnalysis(
           total_units: totalUnits,
           completed_units: totalUnits,
           failed_units: 0,
-          progress_percentage: 100,
           started_at: now,
           completed_at: now,
           metadata: {
