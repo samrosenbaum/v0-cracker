@@ -95,16 +95,16 @@ export async function POST(
       );
     }
 
-     // Trigger workflow in background (fire and forget)
-     start(processEvidenceGaps, [
-       {
-         jobId: job.id,
-         caseId,
-       },
-     ]).catch((error) => {
-       console.error('[Evidence Gaps API] Workflow failed:', error);
-       // Workflow will update job status to 'failed' internally
-     });
+    // Trigger workflow in background (fire and forget)
+    start(processEvidenceGaps, [
+      {
+        jobId: job.id,
+        caseId,
+      },
+    ]).catch((error) => {
+      console.error('[Evidence Gaps API] Workflow failed:', error);
+      // Workflow will update job status to 'failed' internally
+    });
 
     return withCors(
       NextResponse.json(

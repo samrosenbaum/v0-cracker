@@ -169,16 +169,16 @@ export async function POST(
       );
     }
 
-     // Trigger workflow in background (fire and forget)
-     start(processDeepAnalysis, [
-       {
-         jobId: job.id,
-         caseId,
-       },
-     ]).catch((error) => {
-       console.error('[Deep Analysis API] Workflow failed:', error);
-       // Workflow will update job status to 'failed' internally
-     });
+    // Trigger workflow in background (fire and forget)
+    start(processDeepAnalysis, [
+      {
+        jobId: job.id,
+        caseId,
+      },
+    ]).catch((error) => {
+      console.error('[Deep Analysis API] Workflow failed:', error);
+      // Workflow will update job status to 'failed' internally
+    });
 
     // Return immediately with job ID
     return withCors(

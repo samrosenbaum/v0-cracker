@@ -534,16 +534,16 @@ export async function POST(
 
     createdJobId = job.id;
 
-     // Trigger workflow in background (fire and forget)
-     start(processTimelineAnalysis, [
-       {
-         jobId: job.id,
-         caseId,
-       },
-     ]).catch((error) => {
-       console.error('[Timeline Analysis API] Workflow failed:', error);
-       // Workflow will update job status to 'failed' internally
-     });
+    // Trigger workflow in background (fire and forget)
+    start(processTimelineAnalysis, [
+      {
+        jobId: job.id,
+        caseId,
+      },
+    ]).catch((error) => {
+      console.error('[Timeline Analysis API] Workflow failed:', error);
+      // Workflow will update job status to 'failed' internally
+    });
 
     return withCors(
       NextResponse.json(
