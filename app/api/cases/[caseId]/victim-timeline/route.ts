@@ -176,28 +176,28 @@ export async function POST(
       );
     }
 
-    // Trigger workflow in background (fire and forget)
-    start(processVictimTimeline, [
-      {
-        jobId: job.id,
-        caseId,
-        victimInfo: {
-          name: victimName,
-          incidentTime,
-          incidentLocation,
-          typicalRoutine,
-          knownHabits,
-          regularContacts,
-        },
-        requestContext: {
-          digitalRecords: body.digitalRecords || null,
-        },
-        requestedAt: now,
-      },
-    ]).catch((error) => {
-      console.error('[Victim Timeline API] Workflow failed:', error);
-      // Workflow will update job status to 'failed' internally
-    });
+     // Trigger workflow in background (fire and forget)
+     start(processVictimTimeline, [
+       {
+         jobId: job.id,
+         caseId,
+         victimInfo: {
+           name: victimName,
+           incidentTime,
+           incidentLocation,
+           typicalRoutine,
+           knownHabits,
+           regularContacts,
+         },
+         requestContext: {
+           digitalRecords: body.digitalRecords || null,
+         },
+         requestedAt: now,
+       },
+     ]).catch((error) => {
+       console.error('[Victim Timeline API] Workflow failed:', error);
+       // Workflow will update job status to 'failed' internally
+     });
 
     return withCors(
       NextResponse.json(
