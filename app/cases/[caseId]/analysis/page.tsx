@@ -38,6 +38,252 @@ export default function AnalysisPage() {
   const [runningAnalysis, setRunningAnalysis] = useState<string | null>(null);
   const [documentCount, setDocumentCount] = useState(0);
 
+  const parseAnalysisData = (analysisData: any) => {
+    if (!analysisData) return null;
+
+    if (typeof analysisData === 'string') {
+      try {
+        return JSON.parse(analysisData);
+      } catch (error) {
+        console.warn('Failed to parse analysis_data JSON string', error);
+        return analysisData;
+      }
+    }
+
+    return analysisData;
+  };
+
+  const isTimelineAnalysisType = (analysisType: string) =>
+    analysisType === 'timeline' || analysisType === 'timeline_and_conflicts';
+
+  const formatEventDateTime = (event: any) => {
+    const date = event?.date ? new Date(event.date) : null;
+    const dateLabel = date ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
+    const startTime = event?.startTime || event?.time;
+    const endTime = event?.endTime;
+
+    if (!dateLabel && !startTime) return 'Date/time not specified';
+    if (dateLabel && startTime && endTime) {
+      return `${dateLabel} • ${startTime} - ${endTime}`;
+    }
+    if (dateLabel && startTime) {
+      return `${dateLabel} • ${startTime}`;
+    }
+    if (dateLabel) {
+      return dateLabel;
+    }
+    return startTime;
+  };
+
+  const getSeverityBadgeClasses = (severity: string) => {
+    const classes: Record<string, string> = {
+      low: 'bg-green-100 text-green-800',
+      medium: 'bg-yellow-100 text-yellow-800',
+      high: 'bg-orange-100 text-orange-800',
+      critical: 'bg-red-100 text-red-800',
+    };
+    return classes[severity] || 'bg-gray-100 text-gray-800';
+  };
+
+  const renderTimelineDetails = (data: any) => {
+    if (!data || typeof data !== 'object') return null;
+
+    const summaryText = typeof data.conflictSummary === 'string' ? data.conflictSummary : null;
+    const timeline = Array.isArray(data.timeline) ? data.timeline : [];
+    const conflicts = Array.isArray(data.conflicts) ? data.conflicts : [];
+    const keyInsights = Array.isArray(data.keyInsights) ? data.keyInsights : [];
+    const overlookedSuspects = Array.isArray(data.overlookedSuspects) ? data.overlookedSuspects : [];
+    const totalEvents = timeline.length;
+    const totalConflicts = conflicts.length;
+    const criticalConflicts = conflicts.filter((conflict: any) => conflict.severity === 'critical').length;
+    const overlookedCount = overlookedSuspects.length;
+
+    return (
+      <div className="mt-3 space-y-5">
+        {(totalEvents > 0 || totalConflicts > 0) && (
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">
+              Analysis Summary
+            </h4>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {totalEvents > 0 && (
+                <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                  <p className="text-xs font-medium uppercase text-gray-500">Events Analyzed</p>
+                  <p className="mt-1 text-2xl font-semibold text-gray-900">{totalEvents}</p>
+                </div>
+              )}
+              {totalConflicts > 0 && (
+                <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                  <p className="text-xs font-medium uppercase text-gray-500">Conflicts Found</p>
+                  <p className="mt-1 text-2xl font-semibold text-gray-900">{totalConflicts}</p>
+                </div>
+              )}
+              {criticalConflicts > 0 && (
+                <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                  <p className="text-xs font-medium uppercase text-gray-500">Critical Conflicts</p>
+                  <p className="mt-1 text-2xl font-semibold text-gray-900">{criticalConflicts}</p>
+                </div>
+              )}
+              {overlookedCount > 0 && (
+                <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                  <p className="text-xs font-medium uppercase text-gray-500">Overlooked Suspects</p>
+                  <p className="mt-1 text-2xl font-semibold text-gray-900">{overlookedCount}</p>
+                </div>
+              )}
+            </div>
+            {summaryText && (
+              <p className="mt-3 text-xs text-gray-600">{summaryText}</p>
+            )}
+          </div>
+        )}
+
+        {timeline.length > 0 && (
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">
+              Timeline Events
+            </h4>
+            <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+              {timeline.map((event: any, index: number) => (
+                <div
+                  key={event.id || index}
+                  className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-gray-900">
+                      {event.description || 'Event details unavailable'}
+                    </p>
+                    {typeof event.confidence === 'number' && (
+                      <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
+                        {(event.confidence * 100).toFixed(0)}% confidence
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-2 text-xs text-gray-500">
+                    {formatEventDateTime(event)}
+                    {event.location ? ` • ${event.location}` : ''}
+                  </p>
+                  {Array.isArray(event.involvedPersons) && event.involvedPersons.length > 0 && (
+                    <p className="mt-2 text-xs text-gray-600">
+                      <span className="font-medium text-gray-700">Persons involved:</span>{' '}
+                      {event.involvedPersons.join(', ')}
+                    </p>
+                  )}
+                  <p className="mt-2 text-xs text-gray-500">
+                    Source: {event.source || 'Unknown'}
+                    {event.sourceType ? ` (${event.sourceType.replace(/_/g, ' ')})` : ''}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {conflicts.length > 0 && (
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">
+              Conflicts & Alerts
+            </h4>
+            <div className="space-y-3">
+              {conflicts.map((conflict: any, index: number) => (
+                <div
+                  key={conflict.id || index}
+                  className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-gray-900">
+                      {conflict.description || 'Conflict detected'}
+                    </p>
+                    {conflict.severity && (
+                      <span className={`rounded-full px-2 py-1 text-xs font-medium ${getSeverityBadgeClasses(conflict.severity)}`}>
+                        {conflict.severity.charAt(0).toUpperCase() + conflict.severity.slice(1)}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-2 text-xs text-gray-600">Type: {conflict.type?.replace(/_/g, ' ') || 'Unknown'}</p>
+                  {conflict.details && (
+                    <p className="mt-2 text-xs text-gray-600">{conflict.details}</p>
+                  )}
+                  {conflict.recommendation && (
+                    <p className="mt-2 text-xs text-gray-700">
+                      <span className="font-medium">Recommendation:</span> {conflict.recommendation}
+                    </p>
+                  )}
+                  {Array.isArray(conflict.affectedPersons) && conflict.affectedPersons.length > 0 && (
+                    <p className="mt-2 text-xs text-gray-600">
+                      <span className="font-medium">Affected:</span> {conflict.affectedPersons.join(', ')}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {keyInsights.length > 0 && (
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">
+              Key Insights
+            </h4>
+            <ul className="list-disc space-y-2 pl-5 text-sm text-gray-700">
+              {keyInsights.map((insight: string, index: number) => (
+                <li key={index}>{insight}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {overlookedSuspects.length > 0 && (
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">
+              Overlooked Suspects
+            </h4>
+            <ul className="space-y-3">
+              {overlookedSuspects.map((suspect: any, index: number) => (
+                <li
+                  key={suspect?.name || index}
+                  className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-gray-900">
+                      {suspect?.name || 'Unknown suspect'}
+                    </span>
+                    {typeof suspect?.suspicionScore === 'number' && (
+                      <span className="rounded-full bg-red-50 px-2 py-1 text-xs font-medium text-red-700">
+                        Suspicion {(suspect.suspicionScore * 100).toFixed(0)}%
+                      </span>
+                    )}
+                  </div>
+                  {Array.isArray(suspect?.mentionedBy) && suspect.mentionedBy.length > 0 && (
+                    <p className="mt-2 text-xs text-gray-600">
+                      Mentioned by: {suspect.mentionedBy.join(', ')}
+                    </p>
+                  )}
+                  {Array.isArray(suspect?.aliases) && suspect.aliases.length > 0 && (
+                    <p className="mt-2 text-xs text-gray-500">Aliases: {suspect.aliases.join(', ')}</p>
+                  )}
+                  {Array.isArray(suspect?.contexts) && suspect.contexts.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                        Context Snippets
+                      </p>
+                      <ul className="mt-1 space-y-1 text-xs text-gray-600">
+                        {suspect.contexts.slice(0, 3).map((context: string, contextIndex: number) => (
+                          <li key={contextIndex} className="leading-relaxed">
+                            • {context}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   useEffect(() => {
     loadOverview();
   }, [caseId]);
@@ -51,7 +297,11 @@ export default function AnalysisPage() {
       }
       const payload = await response.json();
       setCaseInfo(payload.case);
-      setAnalyses(payload.analyses || []);
+      const normalizedAnalyses = (payload.analyses || []).map((item: AnalysisResult) => ({
+        ...item,
+        analysis_data: parseAnalysisData(item.analysis_data),
+      }));
+      setAnalyses(normalizedAnalyses);
       setDocumentCount(payload.documentCount || 0);
     } catch (error) {
       console.error('Failed to load analysis overview:', error);
@@ -246,6 +496,7 @@ export default function AnalysisPage() {
   const getAnalysisIcon = (type: string) => {
     const icons: Record<string, any> = {
       timeline: Clock,
+      timeline_and_conflicts: Clock,
       'deep-analysis': Brain,
       'victim-timeline': Users,
       'behavioral-patterns': MessageSquare,
@@ -262,6 +513,7 @@ export default function AnalysisPage() {
   const getAnalysisTitle = (type: string): string => {
     const titles: Record<string, string> = {
       timeline: 'Timeline Analysis',
+      timeline_and_conflicts: 'Timeline & Conflict Analysis',
       'deep-analysis': 'Deep Cold Case Analysis',
       'victim-timeline': 'Victim Timeline Reconstruction',
       'behavioral-patterns': 'Behavioral Pattern Analysis',
@@ -278,6 +530,7 @@ export default function AnalysisPage() {
   const getAnalysisDescription = (type: string): string => {
     const descriptions: Record<string, string> = {
       timeline: 'Extract and analyze timeline conflicts and inconsistencies',
+      timeline_and_conflicts: 'Extract events, flag conflicts, and highlight overlooked suspects',
       'deep-analysis': '8-dimensional cold case review with breakthrough strategies',
       'victim-timeline': 'Reconstruct victim\'s last 24-48 hours with gap detection',
       'behavioral-patterns': 'Detect deception patterns in interview transcripts',
@@ -437,7 +690,10 @@ export default function AnalysisPage() {
               const Icon = getAnalysisIcon(id);
               const colors = getColorClasses(color, available);
               const isRunning = runningAnalysis === id;
-              const hasBeenRun = analyses.some(a => a.analysis_type === id);
+              const hasBeenRun = analyses.some(a =>
+                a.analysis_type === id ||
+                (id === 'timeline' && a.analysis_type === 'timeline_and_conflicts')
+              );
 
               return (
                 <button
@@ -509,6 +765,7 @@ export default function AnalysisPage() {
             <div className="divide-y">
               {analyses.map(analysis => {
                 const Icon = getAnalysisIcon(analysis.analysis_type);
+                const analysisData = parseAnalysisData(analysis.analysis_data);
                 return (
                   <div key={analysis.id} className="p-6 hover:bg-gray-50 transition-colors">
                     <div className="flex items-start justify-between gap-4">
@@ -536,11 +793,17 @@ export default function AnalysisPage() {
                               View Timeline on Investigation Board →
                             </button>
                           )}
-                          {analysis.analysis_data && (
-                            <div className="mt-3 p-4 bg-gray-50 rounded-lg">
-                              <pre className="text-xs text-gray-700 overflow-x-auto max-h-40">
-                                {JSON.stringify(analysis.analysis_data, null, 2)}
-                              </pre>
+                          {analysisData && (
+                            <div className="mt-3">
+                              {isTimelineAnalysisType(analysis.analysis_type)
+                                ? renderTimelineDetails(analysisData)
+                                : (
+                                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                                      <pre className="text-xs text-gray-700 overflow-x-auto max-h-40">
+                                        {JSON.stringify(analysisData, null, 2)}
+                                      </pre>
+                                    </div>
+                                  )}
                             </div>
                           )}
                         </div>

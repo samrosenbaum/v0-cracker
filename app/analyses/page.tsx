@@ -23,6 +23,21 @@ export default function AllAnalysesPage() {
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const parseAnalysisData = (analysisData: any) => {
+    if (!analysisData) return null;
+
+    if (typeof analysisData === 'string') {
+      try {
+        return JSON.parse(analysisData);
+      } catch (error) {
+        console.warn('Failed to parse analysis_data JSON string', error);
+        return analysisData;
+      }
+    }
+
+    return analysisData;
+  };
+
   useEffect(() => {
     fetchAnalyses();
   }, []);
@@ -42,7 +57,11 @@ export default function AllAnalysesPage() {
       .order('created_at', { ascending: false });
 
     if (!error && data) {
-      setAnalyses(data);
+      const normalized = data.map((item) => ({
+        ...item,
+        analysis_data: parseAnalysisData(item.analysis_data),
+      }));
+      setAnalyses(normalized);
     }
     setIsLoading(false);
   };
@@ -66,9 +85,15 @@ export default function AllAnalysesPage() {
       summary: "bg-yellow-100 text-yellow-800 border-yellow-200"
     };
 
+    const normalizedType =
+      type === 'timeline_and_conflicts' ? 'timeline' : type;
+
     return (
-      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${types[type] || types.initial}`}>
-        {type.charAt(0).toUpperCase() + type.slice(1)} Analysis
+      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${types[normalizedType] || types.initial}`}>
+        {normalizedType
+          .replace(/_/g, ' ')
+          .replace(/\b\w/g, (l) => l.toUpperCase())}{' '}
+        Analysis
       </span>
     );
   };
@@ -79,6 +104,32 @@ export default function AllAnalysesPage() {
     }
     if (analysis.analysis_data?.summary) {
       return analysis.analysis_data.summary.substring(0, 200) + '...';
+    }
+    if (analysis.analysis_type === 'timeline' || analysis.analysis_type === 'timeline_and_conflicts') {
+      const timelineCount = Array.isArray(analysis.analysis_data?.timeline)
+        ? analysis.analysis_data.timeline.length
+        : 0;
+      const conflictCount = Array.isArray(analysis.analysis_data?.conflicts)
+        ? analysis.analysis_data.conflicts.length
+        : 0;
+      const criticalCount = Array.isArray(analysis.analysis_data?.conflicts)
+        ? analysis.analysis_data.conflicts.filter((conflict: any) => conflict.severity === 'critical').length
+        : 0;
+      const summaryText = typeof analysis.analysis_data?.conflictSummary === 'string'
+        ? analysis.analysis_data.conflictSummary
+        : null;
+
+      const parts: string[] = [];
+      if (timelineCount > 0) parts.push(`${timelineCount} events`);
+      if (conflictCount > 0) parts.push(`${conflictCount} conflicts`);
+      if (criticalCount > 0) parts.push(`${criticalCount} critical`);
+
+      if (parts.length > 0) {
+        return `Timeline analysis: ${parts.join(', ')}.`;
+      }
+      if (summaryText) {
+        return summaryText;
+      }
     }
     if (analysis.analysis_data?.findings) {
       return 'Analysis completed with findings';
