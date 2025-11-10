@@ -7,6 +7,7 @@
 
 import { inngest } from '@/lib/inngest-client';
 import { supabaseServer } from '@/lib/supabase-server';
+import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { recommendForensicRetesting } from '@/lib/cold-case-analyzer';
 
 interface ForensicRetestingEventData {
@@ -15,14 +16,7 @@ interface ForensicRetestingEventData {
 }
 
 async function updateProcessingJob(jobId: string, updates: Record<string, any>) {
-  const { error } = await supabaseServer
-    .from('processing_jobs')
-    .update(updates)
-    .eq('id', jobId);
-
-  if (error) {
-    console.error('[ForensicRetestingJob] Failed to update job', jobId, error);
-  }
+  await updateProcessingJobRecord(jobId, updates, 'ForensicRetestingJob');
 }
 
 export const processForensicRetestingJob = inngest.createFunction(

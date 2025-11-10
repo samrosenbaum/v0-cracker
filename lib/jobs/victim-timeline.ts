@@ -1,5 +1,6 @@
 import { inngest } from '@/lib/inngest-client';
 import { supabaseServer } from '@/lib/supabase-server';
+import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { generateComprehensiveVictimTimeline } from '@/lib/victim-timeline';
 
 interface VictimTimelineEventData {
@@ -19,18 +20,8 @@ interface VictimTimelineEventData {
   requestedAt: string;
 }
 
-async function updateProcessingJob(
-  jobId: string,
-  updates: Record<string, any>
-) {
-  const { error } = await supabaseServer
-    .from('processing_jobs')
-    .update(updates)
-    .eq('id', jobId);
-
-  if (error) {
-    console.error('[VictimTimelineJob] Failed to update job', jobId, error);
-  }
+async function updateProcessingJob(jobId: string, updates: Record<string, any>) {
+  await updateProcessingJobRecord(jobId, updates, 'VictimTimelineJob');
 }
 
 export const processVictimTimelineJob = inngest.createFunction(

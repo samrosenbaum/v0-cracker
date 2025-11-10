@@ -8,23 +8,13 @@
  */
 
 import { supabaseServer } from '@/lib/supabase-server';
+import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { generateInterrogationQuestions } from '@/lib/cold-case-analyzer';
 import { extractMultipleDocuments } from '@/lib/document-parser';
 
 interface InterrogationQuestionsParams {
   jobId: string;
   caseId: string;
-}
-
-async function updateProcessingJob(jobId: string, updates: Record<string, any>) {
-  const { error } = await supabaseServer
-    .from('processing_jobs')
-    .update(updates)
-    .eq('id', jobId);
-
-  if (error) {
-    console.error('[InterrogationQuestionsWorkflow] Failed to update job', jobId, error);
-  }
 }
 
 /**
@@ -50,12 +40,12 @@ export async function processInterrogationQuestions(params: InterrogationQuestio
     // Step 1: Initialize job
     async function initializeJob() {
       'use step';
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         status: 'running',
         total_units: totalUnits,
         started_at: new Date().toISOString(),
         metadata: initialMetadata,
-      });
+      }, 'InterrogationQuestionsWorkflow');
     }
     await initializeJob();
 
@@ -80,10 +70,9 @@ export async function processInterrogationQuestions(params: InterrogationQuestio
 
       console.log(`[Interrogation Questions] Found: ${suspects?.length || 0} suspects, ${witnesses?.length || 0} witnesses, ${documents?.length || 0} documents`);
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 1,
-        progress_percentage: Math.round((1 / totalUnits) * 100),
-      });
+      }, 'InterrogationQuestionsWorkflow');
 
       return { suspects: suspects || [], witnesses: witnesses || [], documents: documents || [] };
     }
@@ -115,10 +104,9 @@ export async function processInterrogationQuestions(params: InterrogationQuestio
 
       console.log(`[Interrogation Questions] Extracted ${interviews.length} interviews`);
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 2,
-        progress_percentage: Math.round((2 / totalUnits) * 100),
-      });
+      }, 'InterrogationQuestionsWorkflow');
 
       return { evidenceGaps, interviews };
     }
@@ -143,10 +131,9 @@ export async function processInterrogationQuestions(params: InterrogationQuestio
       const totalQuestions = questionSets.reduce((sum, qs) => sum + qs.questions.length, 0);
       console.log(`[Interrogation Questions] Generated ${totalQuestions} questions for ${questionSets.length} persons`);
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 3,
-        progress_percentage: Math.round((3 / totalUnits) * 100),
-      });
+      }, 'InterrogationQuestionsWorkflow');
 
       return { questionSets, personsList };
     }
@@ -172,10 +159,9 @@ export async function processInterrogationQuestions(params: InterrogationQuestio
       }
 
       // Mark job as completed
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         status: 'completed',
         completed_units: totalUnits,
-        progress_percentage: 100,
         completed_at: new Date().toISOString(),
         metadata: {
           ...initialMetadata,
@@ -185,7 +171,7 @@ export async function processInterrogationQuestions(params: InterrogationQuestio
             personsToReInterview: personsList.length,
           },
         },
-      });
+      }, 'InterrogationQuestionsWorkflow');
     }
     await saveResults();
 
@@ -194,17 +180,16 @@ export async function processInterrogationQuestions(params: InterrogationQuestio
       jobId,
     };
   } catch (error: any) {
-    await updateProcessingJob(jobId, {
+    await updateProcessingJobRecord(jobId, {
       status: 'failed',
       completed_units: totalUnits,
       failed_units: 1,
-      progress_percentage: 100,
       completed_at: new Date().toISOString(),
       metadata: {
         ...initialMetadata,
         error: error?.message || 'Interrogation question generation failed',
       },
-    });
+    }, 'InterrogationQuestionsWorkflow');
 
     console.error('[InterrogationQuestionsWorkflow] Failed to generate interrogation questions:', error);
     throw error;

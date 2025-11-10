@@ -7,6 +7,7 @@
 
 import { inngest } from '@/lib/inngest-client';
 import { supabaseServer } from '@/lib/supabase-server';
+import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { findSimilarCases } from '@/lib/cold-case-analyzer';
 
 interface SimilarCasesEventData {
@@ -15,14 +16,7 @@ interface SimilarCasesEventData {
 }
 
 async function updateProcessingJob(jobId: string, updates: Record<string, any>) {
-  const { error } = await supabaseServer
-    .from('processing_jobs')
-    .update(updates)
-    .eq('id', jobId);
-
-  if (error) {
-    console.error('[SimilarCasesJob] Failed to update job', jobId, error);
-  }
+  await updateProcessingJobRecord(jobId, updates, 'SimilarCasesJob');
 }
 
 export const processSimilarCasesJob = inngest.createFunction(
