@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { sendInngestEvent } from '@/lib/inngest-client';
+import { populateInvestigationBoardFromDocuments } from '@/lib/jobs/populate-investigation-board';
 
 export async function POST(
   request: NextRequest,
@@ -18,15 +19,30 @@ export async function POST(
     console.log(`[Board Population API] Triggering population for case: ${caseId}`);
 
     // Trigger the Inngest job
-    await sendInngestEvent('board/populate', {
+    const eventTriggered = await sendInngestEvent('board/populate', {
       caseId,
       // Not specifying caseFileId means it will process ALL files in the case
     });
+
+    if (!eventTriggered) {
+      console.log('[Board Population API] Inngest not configured, running synchronously');
+
+      const result = await populateInvestigationBoardFromDocuments({ caseId });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Investigation Board populated directly from documents',
+        caseId,
+        mode: 'sync',
+        result,
+      });
+    }
 
     return NextResponse.json({
       success: true,
       message: 'Investigation Board population triggered successfully',
       caseId,
+      mode: 'async',
     });
   } catch (error: any) {
     console.error('[Board Population API] Error:', error);

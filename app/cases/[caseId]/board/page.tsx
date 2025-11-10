@@ -34,7 +34,7 @@ export default function InvestigationBoardPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isPopulating, setIsPopulating] = useState(false);
 
-  const fetchBoardData = async (showToast = false) => {
+  const fetchBoardData = async (showToast = false): Promise<BoardData | null> => {
     try {
       if (showToast) setIsRefreshing(true);
 
@@ -50,9 +50,12 @@ export default function InvestigationBoardPage() {
       if (showToast) {
         toast.success('Board data refreshed');
       }
+
+      return result.data;
     } catch (error: any) {
       console.error('[Board] Error fetching data:', error);
       toast.error(error.message || 'Failed to load investigation board');
+      return null;
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -78,24 +81,41 @@ export default function InvestigationBoardPage() {
         throw new Error(result.error || 'Failed to trigger population');
       }
 
+      if (result.mode === 'sync') {
+        toast.success('Board populated directly from documents!', { id: 'populate', duration: 4000 });
+        await fetchBoardData(false);
+        setIsPopulating(false);
+        return;
+      }
+
       toast.success(
         'Board population started! This may take a few minutes. The page will refresh automatically when complete.',
         { id: 'populate', duration: 5000 }
       );
 
       // Poll for updates every 5 seconds
+      let timeoutId: ReturnType<typeof setTimeout>;
       const pollInterval = setInterval(async () => {
-        await fetchBoardData(false);
+        const latestData = await fetchBoardData(false);
 
-        // Check if we have data now
-        if (boardData && (boardData.entities.length > 0 || boardData.timeline_events.length > 0)) {
+        if (
+          latestData &&
+          (latestData.entities.length > 0 ||
+            latestData.timeline_events.length > 0 ||
+            latestData.connections.length > 0 ||
+            latestData.alibis.length > 0)
+        ) {
           clearInterval(pollInterval);
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
+          setIsPopulating(false);
           toast.success('Board populated successfully!', { duration: 3000 });
         }
       }, 5000);
 
       // Stop polling after 2 minutes
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         clearInterval(pollInterval);
         setIsPopulating(false);
       }, 120000);
