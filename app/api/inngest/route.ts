@@ -13,26 +13,34 @@
 import { serve } from 'inngest/next';
 import { inngest } from '@/lib/inngest-client';
 
-// Import all job functions
-// NOTE: Document chunk processing jobs temporarily disabled due to canvas dependency conflict
-// import {
-//   chunkDocumentJob,
-//   processChunkJob,
-//   aggregateDocumentJob,
-//   generateEmbeddingsJob,
-// } from '@/lib/jobs/process-document-chunks';
+// Import all job functions with error handling
+let processVictimTimelineJob: any;
+let processTimelineAnalysisJob: any;
+let processDeepAnalysisJob: any;
+let processBehavioralPatternsJob: any;
+let processEvidenceGapsJob: any;
+let processRelationshipNetworkJob: any;
+let processSimilarCasesJob: any;
+let processOverlookedDetailsJob: any;
+let processInterrogationQuestionsJob: any;
+let processForensicRetestingJob: any;
 
-// import { populateInvestigationBoardJob } from '@/lib/jobs/populate-investigation-board';
-import { processVictimTimelineJob } from '@/lib/jobs/victim-timeline';
-import { processTimelineAnalysisJob } from '@/lib/jobs/timeline-analysis';
-import { processDeepAnalysisJob } from '@/lib/jobs/deep-analysis';
-import { processBehavioralPatternsJob } from '@/lib/jobs/behavioral-patterns';
-import { processEvidenceGapsJob } from '@/lib/jobs/evidence-gaps';
-import { processRelationshipNetworkJob } from '@/lib/jobs/relationship-network';
-import { processSimilarCasesJob } from '@/lib/jobs/similar-cases';
-import { processOverlookedDetailsJob } from '@/lib/jobs/overlooked-details';
-import { processInterrogationQuestionsJob } from '@/lib/jobs/interrogation-questions';
-import { processForensicRetestingJob } from '@/lib/jobs/forensic-retesting';
+try {
+  ({ processVictimTimelineJob } = require('@/lib/jobs/victim-timeline'));
+  ({ processTimelineAnalysisJob } = require('@/lib/jobs/timeline-analysis'));
+  ({ processDeepAnalysisJob } = require('@/lib/jobs/deep-analysis'));
+  ({ processBehavioralPatternsJob } = require('@/lib/jobs/behavioral-patterns'));
+  ({ processEvidenceGapsJob } = require('@/lib/jobs/evidence-gaps'));
+  ({ processRelationshipNetworkJob } = require('@/lib/jobs/relationship-network'));
+  ({ processSimilarCasesJob } = require('@/lib/jobs/similar-cases'));
+  ({ processOverlookedDetailsJob } = require('@/lib/jobs/overlooked-details'));
+  ({ processInterrogationQuestionsJob } = require('@/lib/jobs/interrogation-questions'));
+  ({ processForensicRetestingJob } = require('@/lib/jobs/forensic-retesting'));
+
+  console.log('[Inngest] Successfully loaded all job functions');
+} catch (error) {
+  console.error('[Inngest] Failed to load job functions:', error);
+}
 
 /**
  * Register all Inngest functions (jobs) here
@@ -41,16 +49,6 @@ import { processForensicRetestingJob } from '@/lib/jobs/forensic-retesting';
  * These features have fallback implementations that run synchronously
  */
 const inngestFunctions = [
-  // Document processing - DISABLED (canvas dependency issue)
-  // chunkDocumentJob,
-  // processChunkJob,
-  // aggregateDocumentJob,
-  // generateEmbeddingsJob,
-
-  // Investigation board - DISABLED (canvas dependency issue)
-  // populateInvestigationBoardJob,
-
-  // AI Analysis jobs (async to avoid timeouts)
   processVictimTimelineJob,
   processTimelineAnalysisJob,
   processDeepAnalysisJob,
@@ -61,7 +59,9 @@ const inngestFunctions = [
   processOverlookedDetailsJob,
   processInterrogationQuestionsJob,
   processForensicRetestingJob,
-];
+].filter(Boolean); // Remove any undefined functions
+
+console.log(`[Inngest] Registering ${inngestFunctions.length} functions`);
 
 /**
  * Create the Inngest handler
