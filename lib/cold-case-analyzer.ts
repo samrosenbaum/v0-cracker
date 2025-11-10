@@ -1,6 +1,31 @@
 import { DEFAULT_ANTHROPIC_MODEL, getAnthropicClient } from './anthropic-client';
 
 // ============================================================================
+// Helper function to safely extract and parse JSON from Claude responses
+// ============================================================================
+
+function safeJsonExtract(text: string, pattern: RegExp): any {
+  const jsonMatch = text.match(pattern);
+  if (!jsonMatch) {
+    throw new Error('Could not find JSON in response. Response may contain an error message.');
+  }
+
+  const jsonStr = jsonMatch[0];
+
+  // Check if the matched text looks like an error message
+  if (jsonStr.startsWith('[Unable to') || jsonStr.startsWith('{Unable to') ||
+      jsonStr.includes('error') && jsonStr.length < 100) {
+    throw new Error(`Response contains error message instead of JSON: ${jsonStr.substring(0, 100)}`);
+  }
+
+  try {
+    return JSON.parse(jsonStr);
+  } catch (parseError: any) {
+    throw new Error(`Failed to parse JSON: ${parseError.message}. Matched text: ${jsonStr.substring(0, 200)}`);
+  }
+}
+
+// ============================================================================
 // 1. BEHAVIORAL PATTERN ANALYSIS
 // ============================================================================
 
@@ -53,10 +78,7 @@ Return JSON matching BehaviorPattern[] interface.`;
   const content = message.content[0];
   if (content.type !== 'text') throw new Error('Unexpected response type');
 
-  const jsonMatch = content.text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) throw new Error('Could not parse JSON response');
-
-  return JSON.parse(jsonMatch[0]);
+  return safeJsonExtract(content.text, /\[[\s\S]*\]/);
 }
 
 // ============================================================================
@@ -162,10 +184,7 @@ Return JSON matching EvidenceGap[] interface.`;
   const content = message.content[0];
   if (content.type !== 'text') throw new Error('Unexpected response type');
 
-  const jsonMatch = content.text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) throw new Error('Could not parse JSON response');
-
-  return JSON.parse(jsonMatch[0]);
+  return safeJsonExtract(content.text, /\[[\s\S]*\]/);
 }
 
 // ============================================================================
@@ -242,10 +261,7 @@ Return JSON with nodes (RelationshipNode[]) and hiddenConnections (HiddenConnect
   const content = message.content[0];
   if (content.type !== 'text') throw new Error('Unexpected response type');
 
-  const jsonMatch = content.text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('Could not parse JSON response');
-
-  return JSON.parse(jsonMatch[0]);
+  return safeJsonExtract(content.text, /\{[\s\S]*\}/);
 }
 
 // ============================================================================
@@ -321,10 +337,7 @@ Return JSON matching CaseSimilarity[] interface.`;
   const content = message.content[0];
   if (content.type !== 'text') throw new Error('Unexpected response type');
 
-  const jsonMatch = content.text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) throw new Error('Could not parse JSON response');
-
-  return JSON.parse(jsonMatch[0]);
+  return safeJsonExtract(content.text, /\[[\s\S]*\]/);
 }
 
 // ============================================================================
@@ -404,10 +417,7 @@ Return JSON matching OverlookedDetail[] interface.`;
   const content = message.content[0];
   if (content.type !== 'text') throw new Error('Unexpected response type');
 
-  const jsonMatch = content.text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) throw new Error('Could not parse JSON response');
-
-  return JSON.parse(jsonMatch[0]);
+  return safeJsonExtract(content.text, /\[[\s\S]*\]/);
 }
 
 // ============================================================================
@@ -494,10 +504,7 @@ Return JSON matching InterrogationStrategy interface.`;
   const content = message.content[0];
   if (content.type !== 'text') throw new Error('Unexpected response type');
 
-  const jsonMatch = content.text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('Could not parse JSON response');
-
-  return JSON.parse(jsonMatch[0]);
+  return safeJsonExtract(content.text, /\{[\s\S]*\}/);
 }
 
 // ============================================================================
@@ -560,10 +567,7 @@ Return JSON matching ForensicReExamination[] interface.`;
   const content = message.content[0];
   if (content.type !== 'text') throw new Error('Unexpected response type');
 
-  const jsonMatch = content.text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) throw new Error('Could not parse JSON response');
-
-  return JSON.parse(jsonMatch[0]);
+  return safeJsonExtract(content.text, /\[[\s\S]*\]/);
 }
 
 // ============================================================================
