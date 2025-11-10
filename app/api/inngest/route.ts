@@ -14,14 +14,15 @@ import { serve } from 'inngest/next';
 import { inngest } from '@/lib/inngest-client';
 
 // Import all job functions
-import {
-  chunkDocumentJob,
-  processChunkJob,
-  aggregateDocumentJob,
-  generateEmbeddingsJob,
-} from '@/lib/jobs/process-document-chunks';
+// NOTE: Document chunk processing jobs temporarily disabled due to canvas dependency conflict
+// import {
+//   chunkDocumentJob,
+//   processChunkJob,
+//   aggregateDocumentJob,
+//   generateEmbeddingsJob,
+// } from '@/lib/jobs/process-document-chunks';
 
-import { populateInvestigationBoardJob } from '@/lib/jobs/populate-investigation-board';
+// import { populateInvestigationBoardJob } from '@/lib/jobs/populate-investigation-board';
 import { processVictimTimelineJob } from '@/lib/jobs/victim-timeline';
 import { processTimelineAnalysisJob } from '@/lib/jobs/timeline-analysis';
 import { processDeepAnalysisJob } from '@/lib/jobs/deep-analysis';
@@ -35,16 +36,19 @@ import { processForensicRetestingJob } from '@/lib/jobs/forensic-retesting';
 
 /**
  * Register all Inngest functions (jobs) here
+ *
+ * NOTE: Document processing and investigation board jobs are disabled due to canvas dependency
+ * These features have fallback implementations that run synchronously
  */
 const inngestFunctions = [
-  // Document processing
-  chunkDocumentJob,
-  processChunkJob,
-  aggregateDocumentJob,
-  generateEmbeddingsJob,
+  // Document processing - DISABLED (canvas dependency issue)
+  // chunkDocumentJob,
+  // processChunkJob,
+  // aggregateDocumentJob,
+  // generateEmbeddingsJob,
 
-  // Investigation board
-  populateInvestigationBoardJob,
+  // Investigation board - DISABLED (canvas dependency issue)
+  // populateInvestigationBoardJob,
 
   // AI Analysis jobs (async to avoid timeouts)
   processVictimTimelineJob,

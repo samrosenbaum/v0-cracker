@@ -12,6 +12,14 @@ const nextConfig = {
     // your project has ESLint errors.
     ignoreDuringBuilds: true,
   },
+  webpack: (config, { isServer }) => {
+    // Fix canvas dependency issues during build
+    if (isServer) {
+      config.externals = config.externals || [];
+      config.externals.push('canvas');
+    }
+    return config;
+  },
 }
 
 module.exports = nextConfig
