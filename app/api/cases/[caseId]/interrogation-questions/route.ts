@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, unstable_after } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { processInterrogationQuestions } from '@/lib/workflows/interrogation-questions';
 
@@ -88,13 +88,17 @@ export async function POST(
       );
     }
 
-    // Trigger workflow in background (fire and forget)
-    processInterrogationQuestions({
-      jobId: job.id,
-      caseId,
-    }).catch((error) => {
-      console.error('[Interrogation Questions API] Workflow failed:', error);
-      // Workflow will update job status to 'failed' internally
+    // Trigger workflow in background after the response finishes
+    unstable_after(async () => {
+      try {
+        await processInterrogationQuestions({
+          jobId: job.id,
+          caseId,
+        });
+      } catch (error) {
+        console.error('[Interrogation Questions API] Workflow failed:', error);
+        // Workflow will update job status to 'failed' internally
+      }
     });
 
     return withCors(
