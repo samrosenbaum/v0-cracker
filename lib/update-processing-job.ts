@@ -5,7 +5,7 @@ type ProcessingJobUpdates = Record<string, any>;
 export async function updateProcessingJob(
   jobId: string,
   updates: ProcessingJobUpdates,
-  context: string = 'ProcessingJob'
+  context: string = 'ProcessingJob',
 ) {
   const { progress_percentage, ...sanitizedUpdates } = updates;
 

@@ -18,7 +18,7 @@ import {
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> | { caseId: string } }
+  context: { params: Promise<{ caseId: string }> | { caseId: string } },
 ) {
   try {
     const params = await Promise.resolve(context.params);
@@ -30,7 +30,7 @@ export async function GET(
     if (!caseId) {
       return NextResponse.json(
         { error: 'Case ID is required' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -44,7 +44,7 @@ export async function GET(
 
     // Filter by status if specified
     if (statusFilter) {
-      jobs = jobs.filter(job => job.status === statusFilter);
+      jobs = jobs.filter((job) => job.status === statusFilter);
     }
 
     // Get case-wide statistics
@@ -60,7 +60,7 @@ export async function GET(
     console.error('[API: Get Case Processing Jobs] Error:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to fetch processing jobs' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

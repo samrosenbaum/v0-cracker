@@ -1,8 +1,14 @@
-import { NextRequest, NextResponse, unstable_after } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { hasSupabaseServiceConfig } from '@/lib/environment';
+import { start } from 'workflow/api';
 import { processVictimTimeline } from '@/lib/workflows/victim-timeline';
-import { listCaseDocuments, getStorageObject, addCaseAnalysis, getCaseById } from '@/lib/demo-data';
+import {
+  listCaseDocuments,
+  getStorageObject,
+  addCaseAnalysis,
+  getCaseById,
+} from '@/lib/demo-data';
 import { buildVictimTimelineFallback } from '@/lib/victim-timeline-fallback';
 
 const CORS_HEADERS: Record<string, string> = {
@@ -26,19 +32,21 @@ export async function GET() {
   return withCors(
     NextResponse.json(
       {
-        message: 'Victim Timeline endpoint is ready. Use POST method to run analysis.',
+        message:
+          'Victim Timeline endpoint is ready. Use POST method to run analysis.',
         endpoint: '/api/cases/[caseId]/victim-timeline',
         method: 'POST',
-        description: 'Reconstructs victim\'s last 24-48 hours with gap detection'
+        description:
+          "Reconstructs victim's last 24-48 hours with gap detection",
       },
-      { status: 200 }
-    )
+      { status: 200 },
+    ),
   );
 }
 
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> | { caseId: string } }
+  context: { params: Promise<{ caseId: string }> | { caseId: string } },
 ) {
   let requestBody: any = null;
   try {
@@ -58,10 +66,12 @@ export async function POST(
     } = body;
 
     if (!victimName || !incidentTime) {
-      return withCors(NextResponse.json(
-        { error: 'victimName and incidentTime are required' },
-        { status: 400 }
-      ));
+      return withCors(
+        NextResponse.json(
+          { error: 'victimName and incidentTime are required' },
+          { status: 400 },
+        ),
+      );
     }
 
     if (!useSupabase) {
@@ -70,8 +80,8 @@ export async function POST(
         return withCors(
           NextResponse.json(
             { error: `Case ${caseId} not found in local dataset.` },
-            { status: 404 }
-          )
+            { status: 404 },
+          ),
         );
       }
 
@@ -84,7 +94,9 @@ export async function POST(
           storage_path: doc.storage_path,
           content:
             storage?.content ||
-            (typeof doc.metadata?.extracted_text === 'string' ? doc.metadata.extracted_text : ''),
+            (typeof doc.metadata?.extracted_text === 'string'
+              ? doc.metadata.extracted_text
+              : ''),
         };
       });
 
@@ -97,7 +109,12 @@ export async function POST(
           knownHabits,
           regularContacts,
         },
-        { documents, witnesses: [], digitalRecords: body.digitalRecords || null, physicalEvidence: [] }
+        {
+          documents,
+          witnesses: [],
+          digitalRecords: body.digitalRecords || null,
+          physicalEvidence: [],
+        },
       );
 
       const now = new Date().toISOString();
@@ -119,8 +136,8 @@ export async function POST(
             analysis: fallbackResult,
             message: 'Generated using local victim timeline engine.',
           },
-          { status: 200 }
-        )
+          { status: 200 },
+        ),
       );
     }
 
@@ -147,38 +164,39 @@ export async function POST(
       .single();
 
     if (jobError || !job) {
-      console.error('Failed to create processing job for victim timeline:', jobError);
+      console.error(
+        'Failed to create processing job for victim timeline:',
+        jobError,
+      );
       return withCors(
         NextResponse.json(
           { error: 'Unable to schedule victim timeline analysis job.' },
-          { status: 500 }
-        )
+          { status: 500 },
+        ),
       );
     }
 
-    // Trigger workflow in background after the response flushes
-    unstable_after(async () => {
-      try {
-        await processVictimTimeline({
-          jobId: job.id,
-          caseId,
-          victimInfo: {
-            name: victimName,
-            incidentTime,
-            incidentLocation,
-            typicalRoutine,
-            knownHabits,
-            regularContacts,
-          },
-          requestContext: {
-            digitalRecords: body.digitalRecords || null,
-          },
-          requestedAt: now,
-        });
-      } catch (error) {
-        console.error('[Victim Timeline API] Workflow failed:', error);
-        // Workflow will update job status to 'failed' internally
-      }
+    // Trigger workflow in background (fire and forget)
+    start(processVictimTimeline, [
+      {
+        jobId: job.id,
+        caseId,
+        victimInfo: {
+          name: victimName,
+          incidentTime,
+          incidentLocation,
+          typicalRoutine,
+          knownHabits,
+          regularContacts,
+        },
+        requestContext: {
+          digitalRecords: body.digitalRecords || null,
+        },
+        requestedAt: now,
+      },
+    ]).catch((error) => {
+      console.error('[Victim Timeline API] Workflow failed:', error);
+      // Workflow will update job status to 'failed' internally
     });
 
     return withCors(
@@ -190,8 +208,8 @@ export async function POST(
           message:
             'Victim timeline workflow has been triggered. Check processing job status for progress.',
         },
-        { status: 202 }
-      )
+        { status: 202 },
+      ),
     );
   } catch (error: any) {
     console.error('Victim timeline error:', error);
@@ -207,7 +225,9 @@ export async function POST(
           storage_path: doc.storage_path,
           content:
             storage?.content ||
-            (typeof doc.metadata?.extracted_text === 'string' ? doc.metadata.extracted_text : ''),
+            (typeof doc.metadata?.extracted_text === 'string'
+              ? doc.metadata.extracted_text
+              : ''),
         };
       });
 
@@ -225,7 +245,7 @@ export async function POST(
           witnesses: [],
           digitalRecords: requestBody?.digitalRecords || null,
           physicalEvidence: [],
-        }
+        },
       );
 
       const now = new Date().toISOString();
@@ -245,18 +265,24 @@ export async function POST(
             success: true,
             mode: 'instant',
             analysis: fallbackResult,
-            message: 'Generated using local victim timeline engine after primary failure.',
+            message:
+              'Generated using local victim timeline engine after primary failure.',
           },
-          { status: 200 }
-        )
+          { status: 200 },
+        ),
       );
     } catch (fallbackError) {
-      console.error('Fallback victim timeline generation failed:', fallbackError);
+      console.error(
+        'Fallback victim timeline generation failed:',
+        fallbackError,
+      );
     }
 
-    return withCors(NextResponse.json(
-      { error: error.message || 'Timeline analysis failed' },
-      { status: 500 }
-    ));
+    return withCors(
+      NextResponse.json(
+        { error: error.message || 'Timeline analysis failed' },
+        { status: 500 },
+      ),
+    );
   }
 }

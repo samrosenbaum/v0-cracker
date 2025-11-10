@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse, unstable_after } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
+import { start } from 'workflow/api';
 import { processEvidenceGaps } from '@/lib/workflows/evidence-gaps';
 
 const CORS_HEADERS: Record<string, string> = {
@@ -23,19 +24,21 @@ export async function GET() {
   return withCors(
     NextResponse.json(
       {
-        message: 'Evidence Gap Analysis endpoint is ready. Use POST method to run analysis.',
+        message:
+          'Evidence Gap Analysis endpoint is ready. Use POST method to run analysis.',
         endpoint: '/api/cases/[caseId]/evidence-gaps',
         method: 'POST',
-        description: 'Identifies missing evidence that should have been collected'
+        description:
+          'Identifies missing evidence that should have been collected',
       },
-      { status: 200 }
-    )
+      { status: 200 },
+    ),
   );
 }
 
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> | { caseId: string } }
+  context: { params: Promise<{ caseId: string }> | { caseId: string } },
 ) {
   try {
     const params = await Promise.resolve(context.params);
@@ -44,7 +47,8 @@ export async function POST(
     console.log('[Evidence Gaps API] Analysis requested for case:', caseId);
 
     const anthropicKey =
-      process.env.ANTHROPIC_API_KEY || process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY;
+      process.env.ANTHROPIC_API_KEY ||
+      process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY;
 
     if (!anthropicKey) {
       return withCors(
@@ -53,8 +57,8 @@ export async function POST(
             error:
               'Anthropic API key is not configured. Please set ANTHROPIC_API_KEY before running evidence gap analysis.',
           },
-          { status: 503 }
-        )
+          { status: 503 },
+        ),
       );
     }
 
@@ -79,26 +83,27 @@ export async function POST(
       .single();
 
     if (jobError || !job) {
-      console.error('[Evidence Gaps API] Failed to create processing job:', jobError);
+      console.error(
+        '[Evidence Gaps API] Failed to create processing job:',
+        jobError,
+      );
       return withCors(
         NextResponse.json(
           { error: 'Unable to schedule evidence gap analysis job.' },
-          { status: 500 }
-        )
+          { status: 500 },
+        ),
       );
     }
 
-    // Trigger workflow in background after response flushes
-    unstable_after(async () => {
-      try {
-        await processEvidenceGaps({
-          jobId: job.id,
-          caseId,
-        });
-      } catch (error) {
-        console.error('[Evidence Gaps API] Workflow failed:', error);
-        // Workflow will update job status to 'failed' internally
-      }
+    // Trigger workflow in background (fire and forget)
+    start(processEvidenceGaps, [
+      {
+        jobId: job.id,
+        caseId,
+      },
+    ]).catch((error) => {
+      console.error('[Evidence Gaps API] Workflow failed:', error);
+      // Workflow will update job status to 'failed' internally
     });
 
     return withCors(
@@ -110,16 +115,16 @@ export async function POST(
           message:
             'Evidence gap analysis workflow has been triggered. Check processing job status for progress.',
         },
-        { status: 202 }
-      )
+        { status: 202 },
+      ),
     );
   } catch (error: any) {
     console.error('[Evidence Gaps API] Error:', error);
     return withCors(
       NextResponse.json(
         { error: error.message || 'Analysis failed' },
-        { status: 500 }
-      )
+        { status: 500 },
+      ),
     );
   }
 }

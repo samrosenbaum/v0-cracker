@@ -10,7 +10,7 @@ import { supabaseServer } from '@/lib/supabase-server';
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> | { caseId: string } }
+  context: { params: Promise<{ caseId: string }> | { caseId: string } },
 ) {
   try {
     const params = await Promise.resolve(context.params);
@@ -50,16 +50,17 @@ export async function GET(
     return NextResponse.json(
       {
         error: error.message || 'Failed to fetch entities',
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+        details:
+          process.env.NODE_ENV === 'development' ? error.stack : undefined,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> | { caseId: string } }
+  context: { params: Promise<{ caseId: string }> | { caseId: string } },
 ) {
   try {
     const params = await Promise.resolve(context.params);
@@ -80,7 +81,7 @@ export async function POST(
     if (!entity_type || !name) {
       return NextResponse.json(
         { error: 'entity_type and name are required' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -116,9 +117,10 @@ export async function POST(
     return NextResponse.json(
       {
         error: error.message || 'Failed to create entity',
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+        details:
+          process.env.NODE_ENV === 'development' ? error.stack : undefined,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

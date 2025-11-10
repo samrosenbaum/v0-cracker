@@ -9,31 +9,59 @@ import { supabaseServer } from '@/lib/supabase-server';
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> | { caseId: string } }
+  context: { params: Promise<{ caseId: string }> | { caseId: string } },
 ) {
   try {
     const params = await Promise.resolve(context.params);
     const { caseId } = params;
 
     // Fetch all board data in parallel
-    const [entitiesResult, connectionsResult, timelineResult, alibisResult, summaryResult] = await Promise.all([
-      supabaseServer.from('case_entities').select('*').eq('case_id', caseId).order('created_at', { ascending: false }),
-      supabaseServer.from('case_connections').select('*').eq('case_id', caseId).order('created_at', { ascending: false }),
-      supabaseServer.from('timeline_events').select('*').eq('case_id', caseId).order('event_time', { ascending: true }),
-      supabaseServer.from('alibi_entries').select('*').eq('case_id', caseId).order('statement_date', { ascending: false }),
-      supabaseServer.rpc('get_case_board_summary', { p_case_id: caseId })
+    const [
+      entitiesResult,
+      connectionsResult,
+      timelineResult,
+      alibisResult,
+      summaryResult,
+    ] = await Promise.all([
+      supabaseServer
+        .from('case_entities')
+        .select('*')
+        .eq('case_id', caseId)
+        .order('created_at', { ascending: false }),
+      supabaseServer
+        .from('case_connections')
+        .select('*')
+        .eq('case_id', caseId)
+        .order('created_at', { ascending: false }),
+      supabaseServer
+        .from('timeline_events')
+        .select('*')
+        .eq('case_id', caseId)
+        .order('event_time', { ascending: true }),
+      supabaseServer
+        .from('alibi_entries')
+        .select('*')
+        .eq('case_id', caseId)
+        .order('statement_date', { ascending: false }),
+      supabaseServer.rpc('get_case_board_summary', { p_case_id: caseId }),
     ]);
 
     if (entitiesResult.error) {
-      throw new Error(`Failed to fetch entities: ${entitiesResult.error.message}`);
+      throw new Error(
+        `Failed to fetch entities: ${entitiesResult.error.message}`,
+      );
     }
 
     if (connectionsResult.error) {
-      throw new Error(`Failed to fetch connections: ${connectionsResult.error.message}`);
+      throw new Error(
+        `Failed to fetch connections: ${connectionsResult.error.message}`,
+      );
     }
 
     if (timelineResult.error) {
-      throw new Error(`Failed to fetch timeline: ${timelineResult.error.message}`);
+      throw new Error(
+        `Failed to fetch timeline: ${timelineResult.error.message}`,
+      );
     }
 
     if (alibisResult.error) {
@@ -55,9 +83,10 @@ export async function GET(
     return NextResponse.json(
       {
         error: error.message || 'Failed to fetch board data',
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+        details:
+          process.env.NODE_ENV === 'development' ? error.stack : undefined,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

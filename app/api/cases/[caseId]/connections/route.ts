@@ -10,7 +10,7 @@ import { supabaseServer } from '@/lib/supabase-server';
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> | { caseId: string } }
+  context: { params: Promise<{ caseId: string }> | { caseId: string } },
 ) {
   try {
     const params = await Promise.resolve(context.params);
@@ -32,7 +32,7 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> | { caseId: string } }
+  context: { params: Promise<{ caseId: string }> | { caseId: string } },
 ) {
   try {
     const params = await Promise.resolve(context.params);

@@ -20,7 +20,7 @@ const openai = new OpenAI({
 
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> | { caseId: string } }
+  context: { params: Promise<{ caseId: string }> | { caseId: string } },
 ) {
   try {
     const params = await Promise.resolve(context.params);
@@ -36,7 +36,7 @@ export async function POST(
     if (!query || query.trim().length === 0) {
       return NextResponse.json(
         { error: 'Search query is required' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -51,13 +51,16 @@ export async function POST(
     const queryEmbedding = embeddingResponse.data[0].embedding;
 
     // Step 2: Search using vector similarity
-    const { data: results, error } = await supabaseServer.rpc('search_document_chunks', {
-      query_embedding: queryEmbedding as any,
-      match_threshold: matchThreshold,
-      match_count: matchCount,
-      case_id_filter: caseId,
-      case_file_id_filter: fileFilter,
-    });
+    const { data: results, error } = await supabaseServer.rpc(
+      'search_document_chunks',
+      {
+        query_embedding: queryEmbedding as any,
+        match_threshold: matchThreshold,
+        match_count: matchCount,
+        case_id_filter: caseId,
+        case_file_id_filter: fileFilter,
+      },
+    );
 
     if (error) {
       console.error('[Semantic Search] Database error:', error);
@@ -91,7 +94,7 @@ export async function POST(
           page_number: result.metadata?.pageNumber || result.chunk_index,
           similarity_percentage: (result.similarity * 100).toFixed(1),
         };
-      })
+      }),
     );
 
     // Step 4: Sort by similarity (highest first)
@@ -111,9 +114,10 @@ export async function POST(
     return NextResponse.json(
       {
         error: error.message || 'Search failed',
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+        details:
+          process.env.NODE_ENV === 'development' ? error.stack : undefined,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

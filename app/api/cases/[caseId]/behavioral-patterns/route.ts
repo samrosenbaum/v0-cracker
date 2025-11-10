@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse, unstable_after } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
+import { start } from 'workflow/api';
 import { processBehavioralPatterns } from '@/lib/workflows/behavioral-patterns';
 
 const CORS_HEADERS: Record<string, string> = {
@@ -23,28 +24,34 @@ export async function GET() {
   return withCors(
     NextResponse.json(
       {
-        message: 'Behavioral Pattern Analysis endpoint is ready. Use POST method to run analysis.',
+        message:
+          'Behavioral Pattern Analysis endpoint is ready. Use POST method to run analysis.',
         endpoint: '/api/cases/[caseId]/behavioral-patterns',
         method: 'POST',
-        description: 'Analyzes interview transcripts for behavioral red flags and deception patterns'
+        description:
+          'Analyzes interview transcripts for behavioral red flags and deception patterns',
       },
-      { status: 200 }
-    )
+      { status: 200 },
+    ),
   );
 }
 
 export async function POST(
   request: NextRequest,
-  context: { params: Promise<{ caseId: string }> | { caseId: string } }
+  context: { params: Promise<{ caseId: string }> | { caseId: string } },
 ) {
   try {
     const params = await Promise.resolve(context.params);
     const { caseId } = params;
 
-    console.log('[Behavioral Patterns API] Analysis requested for case:', caseId);
+    console.log(
+      '[Behavioral Patterns API] Analysis requested for case:',
+      caseId,
+    );
 
     const anthropicKey =
-      process.env.ANTHROPIC_API_KEY || process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY;
+      process.env.ANTHROPIC_API_KEY ||
+      process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY;
 
     if (!anthropicKey) {
       return withCors(
@@ -53,8 +60,8 @@ export async function POST(
             error:
               'Anthropic API key is not configured. Please set ANTHROPIC_API_KEY before running behavioral pattern analysis.',
           },
-          { status: 503 }
-        )
+          { status: 503 },
+        ),
       );
     }
 
@@ -79,26 +86,27 @@ export async function POST(
       .single();
 
     if (jobError || !job) {
-      console.error('[Behavioral Patterns API] Failed to create processing job:', jobError);
+      console.error(
+        '[Behavioral Patterns API] Failed to create processing job:',
+        jobError,
+      );
       return withCors(
         NextResponse.json(
           { error: 'Unable to schedule behavioral pattern analysis job.' },
-          { status: 500 }
-        )
+          { status: 500 },
+        ),
       );
     }
 
-    // Trigger workflow in background after the response is sent
-    unstable_after(async () => {
-      try {
-        await processBehavioralPatterns({
-          jobId: job.id,
-          caseId,
-        });
-      } catch (error) {
-        console.error('[Behavioral Patterns API] Workflow failed:', error);
-        // Workflow will update job status to 'failed' internally
-      }
+    // Trigger workflow in background (fire and forget)
+    start(processBehavioralPatterns, [
+      {
+        jobId: job.id,
+        caseId,
+      },
+    ]).catch((error) => {
+      console.error('[Behavioral Patterns API] Workflow failed:', error);
+      // Workflow will update job status to 'failed' internally
     });
 
     return withCors(
@@ -110,16 +118,16 @@ export async function POST(
           message:
             'Behavioral pattern analysis workflow has been triggered. Check processing job status for progress.',
         },
-        { status: 202 }
-      )
+        { status: 202 },
+      ),
     );
   } catch (error: any) {
     console.error('[Behavioral Patterns API] Error:', error);
     return withCors(
       NextResponse.json(
         { error: error.message || 'Analysis failed' },
-        { status: 500 }
-      )
+        { status: 500 },
+      ),
     );
   }
 }
