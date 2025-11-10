@@ -24,6 +24,16 @@ const nextConfig = {
     // your project has ESLint errors.
     ignoreDuringBuilds: true,
   },
+  // Exclude workflow package from build tracing to prevent stack overflow
+  // The @workflow package is 331MB and causes micromatch recursion errors
+  experimental: {
+    outputFileTracingExcludes: {
+      '*': [
+        'node_modules/@workflow/**/*',
+        'node_modules/workflow/**/*',
+      ],
+    },
+  },
   webpack: (config, { isServer }) => {
     // Fix canvas dependency issues during build
     if (isServer) {
