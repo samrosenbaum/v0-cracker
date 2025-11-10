@@ -75,7 +75,7 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
 
       await updateProcessingJob(jobId, {
         completed_units: 1,
-        progress_percentage: Math.round((1 / totalUnits) * 100),
+        // progress_percentage auto-calculates from completed_units/total_units
       });
 
       return { caseData };
@@ -107,7 +107,7 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
 
       await updateProcessingJob(jobId, {
         completed_units: 2,
-        progress_percentage: Math.round((2 / totalUnits) * 100),
+        // progress_percentage auto-calculates from completed_units/total_units
       });
 
       return { evidenceItems };
@@ -127,7 +127,7 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
 
       await updateProcessingJob(jobId, {
         completed_units: 3,
-        progress_percentage: Math.round((3 / totalUnits) * 100),
+        // progress_percentage auto-calculates from completed_units/total_units
       });
 
       return recommendations;
@@ -157,7 +157,7 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
       await updateProcessingJob(jobId, {
         status: 'completed',
         completed_units: totalUnits,
-        progress_percentage: 100,
+        // progress_percentage auto-calculates from completed_units/total_units
         completed_at: new Date().toISOString(),
         metadata: {
           ...initialMetadata,
@@ -180,7 +180,7 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
       status: 'failed',
       completed_units: totalUnits,
       failed_units: 1,
-      progress_percentage: 100,
+      // progress_percentage auto-calculates from completed_units/total_units
       completed_at: new Date().toISOString(),
       metadata: {
         ...initialMetadata,

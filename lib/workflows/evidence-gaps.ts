@@ -161,6 +161,7 @@ export async function processEvidenceGaps(params: EvidenceGapsParams) {
       status: 'failed',
       completed_units: totalUnits,
       failed_units: 1,
+      // progress_percentage auto-calculates from completed_units/total_units
       completed_at: new Date().toISOString(),
       metadata: {
         ...initialMetadata,

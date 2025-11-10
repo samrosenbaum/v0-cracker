@@ -79,7 +79,7 @@ export async function processOverlookedDetails(params: OverlookedDetailsParams) 
 
       await updateProcessingJob(jobId, {
         completed_units: 1,
-        progress_percentage: Math.round((1 / totalUnits) * 100),
+        // progress_percentage auto-calculates from completed_units/total_units
       });
 
       return { documents };
@@ -108,7 +108,7 @@ export async function processOverlookedDetails(params: OverlookedDetailsParams) 
 
       await updateProcessingJob(jobId, {
         completed_units: 2,
-        progress_percentage: Math.round((2 / totalUnits) * 100),
+        // progress_percentage auto-calculates from completed_units/total_units
       });
 
       return { documentContents };
@@ -130,7 +130,7 @@ export async function processOverlookedDetails(params: OverlookedDetailsParams) 
 
       await updateProcessingJob(jobId, {
         completed_units: 3,
-        progress_percentage: Math.round((3 / totalUnits) * 100),
+        // progress_percentage auto-calculates from completed_units/total_units
       });
 
       return details;
@@ -160,7 +160,7 @@ export async function processOverlookedDetails(params: OverlookedDetailsParams) 
       await updateProcessingJob(jobId, {
         status: 'completed',
         completed_units: totalUnits,
-        progress_percentage: 100,
+        // progress_percentage auto-calculates from completed_units/total_units
         completed_at: new Date().toISOString(),
         metadata: {
           ...initialMetadata,
@@ -183,7 +183,7 @@ export async function processOverlookedDetails(params: OverlookedDetailsParams) 
       status: 'failed',
       completed_units: totalUnits,
       failed_units: 1,
-      progress_percentage: 100,
+      // progress_percentage auto-calculates from completed_units/total_units
       completed_at: new Date().toISOString(),
       metadata: {
         ...initialMetadata,

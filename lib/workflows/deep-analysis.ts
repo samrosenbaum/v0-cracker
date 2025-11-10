@@ -97,7 +97,7 @@ export async function processDeepAnalysis(params: DeepAnalysisParams) {
 
       await updateProcessingJob(jobId, {
         completed_units: 1,
-        progress_percentage: Math.round((1 / totalUnits) * 100),
+        // progress_percentage auto-calculates from completed_units/total_units
       });
 
       return { caseData, documents: documents || [], suspects: suspects || [], evidence: evidence || [] };
@@ -136,7 +136,7 @@ export async function processDeepAnalysis(params: DeepAnalysisParams) {
 
       await updateProcessingJob(jobId, {
         completed_units: 2,
-        progress_percentage: Math.round((2 / totalUnits) * 100),
+        // progress_percentage auto-calculates from completed_units/total_units
       });
 
       return { extractionResults, queuedForReview };
@@ -174,7 +174,7 @@ export async function processDeepAnalysis(params: DeepAnalysisParams) {
 
       await updateProcessingJob(jobId, {
         completed_units: 3,
-        progress_percentage: Math.round((3 / totalUnits) * 100),
+        // progress_percentage auto-calculates from completed_units/total_units
       });
 
       return analysis;
@@ -203,7 +203,7 @@ export async function processDeepAnalysis(params: DeepAnalysisParams) {
       await updateProcessingJob(jobId, {
         status: 'completed',
         completed_units: totalUnits,
-        progress_percentage: 100,
+        // progress_percentage auto-calculates from completed_units/total_units
         completed_at: new Date().toISOString(),
         metadata: {
           ...initialMetadata,
@@ -230,7 +230,7 @@ export async function processDeepAnalysis(params: DeepAnalysisParams) {
       status: 'failed',
       completed_units: totalUnits,
       failed_units: 1,
-      progress_percentage: 100,
+      // progress_percentage auto-calculates from completed_units/total_units
       completed_at: new Date().toISOString(),
       metadata: {
         ...initialMetadata,
