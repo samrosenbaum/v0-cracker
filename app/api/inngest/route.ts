@@ -47,6 +47,13 @@ const inngestFunctions = [
 
 console.log(`[Inngest] Registering ${inngestFunctions.length} functions:`, inngestFunctions.map(f => f?.id || 'unknown'));
 
+// Store function info for debugging
+const functionInfo = inngestFunctions.map(f => ({
+  id: f?.id || 'undefined',
+  name: f?.name || 'undefined',
+  exists: !!f
+}));
+
 /**
  * Create the Inngest handler
  * This handles both GET (for Inngest dashboard) and POST (for job execution)
@@ -59,4 +66,23 @@ const handler = serve({
   streaming: 'allow',
 });
 
-export { handler as GET, handler as POST, handler as PUT };
+// Export handlers with debug info injected into responses
+const wrappedGET = async (req: Request) => {
+  const response = await handler(req);
+  console.log('[Inngest GET] Function info:', JSON.stringify(functionInfo));
+  console.log('[Inngest GET] Total functions:', inngestFunctions.length);
+  return response;
+};
+
+const wrappedPOST = async (req: Request) => {
+  console.log('[Inngest POST] Received event');
+  return await handler(req);
+};
+
+const wrappedPUT = async (req: Request) => {
+  console.log('[Inngest PUT] Sync request - functions:', inngestFunctions.length);
+  console.log('[Inngest PUT] Function details:', JSON.stringify(functionInfo));
+  return await handler(req);
+};
+
+export { wrappedGET as GET, wrappedPOST as POST, wrappedPUT as PUT };
