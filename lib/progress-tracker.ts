@@ -444,3 +444,183 @@ export async function getProcessingSummary(jobId: string): Promise<{
     failedChunks,
   };
 }
+
+/**
+ * Find jobs stuck in "running" status
+ * A job is considered stuck if it's been in "running" status for longer than the threshold
+ */
+export async function findStuckJobs(staleThresholdHours: number = 2): Promise<ProcessingJobStats[]> {
+  try {
+    const thresholdTime = new Date();
+    thresholdTime.setHours(thresholdTime.getHours() - staleThresholdHours);
+
+    const { data, error } = await supabaseServer
+      .from('processing_jobs')
+      .select('*')
+      .eq('status', 'running')
+      .lt('updated_at', thresholdTime.toISOString())
+      .order('updated_at', { ascending: true });
+
+    if (error) {
+      console.error(`Failed to find stuck jobs:`, error);
+      return [];
+    }
+
+    return data.map(job => ({
+      id: job.id,
+      caseId: job.case_id,
+      jobType: job.job_type,
+      status: job.status,
+      totalUnits: job.total_units,
+      completedUnits: job.completed_units,
+      failedUnits: job.failed_units,
+      progressPercentage: job.progress_percentage || 0,
+      estimatedCompletion: job.estimated_completion,
+      startedAt: job.started_at,
+      completedAt: job.completed_at,
+      metadata: job.metadata || {},
+    }));
+  } catch (error) {
+    console.error(`Error finding stuck jobs:`, error);
+    return [];
+  }
+}
+
+/**
+ * Clean up stuck jobs by marking them as failed
+ * Returns the number of jobs cleaned up
+ */
+export async function cleanupStuckJobs(staleThresholdHours: number = 2): Promise<{
+  cleanedJobCount: number;
+  cleanedJobIds: string[];
+}> {
+  try {
+    const stuckJobs = await findStuckJobs(staleThresholdHours);
+
+    if (stuckJobs.length === 0) {
+      console.log('No stuck jobs found');
+      return { cleanedJobCount: 0, cleanedJobIds: [] };
+    }
+
+    console.log(`Found ${stuckJobs.length} stuck jobs. Cleaning up...`);
+
+    const cleanedJobIds: string[] = [];
+
+    for (const job of stuckJobs) {
+      try {
+        // Mark the job as failed
+        const { error: jobError } = await supabaseServer
+          .from('processing_jobs')
+          .update({
+            status: 'failed',
+            completed_at: new Date().toISOString(),
+            error_summary: {
+              error: 'Job stuck in processing',
+              message: `Job was stuck in running status for more than ${staleThresholdHours} hours and was automatically cleaned up`,
+              cleaned_up_at: new Date().toISOString(),
+            },
+          })
+          .eq('id', job.id);
+
+        if (jobError) {
+          console.error(`Failed to update job ${job.id}:`, jobError);
+          continue;
+        }
+
+        // Mark any pending or processing chunks as failed
+        const { error: chunkError } = await supabaseServer
+          .from('document_chunks')
+          .update({
+            processing_status: 'failed',
+            error_log: 'Job was stuck and automatically cleaned up',
+            processed_at: new Date().toISOString(),
+          })
+          .eq('processing_job_id', job.id)
+          .in('processing_status', ['pending', 'processing']);
+
+        if (chunkError) {
+          console.error(`Failed to update chunks for job ${job.id}:`, chunkError);
+        }
+
+        cleanedJobIds.push(job.id);
+        console.log(`Cleaned up stuck job: ${job.id} (${job.jobType})`);
+      } catch (error) {
+        console.error(`Error cleaning up job ${job.id}:`, error);
+      }
+    }
+
+    console.log(`Successfully cleaned up ${cleanedJobIds.length} stuck jobs`);
+
+    return {
+      cleanedJobCount: cleanedJobIds.length,
+      cleanedJobIds,
+    };
+  } catch (error) {
+    console.error(`Error during cleanup:`, error);
+    return { cleanedJobCount: 0, cleanedJobIds: [] };
+  }
+}
+
+/**
+ * Delete stuck jobs completely from the database
+ * WARNING: This permanently deletes the jobs and their associated chunks
+ * Returns the number of jobs deleted
+ */
+export async function deleteStuckJobs(staleThresholdHours: number = 2): Promise<{
+  deletedJobCount: number;
+  deletedJobIds: string[];
+}> {
+  try {
+    const stuckJobs = await findStuckJobs(staleThresholdHours);
+
+    if (stuckJobs.length === 0) {
+      console.log('No stuck jobs found');
+      return { deletedJobCount: 0, deletedJobIds: [] };
+    }
+
+    console.log(`Found ${stuckJobs.length} stuck jobs. Deleting...`);
+
+    const deletedJobIds: string[] = [];
+
+    for (const job of stuckJobs) {
+      try {
+        // Delete associated document chunks first
+        const { error: chunkError } = await supabaseServer
+          .from('document_chunks')
+          .delete()
+          .eq('processing_job_id', job.id);
+
+        if (chunkError) {
+          console.error(`Failed to delete chunks for job ${job.id}:`, chunkError);
+          continue;
+        }
+
+        // Delete the job itself
+        const { error: jobError } = await supabaseServer
+          .from('processing_jobs')
+          .delete()
+          .eq('id', job.id);
+
+        if (jobError) {
+          console.error(`Failed to delete job ${job.id}:`, jobError);
+          continue;
+        }
+
+        deletedJobIds.push(job.id);
+        console.log(`Deleted stuck job: ${job.id} (${job.jobType})`);
+      } catch (error) {
+        console.error(`Error deleting job ${job.id}:`, error);
+      }
+    }
+
+    console.log(`Successfully deleted ${deletedJobIds.length} stuck jobs`);
+
+    return {
+      deletedJobCount: deletedJobIds.length,
+      deletedJobIds,
+    };
+  } catch (error) {
+    console.error(`Error during deletion:`, error);
+    return { deletedJobCount: 0, deletedJobIds: [] };
+  }
+}

@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "cleanup:stuck-jobs": "npx tsx lib/cleanup-stuck-jobs.ts",
+    "cleanup:stuck-jobs:delete": "npx tsx lib/cleanup-stuck-jobs.ts --delete",
+    "cleanup:stuck-jobs:dry-run": "npx tsx lib/cleanup-stuck-jobs.ts --dry-run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
