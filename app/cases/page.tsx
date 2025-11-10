@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase-client';
 import { FileText, Calendar, Plus, ArrowLeft } from 'lucide-react';
@@ -46,14 +46,12 @@ const PriorityBadge = ({ priority }: { priority: string }) => {
   );
 };
 
-export default function AllCasesPage() {
+function CasesContent({ initialFilter }: { initialFilter: string | null }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const statusFilter = searchParams.get('status');
 
   const [cases, setCases] = useState<Case[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [filter, setFilter] = useState(statusFilter || 'all');
+  const [filter, setFilter] = useState(initialFilter || 'all');
 
   useEffect(() => {
     fetchCases();
@@ -235,5 +233,25 @@ export default function AllCasesPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Component that reads search params (must be wrapped in Suspense)
+function SearchParamsReader() {
+  const searchParams = useSearchParams();
+  const statusFilter = searchParams.get('status');
+  return <CasesContent initialFilter={statusFilter} />;
+}
+
+// Default export with Suspense boundary
+export default function AllCasesPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-600">Loading cases...</div>
+      </div>
+    }>
+      <SearchParamsReader />
+    </Suspense>
   );
 }

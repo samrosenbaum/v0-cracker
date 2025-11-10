@@ -18,10 +18,9 @@ const nextConfig = {
     // !! WARN !!
     ignoreBuildErrors: true,
   },
-  eslint: {
-    // Warning: This allows production builds to successfully complete even if
-    // your project has ESLint errors.
-    ignoreDuringBuilds: true,
+  // Turbopack configuration (Next.js 16+ uses Turbopack by default)
+  turbopack: {
+    // Empty config to acknowledge Turbopack usage and silence migration warnings
   },
   webpack: (config, { isServer }) => {
     // Fix canvas dependency issues during build
