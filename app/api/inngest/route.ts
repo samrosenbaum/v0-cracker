@@ -25,6 +25,7 @@ import { processSimilarCasesJob } from '@/lib/jobs/similar-cases';
 import { processOverlookedDetailsJob } from '@/lib/jobs/overlooked-details';
 import { processInterrogationQuestionsJob } from '@/lib/jobs/interrogation-questions';
 import { processForensicRetestingJob } from '@/lib/jobs/forensic-retesting';
+import { populateInvestigationBoardJob } from '@/lib/jobs/populate-investigation-board';
 
 /**
  * Register all Inngest functions (jobs) here
@@ -43,6 +44,7 @@ const inngestFunctions = [
   processOverlookedDetailsJob,
   processInterrogationQuestionsJob,
   processForensicRetestingJob,
+  populateInvestigationBoardJob,
 ];
 
 console.log(`[Inngest] Registering ${inngestFunctions.length} functions:`, inngestFunctions.map(f => f?.id || 'unknown'));

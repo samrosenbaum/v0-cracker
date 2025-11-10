@@ -76,9 +76,27 @@ class MockQueryBuilder<T extends Record<string, any>> {
     return this;
   }
 
+  ilike(column: string, pattern: string) {
+    const normalizedPattern = pattern.replace(/%/g, '.*');
+    const regex = new RegExp(`^${normalizedPattern}$`, 'i');
+    this.filters.push((row) => {
+      const value = (row as any)[column];
+      if (typeof value !== 'string') return false;
+      return regex.test(value);
+    });
+    return this;
+  }
+
   in(column: string, values: any[]) {
     const set = new Set(values);
     this.filters.push((row) => set.has((row as any)[column]));
+    return this;
+  }
+
+  not(column: string, operator: string, value: any) {
+    if (operator === 'is' && value === null) {
+      this.filters.push((row) => (row as any)[column] !== null && (row as any)[column] !== undefined);
+    }
     return this;
   }
 
