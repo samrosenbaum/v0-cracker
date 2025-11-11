@@ -10,6 +10,8 @@
 import { supabaseServer } from '@/lib/supabase-server';
 import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { generateComprehensiveVictimTimeline } from '@/lib/victim-timeline';
+import { extractMultipleDocuments } from '@/lib/document-parser';
+import type { ExtractionResult } from '@/lib/document-parser';
 
 interface VictimTimelineParams {
   jobId: string;
@@ -87,11 +89,21 @@ export async function processVictimTimeline(params: VictimTimelineParams) {
     }
     const { documents, files } = await fetchCaseData();
 
-    const docsForAnalysis = documents.map(doc => ({
-      filename: doc.file_name,
-      content: `[Document content would be loaded from: ${doc.storage_path}]`,
-      type: doc.document_type as any,
-    }));
+    const storagePaths = documents.map(doc => doc.storage_path).filter(Boolean) as string[];
+    const extractionResults: Map<string, ExtractionResult> = storagePaths.length
+      ? await extractMultipleDocuments(storagePaths, 5)
+      : new Map<string, ExtractionResult>();
+
+    const docsForAnalysis = documents.map(doc => {
+      const extraction = doc.storage_path ? extractionResults.get(doc.storage_path) : undefined;
+      const fallbackText = typeof doc.metadata?.extracted_text === 'string' ? doc.metadata.extracted_text : '';
+      const content = extraction?.text?.trim() || fallbackText || `No extracted text available for ${doc.file_name}.`;
+      return {
+        filename: doc.file_name,
+        content,
+        type: (doc.document_type as any) || 'other',
+      };
+    });
 
     const caseData = {
       documents: docsForAnalysis,
