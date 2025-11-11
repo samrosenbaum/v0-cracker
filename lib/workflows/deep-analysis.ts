@@ -2,7 +2,7 @@
  * Workflow: Deep/Comprehensive Cold Case Analysis
  *
  * Performs comprehensive 8-dimension cold case analysis asynchronously.
- * This workflow runs in the background using Next.js unstable_after.
+ * This workflow runs in the background using Next.js after.
  *
  * Requires Fluid Compute enabled in Vercel for reliable execution.
  */

@@ -42,7 +42,7 @@ export function runBackgroundTask(
         error
       );
     } else {
-      console.log(`[${label}] Using setTimeout scheduler (no unstable_after provided)`);
+      console.log(`[${label}] Using setTimeout scheduler (no after provided)`);
     }
     setTimeout(() => {
       void executeTask();
@@ -51,12 +51,12 @@ export function runBackgroundTask(
 
   if (scheduler) {
     try {
-      console.log(`[${label}] Scheduling with unstable_after...`);
+      console.log(`[${label}] Scheduling with after...`);
       scheduler(executeTask);
-      console.log(`[${label}] ✓ Successfully scheduled with unstable_after`);
+      console.log(`[${label}] ✓ Successfully scheduled with after`);
       return;
     } catch (error) {
-      console.error(`[${label}] ✗ unstable_after scheduler failed:`, error);
+      console.error(`[${label}] ✗ after scheduler failed:`, error);
       scheduleWithFallback('scheduler threw an error', error);
       return;
     }

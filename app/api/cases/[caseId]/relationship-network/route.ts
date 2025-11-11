@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse, unstable_after } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { processRelationshipNetwork } from '@/lib/workflows/relationship-network';
 import { runBackgroundTask } from '@/lib/background-tasks';
@@ -99,7 +99,7 @@ export async function POST(
       },
       {
         label: 'Relationship Network API',
-        scheduler: unstable_after,
+        scheduler: after,
         onError: (error) => {
           console.error('[Relationship Network API] Workflow failed:', error);
           // Workflow will update job status to 'failed' internally
