@@ -69,7 +69,7 @@ export async function processDeepAnalysis(params: DeepAnalysisParams) {
         { data: evidence, error: evidenceError },
       ] = await Promise.all([
         supabaseServer.from('case_documents').select('*').eq('case_id', caseId),
-        supabaseServer.from('suspects').select('*').eq('case_id', caseId),
+        supabaseServer.from('persons_of_interest').select('*').eq('case_id', caseId).eq('status', 'suspect'),
         supabaseServer.from('case_files').select('*').eq('case_id', caseId),
       ]);
 

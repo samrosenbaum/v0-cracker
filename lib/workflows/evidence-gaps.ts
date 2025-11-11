@@ -55,8 +55,8 @@ export async function processEvidenceGaps(params: EvidenceGapsParams) {
         { data: witnesses, error: witnessesError },
       ] = await Promise.all([
         supabaseServer.from('case_files').select('*').eq('case_id', caseId),
-        supabaseServer.from('suspects').select('*').eq('case_id', caseId),
-        supabaseServer.from('witnesses').select('*').eq('case_id', caseId),
+        supabaseServer.from('persons_of_interest').select('*').eq('case_id', caseId).eq('status', 'suspect'),
+        supabaseServer.from('persons_of_interest').select('*').eq('case_id', caseId).eq('status', 'witness'),
       ]);
 
       if (evidenceError) throw new Error(`Failed to fetch evidence: ${evidenceError.message}`);
