@@ -8,6 +8,13 @@
  */
 
 import { supabaseServer } from './supabase-server';
+import { hasSupabaseServiceConfig } from './environment';
+import {
+  listProcessingJobs as listDemoProcessingJobs,
+  getProcessingJob as getDemoProcessingJob,
+  updateProcessingJob as updateDemoProcessingJob,
+  listCaseDocuments as listDemoCaseDocuments,
+} from './demo-data';
 
 export interface ProcessingJobStats {
   id: string;
@@ -49,6 +56,31 @@ export interface CaseDocumentStats {
  * Get processing job by ID
  */
 export async function getProcessingJob(jobId: string): Promise<ProcessingJobStats | null> {
+  if (!hasSupabaseServiceConfig()) {
+    const job = getDemoProcessingJob(jobId);
+    if (!job) {
+      return null;
+    }
+
+    return {
+      id: job.id,
+      caseId: job.case_id,
+      jobType: job.job_type,
+      status: job.status,
+      totalUnits: job.total_units || 0,
+      completedUnits: job.completed_units || 0,
+      failedUnits: job.failed_units || 0,
+      progressPercentage:
+        typeof job.progress_percentage === 'number'
+          ? job.progress_percentage
+          : calculateProgressPercentage(job.completed_units, job.total_units),
+      estimatedCompletion: job.estimated_completion || null,
+      startedAt: job.started_at || null,
+      completedAt: job.completed_at || null,
+      metadata: job.metadata || {},
+    };
+  }
+
   try {
     const { data, error } = await supabaseServer
       .from('processing_jobs')
@@ -85,6 +117,33 @@ export async function getProcessingJob(jobId: string): Promise<ProcessingJobStat
  * Get all processing jobs for a case
  */
 export async function getCaseProcessingJobs(caseId: string): Promise<ProcessingJobStats[]> {
+  if (!hasSupabaseServiceConfig()) {
+    const jobs = listDemoProcessingJobs(caseId);
+    return jobs
+      .map(job => ({
+        id: job.id,
+        caseId: job.case_id,
+        jobType: job.job_type,
+        status: job.status,
+        totalUnits: job.total_units || 0,
+        completedUnits: job.completed_units || 0,
+        failedUnits: job.failed_units || 0,
+        progressPercentage:
+          typeof job.progress_percentage === 'number'
+            ? job.progress_percentage
+            : calculateProgressPercentage(job.completed_units, job.total_units),
+        estimatedCompletion: job.estimated_completion || null,
+        startedAt: job.started_at || null,
+        completedAt: job.completed_at || null,
+        metadata: job.metadata || {},
+      }))
+      .sort((a, b) => {
+        const aTime = a.startedAt ? new Date(a.startedAt).getTime() : 0;
+        const bTime = b.startedAt ? new Date(b.startedAt).getTime() : 0;
+        return bTime - aTime;
+      });
+  }
+
   try {
     const { data, error } = await supabaseServer
       .from('processing_jobs')
@@ -121,6 +180,12 @@ export async function getCaseProcessingJobs(caseId: string): Promise<ProcessingJ
  * Get active (running) jobs for a case
  */
 export async function getActiveJobs(caseId: string): Promise<ProcessingJobStats[]> {
+  if (!hasSupabaseServiceConfig()) {
+    return getCaseProcessingJobs(caseId).then(jobs =>
+      jobs.filter(job => job.status === 'pending' || job.status === 'running')
+    );
+  }
+
   try {
     const { data, error } = await supabaseServer
       .from('processing_jobs')
@@ -158,6 +223,42 @@ export async function getActiveJobs(caseId: string): Promise<ProcessingJobStats[
  * Get chunk statistics for a processing job
  */
 export async function getJobChunkStats(jobId: string): Promise<ChunkStats> {
+  if (!hasSupabaseServiceConfig()) {
+    const job = getDemoProcessingJob(jobId);
+    if (!job) {
+      return {
+        totalChunks: 0,
+        completedChunks: 0,
+        failedChunks: 0,
+        pendingChunks: 0,
+        processingChunks: 0,
+        totalCharacters: 0,
+        avgConfidence: 0,
+        progressPct: 0,
+      };
+    }
+
+    const totalUnits = job.total_units || 0;
+    const completedUnits = job.completed_units || 0;
+    const failedUnits = job.failed_units || 0;
+    const remainingUnits = Math.max(totalUnits - completedUnits - failedUnits, 0);
+    const progressPct =
+      typeof job.progress_percentage === 'number'
+        ? job.progress_percentage
+        : calculateProgressPercentage(completedUnits, totalUnits);
+
+    return {
+      totalChunks: totalUnits,
+      completedChunks: completedUnits,
+      failedChunks: failedUnits,
+      pendingChunks: job.status === 'pending' ? remainingUnits : 0,
+      processingChunks: job.status === 'running' ? remainingUnits : 0,
+      totalCharacters: job.metadata?.totalCharacters || 0,
+      avgConfidence: job.metadata?.avgConfidence || 0,
+      progressPct,
+    };
+  }
+
   try {
     const { data, error } = await supabaseServer.rpc('get_processing_job_stats', {
       job_id_param: jobId,
@@ -207,6 +308,38 @@ export async function getJobChunkStats(jobId: string): Promise<ChunkStats> {
  * Get document statistics for entire case
  */
 export async function getCaseDocumentStats(caseId: string): Promise<CaseDocumentStats> {
+  if (!hasSupabaseServiceConfig()) {
+    const documents = listDemoCaseDocuments(caseId);
+    const jobs = listDemoProcessingJobs(caseId);
+
+    const totalChunks = jobs.reduce((sum, job) => sum + (job.total_units || 0), 0);
+    const completedChunks = jobs.reduce((sum, job) => sum + (job.completed_units || 0), 0);
+    const failedChunks = jobs.reduce((sum, job) => sum + (job.failed_units || 0), 0);
+    const totalCharacters = documents.reduce((sum, doc) => {
+      if (typeof doc.metadata?.totalCharacters === 'number') {
+        return sum + doc.metadata.totalCharacters;
+      }
+      if (typeof doc.character_count === 'number') {
+        return sum + doc.character_count;
+      }
+      return sum;
+    }, 0);
+
+    const completionPct = totalChunks
+      ? Math.min(100, (completedChunks / totalChunks) * 100)
+      : 0;
+
+    return {
+      totalFiles: documents.length,
+      totalChunks,
+      completedChunks,
+      failedChunks,
+      totalCharacters,
+      avgConfidence: 0,
+      completionPct,
+    };
+  }
+
   try {
     const { data, error } = await supabaseServer.rpc('get_case_chunks_summary', {
       case_id_param: caseId,
@@ -300,6 +433,19 @@ export async function getFailedChunks(jobId: string) {
  * Cancel a processing job
  */
 export async function cancelProcessingJob(jobId: string): Promise<boolean> {
+  if (!hasSupabaseServiceConfig()) {
+    const job = getDemoProcessingJob(jobId);
+    if (!job) {
+      return false;
+    }
+
+    updateDemoProcessingJob(jobId, {
+      status: 'cancelled',
+      completed_at: new Date().toISOString(),
+    });
+    return true;
+  }
+
   try {
     const { error } = await supabaseServer
       .from('processing_jobs')
@@ -334,6 +480,26 @@ export async function cancelProcessingJob(jobId: string): Promise<boolean> {
  * Retry failed chunks
  */
 export async function retryFailedChunks(jobId: string): Promise<number> {
+  if (!hasSupabaseServiceConfig()) {
+    const job = getDemoProcessingJob(jobId);
+    if (!job) {
+      return 0;
+    }
+
+    const failedUnits = job.failed_units || 0;
+    if (!failedUnits) {
+      return 0;
+    }
+
+    updateDemoProcessingJob(jobId, {
+      status: 'running',
+      failed_units: 0,
+      progress_percentage: calculateProgressPercentage(job.completed_units, job.total_units),
+    });
+
+    return failedUnits;
+  }
+
   try {
     const failedChunks = await getFailedChunks(jobId);
 
@@ -370,6 +536,17 @@ export async function retryFailedChunks(jobId: string): Promise<number> {
     console.error(`Error retrying failed chunks:`, error);
     return 0;
   }
+}
+
+function calculateProgressPercentage(
+  completedUnits?: number | null,
+  totalUnits?: number | null
+): number {
+  if (!totalUnits || totalUnits <= 0 || !completedUnits) {
+    return 0;
+  }
+
+  return Math.min(100, (completedUnits / totalUnits) * 100);
 }
 
 /**
