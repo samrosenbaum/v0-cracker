@@ -38,7 +38,6 @@ export async function processSimilarCases(params: SimilarCasesParams) {
   try {
     // Step 1: Initialize job
     async function initializeJob() {
-      'use step';
       await updateProcessingJobRecord(jobId, {
         status: 'running',
         total_units: totalUnits,
@@ -50,7 +49,6 @@ export async function processSimilarCases(params: SimilarCasesParams) {
 
     // Step 2: Fetch current case data
     async function fetchCurrentCase() {
-      'use step';
       console.log('[Similar Cases] Fetching current case data for:', caseId);
 
       const { data: currentCase, error: caseError } = await supabaseServer
@@ -74,7 +72,6 @@ export async function processSimilarCases(params: SimilarCasesParams) {
 
     // Step 3: Fetch other cases
     async function fetchOtherCases() {
-      'use step';
       console.log('[Similar Cases] Fetching other cases for comparison...');
 
       const { data: otherCases, error: casesError } = await supabaseServer
@@ -98,7 +95,6 @@ export async function processSimilarCases(params: SimilarCasesParams) {
 
     // Step 4: Run similar cases analysis
     async function analyzeSimilarCases() {
-      'use step';
       console.log('[Similar Cases] Finding similar cases...');
 
       const caseProfile = {
@@ -134,7 +130,6 @@ export async function processSimilarCases(params: SimilarCasesParams) {
 
     // Step 5: Save analysis results
     async function saveResults() {
-      'use step';
       const { error: saveError } = await supabaseServer
         .from('case_analysis')
         .insert({

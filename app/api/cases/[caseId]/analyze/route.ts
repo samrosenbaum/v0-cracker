@@ -492,6 +492,8 @@ export async function POST(
     createdJobId = job.id;
 
     // Trigger workflow in background after response completes
+    // With Workflow DevKit installed, this will use durable execution
+    // Cron job acts as backup for any jobs that don't start
     runBackgroundTask(
       async () => {
         await processTimelineAnalysis({

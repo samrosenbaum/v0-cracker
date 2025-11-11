@@ -29,7 +29,6 @@ export async function processEvidenceGaps(params: EvidenceGapsParams) {
 
   try {
     async function initializeJob() {
-      'use step';
       await updateProcessingJobRecord(jobId, {
         status: 'running',
         total_units: totalUnits,
@@ -40,7 +39,6 @@ export async function processEvidenceGaps(params: EvidenceGapsParams) {
     await initializeJob();
 
     async function fetchCaseData() {
-      'use step';
       console.log('[Evidence Gaps] Fetching case data for:', caseId);
 
       const { data: caseData, error: caseError } = await supabaseServer
@@ -76,7 +74,6 @@ export async function processEvidenceGaps(params: EvidenceGapsParams) {
     const { caseData, evidence, suspects, witnesses } = await fetchCaseData();
 
     async function prepareData() {
-      'use step';
       const caseInput = {
         incidentType: caseData.description || 'Unknown',
         date: caseData.created_at,
@@ -95,7 +92,6 @@ export async function processEvidenceGaps(params: EvidenceGapsParams) {
     const caseInput = await prepareData();
 
     async function analyzeGaps() {
-      'use step';
       console.log('[Evidence Gaps] Identifying missing evidence...');
       const gaps = await identifyEvidenceGaps(caseInput);
 
@@ -108,7 +104,6 @@ export async function processEvidenceGaps(params: EvidenceGapsParams) {
     const gaps = await analyzeGaps();
 
     async function saveResults() {
-      'use step';
       const { error: saveError } = await supabaseServer
         .from('case_analysis')
         .insert({

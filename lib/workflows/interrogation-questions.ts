@@ -39,7 +39,6 @@ export async function processInterrogationQuestions(params: InterrogationQuestio
   try {
     // Step 1: Initialize job
     async function initializeJob() {
-      'use step';
       await updateProcessingJobRecord(jobId, {
         status: 'running',
         total_units: totalUnits,
@@ -51,7 +50,6 @@ export async function processInterrogationQuestions(params: InterrogationQuestio
 
     // Step 2: Fetch case data
     async function fetchCaseData() {
-      'use step';
       console.log('[Interrogation Questions] Fetching case data for:', caseId);
 
       const [
@@ -81,7 +79,6 @@ export async function processInterrogationQuestions(params: InterrogationQuestio
 
     // Step 3: Extract evidence gaps and patterns
     async function extractContent() {
-      'use step';
       console.log(`[Interrogation Questions] Extracting content from ${documents.length} documents...`);
 
       const storagePaths = documents.map((d) => d.storage_path).filter(Boolean) as string[];
@@ -116,7 +113,6 @@ export async function processInterrogationQuestions(params: InterrogationQuestio
 
     // Step 4: Generate interrogation questions
     async function generateQuestions() {
-      'use step';
       console.log('[Interrogation Questions] Generating interrogation questions...');
 
       const personsList = [
@@ -144,7 +140,6 @@ export async function processInterrogationQuestions(params: InterrogationQuestio
 
     // Step 5: Save analysis results
     async function saveResults() {
-      'use step';
       const { error: saveError } = await supabaseServer
         .from('case_analysis')
         .insert({

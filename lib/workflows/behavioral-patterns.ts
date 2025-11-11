@@ -30,7 +30,6 @@ export async function processBehavioralPatterns(params: BehavioralPatternsParams
 
   try {
     async function initializeJob() {
-      'use step';
       await updateProcessingJobRecord(jobId, {
         status: 'running',
         total_units: totalUnits,
@@ -41,7 +40,6 @@ export async function processBehavioralPatterns(params: BehavioralPatternsParams
     await initializeJob();
 
     async function fetchDocuments() {
-      'use step';
       console.log('[Behavioral Patterns] Fetching documents for:', caseId);
 
       const { data: documents, error: docsError } = await supabaseServer
@@ -62,7 +60,6 @@ export async function processBehavioralPatterns(params: BehavioralPatternsParams
     const { documents } = await fetchDocuments();
 
     async function extractContent() {
-      'use step';
       console.log(`[Behavioral Patterns] Extracting content from ${documents.length} documents...`);
 
       const storagePaths = documents.map((d) => d.storage_path).filter(Boolean) as string[];
@@ -90,7 +87,6 @@ export async function processBehavioralPatterns(params: BehavioralPatternsParams
     const { interviews } = await extractContent();
 
     async function analyzePatterns() {
-      'use step';
       if (interviews.length === 0) {
         throw new Error('No interview transcripts found to analyze');
       }
@@ -107,7 +103,6 @@ export async function processBehavioralPatterns(params: BehavioralPatternsParams
     const patterns = await analyzePatterns();
 
     async function saveResults() {
-      'use step';
       const { error: saveError } = await supabaseServer
         .from('case_analysis')
         .insert({

@@ -44,6 +44,7 @@ Visit http://localhost:3000
 ## Documentation
 
 - [Critical Setup Guide](./CRITICAL_SETUP_REQUIRED.md) - Start here if you have errors
+- [Vercel Deployment Guide](./VERCEL_DEPLOYMENT.md) - **MUST READ for Vercel deployments**
 - [Environment Variables](./.env.example) - Configuration reference
 - [Testing Checklist](./TESTING_CHECKLIST.md) - Feature testing guide
 
@@ -56,7 +57,20 @@ Visit http://localhost:3000
 - Semantic search
 - Victim timeline analysis
 
+## Deploying to Vercel
+
+**⚠️ CRITICAL: AI analysis features will NOT work without Fluid Compute enabled.**
+
+See [VERCEL_DEPLOYMENT.md](./VERCEL_DEPLOYMENT.md) for:
+- How to enable Fluid Compute (required for background workflows)
+- Environment variable setup
+- Troubleshooting deployment issues
+
 ## Troubleshooting
+
+**AI analysis not working / jobs stuck in "pending"?**
+- **On Vercel:** You must enable Fluid Compute in project settings
+- See [VERCEL_DEPLOYMENT.md](./VERCEL_DEPLOYMENT.md) for complete guide
 
 **Getting 404 errors for logo?**
 - Fixed: Logo is now in `public/fresh-eyes-logo.png`

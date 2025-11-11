@@ -43,7 +43,6 @@ export async function processOverlookedDetails(params: OverlookedDetailsParams) 
   try {
     // Step 1: Initialize job
     async function initializeJob() {
-      'use step';
       await updateProcessingJob(jobId, {
         status: 'running',
         total_units: totalUnits,
@@ -55,7 +54,6 @@ export async function processOverlookedDetails(params: OverlookedDetailsParams) 
 
     // Step 2: Fetch case documents
     async function fetchDocuments() {
-      'use step';
       console.log('[Overlooked Details] Fetching documents for:', caseId);
 
       const { data: documents, error: docsError } = await supabaseServer
@@ -82,7 +80,6 @@ export async function processOverlookedDetails(params: OverlookedDetailsParams) 
 
     // Step 3: Extract document content
     async function extractContent() {
-      'use step';
       console.log(`[Overlooked Details] Extracting content from ${documents.length} documents...`);
 
       const storagePaths = documents.map((d) => d.storage_path).filter(Boolean) as string[];
@@ -111,7 +108,6 @@ export async function processOverlookedDetails(params: OverlookedDetailsParams) 
 
     // Step 4: Run overlooked details analysis
     async function analyzeOverlookedDetails() {
-      'use step';
       if (documentContents.length === 0) {
         throw new Error('No documents found to analyze for overlooked details');
       }
@@ -133,7 +129,6 @@ export async function processOverlookedDetails(params: OverlookedDetailsParams) 
 
     // Step 5: Save analysis results
     async function saveResults() {
-      'use step';
       const { error: saveError } = await supabaseServer
         .from('case_analysis')
         .insert({

@@ -38,7 +38,6 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
   try {
     // Step 1: Initialize job
     async function initializeJob() {
-      'use step';
       await updateProcessingJobRecord(jobId, {
         status: 'running',
         total_units: totalUnits,
@@ -50,7 +49,6 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
 
     // Step 2: Fetch case data
     async function fetchCaseData() {
-      'use step';
       console.log('[Forensic Retesting] Fetching case data for:', caseId);
 
       const { data: caseData, error: caseError } = await supabaseServer
@@ -74,7 +72,6 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
 
     // Step 3: Fetch evidence inventory
     async function fetchEvidence() {
-      'use step';
       console.log('[Forensic Retesting] Fetching evidence inventory...');
 
       const { data: evidence, error: evidenceError } = await supabaseServer
@@ -106,7 +103,6 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
 
     // Step 4: Generate retesting recommendations
     async function generateRecommendations() {
-      'use step';
       console.log('[Forensic Retesting] Generating retesting recommendations...');
 
       const caseAge = new Date().getFullYear() - new Date(caseData.created_at).getFullYear();
@@ -126,7 +122,6 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
 
     // Step 5: Save analysis results
     async function saveResults() {
-      'use step';
       const { error: saveError } = await supabaseServer
         .from('case_analysis')
         .insert({

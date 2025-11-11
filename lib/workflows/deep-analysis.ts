@@ -2,9 +2,9 @@
  * Workflow: Deep/Comprehensive Cold Case Analysis
  *
  * Performs comprehensive 8-dimension cold case analysis asynchronously.
- * This workflow runs in the background with automatic retries and durability.
+ * This workflow runs in the background using Next.js unstable_after.
  *
- * Migrated from Inngest to Workflow DevKit
+ * Requires Fluid Compute enabled in Vercel for reliable execution.
  */
 
 import { supabaseServer } from '@/lib/supabase-server';
@@ -18,7 +18,6 @@ interface DeepAnalysisParams {
 }
 
 export async function processDeepAnalysis(params: DeepAnalysisParams) {
-  'use workflow';
 
   const { jobId, caseId } = params;
 
@@ -30,7 +29,6 @@ export async function processDeepAnalysis(params: DeepAnalysisParams) {
 
   try {
     async function initializeJob() {
-      'use step';
       await updateProcessingJobRecord(jobId, {
         status: 'running',
         total_units: totalUnits,
@@ -41,7 +39,7 @@ export async function processDeepAnalysis(params: DeepAnalysisParams) {
     await initializeJob();
 
     async function fetchCaseData() {
-      'use step';
+
       console.log('[Deep Analysis] Fetching case data for:', caseId);
 
       // Verify case exists
@@ -95,7 +93,7 @@ export async function processDeepAnalysis(params: DeepAnalysisParams) {
     const { caseData, documents, suspects, evidence } = await fetchCaseData();
 
     async function extractContent() {
-      'use step';
+
       console.log(`[Deep Analysis] Extracting content from ${documents.length} documents...`);
 
       const storagePaths = documents.map((d) => d.storage_path).filter(Boolean) as string[];
@@ -134,7 +132,7 @@ export async function processDeepAnalysis(params: DeepAnalysisParams) {
     const { extractionResults, queuedForReview } = await extractContent();
 
     async function runComprehensiveAnalysis() {
-      'use step';
+
       // Prepare data for analysis with REAL extracted content
       const analysisInput = {
         incidentType: caseData.description || 'Unknown',
@@ -172,7 +170,7 @@ export async function processDeepAnalysis(params: DeepAnalysisParams) {
     const analysis = await runComprehensiveAnalysis();
 
     async function saveResults() {
-      'use step';
+
       const { error: saveError } = await supabaseServer
         .from('case_analysis')
         .insert({
