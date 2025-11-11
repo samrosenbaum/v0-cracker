@@ -1,12 +1,16 @@
 # Vercel Deployment Guide
 
-## Critical: Enable Fluid Compute
+## Overview
 
-**Your AI analysis workflows will NOT work without Vercel Fluid Compute enabled.**
+This application uses **Vercel Workflow DevKit** for durable background processing of AI analysis workflows. The workflows are designed to execute reliably with built-in retries and persistence.
 
-### What is Fluid Compute?
+### Architecture
 
-Vercel Fluid Compute extends the lifecycle of serverless functions, allowing background tasks to continue running after the HTTP response is sent. This is required for the `unstable_after` API that powers all AI analysis workflows in this application.
+**Primary Execution:** Workflows with `'use workflow'` and `'use step'` directives execute via Workflow DevKit
+**Backup System:** Vercel Cron Job processes any pending jobs that don't start within 10 seconds
+**Fallback Analysis:** Heuristic-based analysis runs if Anthropic API is unavailable
+
+This multi-layered approach ensures workflows execute reliably even if one layer fails.
 
 ### How to Enable Fluid Compute
 
@@ -23,26 +27,19 @@ Vercel Fluid Compute extends the lifecycle of serverless functions, allowing bac
    - After enabling, trigger a new deployment
    - You can do this by pushing a new commit or clicking "Redeploy" in the Vercel dashboard
 
-### What Won't Work Without Fluid Compute
+### What Fluid Compute Does
 
-Without Fluid Compute enabled, the following features will fail silently:
+Fluid Compute is **still recommended** as it helps the primary execution path work better, but it's no longer strictly required thanks to the backup cron system.
 
-- ❌ Timeline Analysis
-- ❌ Deep Cold Case Analysis
-- ❌ Victim Timeline Reconstruction
-- ❌ Behavioral Pattern Analysis
-- ❌ Evidence Gap Analysis
-- ❌ Relationship Network Mapping
-- ❌ Similar Cases Finder
-- ❌ Overlooked Details Detection
-- ❌ Interrogation Question Generator
-- ❌ Forensic Retesting Recommendations
+**With Fluid Compute:**
+- ✅ Workflows execute immediately after button click
+- ✅ Faster processing (no 10-60 second delay)
+- ✅ Better resource utilization
 
-**Symptoms without Fluid Compute:**
-- Clicking analysis buttons creates a job but it stays in "pending" forever
-- No processing jobs appear in the Processing Dashboard
-- No analysis results are ever generated
-- No errors are shown (fails silently)
+**Without Fluid Compute:**
+- ⚠️ Workflows may not start immediately via `unstable_after`
+- ✅ Backup cron job picks up pending jobs within 60 seconds
+- ✅ All analysis features still work, just with slight delay
 
 ## Required Environment Variables
 
