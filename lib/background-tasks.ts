@@ -18,8 +18,11 @@ export function runBackgroundTask(
 
   const executeTask = async () => {
     try {
+      console.log(`[${label}] ✓ Background task executing...`);
       await task();
+      console.log(`[${label}] ✓ Background task completed successfully`);
     } catch (error) {
+      console.error(`[${label}] ✗ Background task failed:`, error);
       if (onError) {
         try {
           onError(error);
@@ -35,9 +38,11 @@ export function runBackgroundTask(
   const scheduleWithFallback = (reason?: string, error?: unknown) => {
     if (reason) {
       console.warn(
-        `[${label}] Falling back to setTimeout${reason ? ` (${reason})` : ''}.`,
+        `[${label}] ⚠️  Falling back to setTimeout${reason ? ` (${reason})` : ''}.`,
         error
       );
+    } else {
+      console.log(`[${label}] Using setTimeout scheduler (no unstable_after provided)`);
     }
     setTimeout(() => {
       void executeTask();
@@ -46,9 +51,12 @@ export function runBackgroundTask(
 
   if (scheduler) {
     try {
+      console.log(`[${label}] Scheduling with unstable_after...`);
       scheduler(executeTask);
+      console.log(`[${label}] ✓ Successfully scheduled with unstable_after`);
       return;
     } catch (error) {
+      console.error(`[${label}] ✗ unstable_after scheduler failed:`, error);
       scheduleWithFallback('scheduler threw an error', error);
       return;
     }
