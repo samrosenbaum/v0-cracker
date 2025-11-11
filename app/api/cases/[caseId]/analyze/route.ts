@@ -491,31 +491,17 @@ export async function POST(
 
     createdJobId = job.id;
 
-    // Trigger workflow in background after response completes
-    runBackgroundTask(
-      async () => {
-        await processTimelineAnalysis({
-          jobId: job.id,
-          caseId,
-        });
-      },
-      {
-        label: 'Timeline Analysis API',
-        scheduler: unstable_after,
-        onError: (error) => {
-          console.error('[Timeline Analysis API] Workflow failed:', error);
-          // Workflow will update job status to 'failed' internally
-        },
-      }
-    );
+    console.log(`[Timeline Analysis API] Created job ${job.id}, will be processed by cron job`);
 
+    // Job will be picked up by the cron job processor at /api/cron/process-jobs
+    // Runs every minute to process pending jobs
     return withCors(
       NextResponse.json(
         {
           success: true,
           jobId: job.id,
           status: 'pending',
-          message: 'Timeline analysis workflow has been triggered. Check processing job status for progress.',
+          message: 'Timeline analysis job created. Processing will begin shortly (check Processing Jobs dashboard).',
         },
         { status: 202 }
       )
