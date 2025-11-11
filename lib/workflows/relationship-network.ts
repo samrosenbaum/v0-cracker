@@ -43,7 +43,6 @@ export async function processRelationshipNetwork(params: RelationshipNetworkPara
   try {
     // Step 1: Initialize job
     async function initializeJob() {
-      'use step';
       await updateProcessingJob(jobId, {
         status: 'running',
         total_units: totalUnits,
@@ -55,7 +54,6 @@ export async function processRelationshipNetwork(params: RelationshipNetworkPara
 
     // Step 2: Fetch case data
     async function fetchCaseData() {
-      'use step';
       console.log('[Relationship Network] Fetching case data for:', caseId);
 
       const [
@@ -85,7 +83,6 @@ export async function processRelationshipNetwork(params: RelationshipNetworkPara
 
     // Step 3: Extract document content
     async function extractContent() {
-      'use step';
       console.log(`[Relationship Network] Extracting content from ${documents.length} documents...`);
 
       const storagePaths = documents.map((d) => d.storage_path).filter(Boolean) as string[];
@@ -109,7 +106,6 @@ export async function processRelationshipNetwork(params: RelationshipNetworkPara
 
     // Step 4: Run relationship network analysis
     async function analyzeNetwork() {
-      'use step';
       console.log('[Relationship Network] Mapping relationship network...');
 
       const network = await mapRelationshipNetwork(
@@ -131,7 +127,6 @@ export async function processRelationshipNetwork(params: RelationshipNetworkPara
 
     // Step 5: Save analysis results
     async function saveResults() {
-      'use step';
       const { error: saveError } = await supabaseServer
         .from('case_analysis')
         .insert({

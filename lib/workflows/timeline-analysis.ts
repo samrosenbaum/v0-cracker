@@ -2,9 +2,9 @@
  * Workflow: Timeline Analysis
  *
  * Performs asynchronous timeline extraction and conflict detection.
- * This workflow runs in the background with automatic retries and durability.
+ * This workflow runs in the background using Next.js unstable_after.
  *
- * Migrated from Inngest to Workflow DevKit
+ * Requires Fluid Compute enabled in Vercel for reliable execution.
  */
 
 import { supabaseServer } from '@/lib/supabase-server';
@@ -31,7 +31,6 @@ interface TimelineAnalysisParams {
  *   event.data → direct function parameters
  */
 export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
-  'use workflow';
 
   const { jobId, caseId } = params;
 
@@ -44,7 +43,6 @@ export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
   try {
     // Step 1: Initialize job
     async function initializeJob() {
-      'use step';
       await updateProcessingJobRecord(jobId, {
         status: 'running',
         total_units: totalUnits,
@@ -56,7 +54,7 @@ export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
 
     // Step 2: Fetch documents
     async function fetchDocuments() {
-      'use step';
+
       const { data: documents, error: docError } = await supabaseServer
         .from('case_documents')
         .select('*')
@@ -83,7 +81,7 @@ export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
 
     // Step 3: Extract document content
     async function extractContent() {
-      'use step';
+
       const storagePaths = documents.map((doc) => doc.storage_path).filter(Boolean) as string[];
 
       console.log(`[Timeline Analysis] Extracting content from ${storagePaths.length} files...`);
@@ -116,7 +114,7 @@ export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
 
     // Step 4: Run AI analysis
     async function runAiAnalysis() {
-      'use step';
+
       // Build documents for AI analysis with REAL extracted content
       const docsForAnalysis = documents.map((doc) => {
         const extractionResult = extractionResults.get(doc.storage_path);
@@ -157,7 +155,7 @@ export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
 
     // Step 5: Save timeline events
     async function saveTimelineEvents() {
-      'use step';
+
       // Map AI analysis timeline events to the timeline_events table schema
       const eventTypeMap: Record<string, string> = {
         interview: 'witness_account',
@@ -213,7 +211,7 @@ export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
 
     // Step 6: Save conflicts and complete analysis
     async function saveConflictsAndFinalize() {
-      'use step';
+
       // Identify overlooked suspects
       const { data: formalSuspects } = await supabaseServer
         .from('suspects')

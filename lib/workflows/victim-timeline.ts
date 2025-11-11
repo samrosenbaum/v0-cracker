@@ -2,9 +2,9 @@
  * Workflow: Victim Timeline Reconstruction
  *
  * Generates comprehensive victim movement timeline with gap analysis.
- * This workflow runs in the background with automatic retries and durability.
+ * This workflow runs in the background using Next.js unstable_after.
  *
- * Migrated from Inngest to Workflow DevKit
+ * Requires Fluid Compute enabled in Vercel for reliable execution.
  */
 
 import { supabaseServer } from '@/lib/supabase-server';
@@ -28,12 +28,7 @@ interface VictimTimelineParams {
   requestedAt: string;
 }
 
-async function updateProcessingJob(jobId: string, updates: Record<string, any>) {
-  await updateProcessingJobRecord(jobId, updates, 'VictimTimelineWorkflow');
-}
-
 export async function processVictimTimeline(params: VictimTimelineParams) {
-  'use workflow';
 
   const { jobId, caseId, victimInfo, requestContext, requestedAt } = params;
 
@@ -48,18 +43,17 @@ export async function processVictimTimeline(params: VictimTimelineParams) {
 
   try {
     async function initializeJob() {
-      'use step';
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         status: 'running',
         total_units: totalUnits,
         started_at: new Date().toISOString(),
         metadata: initialMetadata,
-      });
+      }, 'VictimTimelineWorkflow');
     }
     await initializeJob();
 
     async function fetchCaseData() {
-      'use step';
+
       const { data: documents, error: docError } = await supabaseServer
         .from('case_documents')
         .select('*')
@@ -78,10 +72,10 @@ export async function processVictimTimeline(params: VictimTimelineParams) {
         throw new Error(`Failed to fetch case files: ${fileError.message}`);
       }
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 1,
         // progress_percentage auto-calculates from completed_units/total_units
-      });
+      }, 'VictimTimelineWorkflow');
 
       return { documents: documents || [], files: files || [] };
     }
@@ -101,7 +95,7 @@ export async function processVictimTimeline(params: VictimTimelineParams) {
     };
 
     async function generateTimeline() {
-      'use step';
+
       const result = await generateComprehensiveVictimTimeline(
         {
           name: victimInfo.name,
@@ -114,17 +108,17 @@ export async function processVictimTimeline(params: VictimTimelineParams) {
         caseData
       );
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 2,
         // progress_percentage auto-calculates from completed_units/total_units
-      });
+      }, 'VictimTimelineWorkflow');
 
       return result;
     }
     const analysisResult = await generateTimeline();
 
     async function persistResults() {
-      'use step';
+
       const timelineInserts = analysisResult.timeline.movements.map(movement => ({
         case_id: caseId,
         title: movement.activity.substring(0, 100),
@@ -190,16 +184,16 @@ export async function processVictimTimeline(params: VictimTimelineParams) {
         console.error('[VictimTimelineWorkflow] Error saving analysis:', analysisError);
       }
 
-      await updateProcessingJob(jobId, {
+      await updateProcessingJobRecord(jobId, {
         completed_units: 3,
         // progress_percentage auto-calculates from completed_units/total_units
-      });
+      }, 'VictimTimelineWorkflow');
     }
     await persistResults();
 
     async function finalizeJob() {
-      'use step';
-      await updateProcessingJob(jobId, {
+
+      await updateProcessingJobRecord(jobId, {
         status: 'completed',
         completed_units: totalUnits,
         // progress_percentage auto-calculates from completed_units/total_units
@@ -213,7 +207,7 @@ export async function processVictimTimeline(params: VictimTimelineParams) {
             ).length,
           },
         },
-      });
+      }, 'VictimTimelineWorkflow');
     }
     await finalizeJob();
 
@@ -222,7 +216,7 @@ export async function processVictimTimeline(params: VictimTimelineParams) {
       jobId,
     };
   } catch (error: any) {
-    await updateProcessingJob(jobId, {
+    await updateProcessingJobRecord(jobId, {
       status: 'failed',
       completed_units: totalUnits,
       failed_units: 1,
@@ -232,7 +226,7 @@ export async function processVictimTimeline(params: VictimTimelineParams) {
         ...initialMetadata,
         error: error?.message || 'Victim timeline analysis failed',
       },
-    });
+    }, 'VictimTimelineWorkflow');
 
     console.error('[VictimTimelineWorkflow] Failed to process victim timeline:', error);
     throw error;

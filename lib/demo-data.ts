@@ -1,5 +1,3 @@
-import { randomUUID } from 'crypto';
-
 type TableRecord = Record<string, any>;
 
 type DemoTables = {
@@ -145,8 +143,17 @@ export function getTable<T extends TableRecord>(tableName: string): T[] {
 }
 
 function generateId(prefix: string) {
-  if (typeof randomUUID === 'function') {
-    return `${prefix}-${randomUUID()}`;
+  // Use crypto.randomUUID if available (Node.js environment)
+  // This avoids top-level import which breaks Workflow DevKit
+  try {
+    if (typeof globalThis !== 'undefined' && 'crypto' in globalThis) {
+      const crypto = (globalThis as any).crypto;
+      if (crypto && typeof crypto.randomUUID === 'function') {
+        return `${prefix}-${crypto.randomUUID()}`;
+      }
+    }
+  } catch (e) {
+    // Fall through to Math.random fallback
   }
   return `${prefix}-${Math.random().toString(36).slice(2)}`;
 }

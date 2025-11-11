@@ -1,7 +1,3 @@
-// Workflow DevKit Integration
-// Enables 'use workflow' and 'use step' directives for durable background processing
-const { withWorkflow } = require('workflow/next');
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
@@ -14,6 +10,8 @@ const nextConfig = {
   // Enable experimental features for Next.js 15/16
   experimental: {
     // Enable unstable_after API for background task execution
+    // With Fluid Compute enabled in Vercel, this allows workflows to run
+    // in the background after HTTP responses complete
     after: true,
   },
   // Turbopack configuration (Next.js 16+ uses Turbopack by default)
@@ -30,5 +28,4 @@ const nextConfig = {
   },
 }
 
-// Export with Workflow DevKit wrapper for durable execution
-module.exports = withWorkflow(nextConfig)
+module.exports = nextConfig
