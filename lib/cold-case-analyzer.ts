@@ -1084,8 +1084,21 @@ function fallbackGenerateInterrogationQuestions(
     ? suspect.inconsistencies
     : ['Timeline gaps between museum departure and overlook arrival'];
 
+  const normalizedInconsistencies = focusInconsistencies.map(item => {
+    if (typeof item === 'string') return item;
+    if (item === null || item === undefined) return '';
+    try {
+      return String(item);
+    } catch {
+      return '';
+    }
+  }).map(item => item.trim()).filter(item => item.length > 0);
+
   const weakPoints = [...new Set([
-    ...focusInconsistencies.map(item => item.split(':')[0] || item),
+    ...normalizedInconsistencies.map(item => {
+      const safeItem = item || '';
+      return safeItem.includes(':') ? safeItem.split(':')[0] || safeItem : safeItem;
+    }),
     ...suspect.relationships.slice(0, 2),
   ])].filter(Boolean);
 
@@ -1106,7 +1119,7 @@ function fallbackGenerateInterrogationQuestions(
     };
   };
 
-  const questions = focusInconsistencies.slice(0, 4).map((topic, index) => buildQuestion(topic, index));
+  const questions = normalizedInconsistencies.slice(0, 4).map((topic, index) => buildQuestion(topic, index));
 
   questions.push({
     question: 'Why did multiple witnesses describe your mood differently than you reported? What changed after leaving the museum?',
@@ -1120,12 +1133,12 @@ function fallbackGenerateInterrogationQuestions(
     psychologicalTechnique: 'Good Cop / Bad Cop setup',
   });
 
-  const knownLies = focusInconsistencies.filter(item => /lie|false|contradiction/i.test(item));
+  const knownLies = normalizedInconsistencies.filter(item => /lie|false|contradiction/i.test(item));
 
   return {
     suspectName: suspect.name,
     knownLies,
-    inconsistencies: focusInconsistencies,
+    inconsistencies: normalizedInconsistencies,
     weakPoints,
     questions,
     overallStrategy:

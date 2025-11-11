@@ -11,20 +11,11 @@
 import { supabaseServer } from './supabase-server';
 import Tesseract from 'tesseract.js';
 import OpenAI from 'openai';
+import pdfParse from 'pdf-parse';
 
 type PdfjsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 
 let pdfjsModulePromise: Promise<PdfjsModule | null> | null = null;
-
-// Polyfill DOMMatrix for Node.js environment
-if (typeof globalThis.DOMMatrix === 'undefined') {
-  // @ts-ignore - Polyfill for Node.js
-  globalThis.DOMMatrix = class DOMMatrix {
-    constructor() {
-      // Minimal DOMMatrix implementation for pdfjs-dist compatibility
-    }
-  };
-}
 
 async function loadPdfJsModule(): Promise<PdfjsModule | null> {
   if (!pdfjsModulePromise) {
@@ -200,13 +191,8 @@ async function extractFromPDF(buffer: Buffer): Promise<ExtractionResult> {
   const pdfjs = await loadPdfJsModule();
 
   if (!pdfjs) {
-    return {
-      text: '[Unable to load PDF parser module]',
-      method: 'pdfjs-dist',
-      confidence: 0,
-      error: 'pdfjs module failed to load',
-      needsReview: true,
-    };
+    console.warn('[Document Parser] pdfjs module unavailable, falling back to pdf-parse.');
+    return extractWithPdfParse(buffer);
   }
 
   const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer) });
@@ -260,14 +246,8 @@ async function extractFromPDF(buffer: Buffer): Promise<ExtractionResult> {
       uncertainSegments: hasMeaningfulText ? [] : undefined,
     };
   } catch (error: any) {
-    console.error('[Document Parser] PDF extraction failed:', error);
-    return {
-      text: '',
-      method: 'pdfjs-dist',
-      confidence: 0,
-      error: `PDF extraction failed: ${error.message}`,
-      needsReview: true,
-    };
+    console.error('[Document Parser] PDF extraction failed, attempting pdf-parse fallback:', error);
+    return extractWithPdfParse(buffer);
   } finally {
     try {
       if (typeof loadingTask.destroy === 'function') {
@@ -276,6 +256,36 @@ async function extractFromPDF(buffer: Buffer): Promise<ExtractionResult> {
     } catch (destroyError) {
       console.warn('[Document Parser] Failed to destroy PDF loading task', destroyError);
     }
+  }
+}
+
+async function extractWithPdfParse(buffer: Buffer): Promise<ExtractionResult> {
+  try {
+    const result = await pdfParse(buffer);
+    const text = result.text?.trim() || '';
+    const hasMeaningfulText = text.length > 0;
+    const pageCount = result.numpages || result.numrender || undefined;
+
+    return {
+      text: hasMeaningfulText ? text : '[No extractable text found in this PDF]',
+      pageCount,
+      method: 'pdf-parse',
+      confidence: hasMeaningfulText ? 0.75 : 0.1,
+      metadata: {
+        pageCount,
+        info: result.info,
+      },
+      needsReview: !hasMeaningfulText,
+    };
+  } catch (error: any) {
+    console.error('[Document Parser] pdf-parse fallback failed:', error);
+    return {
+      text: '',
+      method: 'pdf-parse',
+      confidence: 0,
+      error: `PDF extraction failed: ${error.message}`,
+      needsReview: true,
+    };
   }
 }
 
