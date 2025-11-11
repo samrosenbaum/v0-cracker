@@ -57,8 +57,8 @@ export async function processInterrogationQuestions(params: InterrogationQuestio
         { data: witnesses, error: witnessesError },
         { data: documents, error: docsError },
       ] = await Promise.all([
-        supabaseServer.from('suspects').select('*').eq('case_id', caseId),
-        supabaseServer.from('witnesses').select('*').eq('case_id', caseId),
+        supabaseServer.from('persons_of_interest').select('*').eq('case_id', caseId).eq('status', 'suspect'),
+        supabaseServer.from('persons_of_interest').select('*').eq('case_id', caseId).eq('status', 'witness'),
         supabaseServer.from('case_documents').select('*').eq('case_id', caseId),
       ]);
 

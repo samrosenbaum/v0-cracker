@@ -197,9 +197,10 @@ async function runFallbackAnalysis(
   if (useSupabase) {
     try {
       const { data: suspects, error: suspectError } = await supabaseServer
-        .from('suspects')
+        .from('persons_of_interest')
         .select('name')
-        .eq('case_id', caseId);
+        .eq('case_id', caseId)
+        .eq('status', 'suspect');
       if (!suspectError && suspects) {
         formalSuspects = suspects
           .map((suspect) => suspect?.name)

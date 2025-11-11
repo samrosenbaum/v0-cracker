@@ -214,9 +214,10 @@ export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
 
       // Identify overlooked suspects
       const { data: formalSuspects } = await supabaseServer
-        .from('suspects')
+        .from('persons_of_interest')
         .select('name')
-        .eq('case_id', caseId);
+        .eq('case_id', caseId)
+        .eq('status', 'suspect');
 
       const overlookedSuspects = identifyOverlookedSuspects(
         analysis.personMentions,

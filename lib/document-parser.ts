@@ -16,6 +16,16 @@ type PdfjsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 
 let pdfjsModulePromise: Promise<PdfjsModule | null> | null = null;
 
+// Polyfill DOMMatrix for Node.js environment
+if (typeof globalThis.DOMMatrix === 'undefined') {
+  // @ts-ignore - Polyfill for Node.js
+  globalThis.DOMMatrix = class DOMMatrix {
+    constructor() {
+      // Minimal DOMMatrix implementation for pdfjs-dist compatibility
+    }
+  };
+}
+
 async function loadPdfJsModule(): Promise<PdfjsModule | null> {
   if (!pdfjsModulePromise) {
     pdfjsModulePromise = import('pdfjs-dist/legacy/build/pdf.mjs')
