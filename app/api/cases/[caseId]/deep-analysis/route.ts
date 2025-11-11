@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, unstable_after } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
-import { hasSupabaseServiceConfig } from '@/lib/environment';
+import { hasSupabaseServiceConfig, hasPartialSupabaseConfig } from '@/lib/environment';
 import { processDeepAnalysis } from '@/lib/workflows/deep-analysis';
 import { listCaseDocuments, getStorageObject, addCaseAnalysis, getCaseById } from '@/lib/demo-data';
 import { analyzeCaseDocuments } from '@/lib/ai-analysis';
@@ -43,6 +43,18 @@ export async function POST(
   context: { params: Promise<{ caseId: string }> | { caseId: string } }
 ) {
   const useSupabase = hasSupabaseServiceConfig();
+  const partialSupabaseConfig = hasPartialSupabaseConfig();
+  if (!useSupabase && partialSupabaseConfig) {
+    return withCors(
+      NextResponse.json(
+        {
+          error:
+            'Supabase service role key is missing. Deep analysis workflow cannot run without SUPABASE_SERVICE_ROLE_KEY.',
+        },
+        { status: 500 }
+      )
+    );
+  }
   let resolvedCaseId = '';
 
   const runFallbackDeepAnalysis = async (caseId: string) => {

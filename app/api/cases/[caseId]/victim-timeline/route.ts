@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, unstable_after } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
-import { hasSupabaseServiceConfig } from '@/lib/environment';
+import { hasSupabaseServiceConfig, hasPartialSupabaseConfig } from '@/lib/environment';
 import { processVictimTimeline } from '@/lib/workflows/victim-timeline';
 import { listCaseDocuments, getStorageObject, addCaseAnalysis, getCaseById } from '@/lib/demo-data';
 import { buildVictimTimelineFallback } from '@/lib/victim-timeline-fallback';
@@ -44,6 +44,18 @@ export async function POST(
   let requestBody: any = null;
   try {
     const useSupabase = hasSupabaseServiceConfig();
+    const partialSupabaseConfig = hasPartialSupabaseConfig();
+    if (!useSupabase && partialSupabaseConfig) {
+      return withCors(
+        NextResponse.json(
+          {
+            error:
+              'Supabase service role key is missing. Victim timeline workflow cannot run without SUPABASE_SERVICE_ROLE_KEY.',
+          },
+          { status: 500 }
+        )
+      );
+    }
     const params = await Promise.resolve(context.params);
     const { caseId } = params;
     const body = await request.json();

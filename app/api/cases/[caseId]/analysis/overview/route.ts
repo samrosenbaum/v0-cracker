@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
-import { hasSupabaseServiceConfig } from '@/lib/environment';
+import { hasSupabaseServiceConfig, hasPartialSupabaseConfig } from '@/lib/environment';
 import { getCaseById, listCaseDocuments, listCaseAnalyses } from '@/lib/demo-data';
 
 const CORS_HEADERS: Record<string, string> = {
@@ -27,6 +27,17 @@ export async function GET(
   const params = await Promise.resolve(context.params);
   const { caseId } = params;
   const useSupabase = hasSupabaseServiceConfig();
+
+  if (hasPartialSupabaseConfig()) {
+    return withCors(
+      NextResponse.json(
+        {
+          error: 'Supabase service role key missing. Server-side analysis data cannot be fetched.',
+        },
+        { status: 500 }
+      )
+    );
+  }
 
   if (!useSupabase) {
     const caseRecord = getCaseById(caseId);
