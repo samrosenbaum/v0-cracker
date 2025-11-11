@@ -4,6 +4,7 @@ import { hasSupabaseServiceConfig } from '@/lib/environment';
 import { processVictimTimeline } from '@/lib/workflows/victim-timeline';
 import { listCaseDocuments, getStorageObject, addCaseAnalysis, getCaseById } from '@/lib/demo-data';
 import { buildVictimTimelineFallback } from '@/lib/victim-timeline-fallback';
+import { runBackgroundTask } from '@/lib/background-tasks';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -157,8 +158,8 @@ export async function POST(
     }
 
     // Trigger workflow in background after the response flushes
-    unstable_after(async () => {
-      try {
+    runBackgroundTask(
+      async () => {
         await processVictimTimeline({
           jobId: job.id,
           caseId,
@@ -175,11 +176,16 @@ export async function POST(
           },
           requestedAt: now,
         });
-      } catch (error) {
-        console.error('[Victim Timeline API] Workflow failed:', error);
-        // Workflow will update job status to 'failed' internally
+      },
+      {
+        label: 'Victim Timeline API',
+        scheduler: unstable_after,
+        onError: (error) => {
+          console.error('[Victim Timeline API] Workflow failed:', error);
+          // Workflow will update job status to 'failed' internally
+        },
       }
-    });
+    );
 
     return withCors(
       NextResponse.json(

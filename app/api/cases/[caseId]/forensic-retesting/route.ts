@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, unstable_after } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { processForensicRetesting } from '@/lib/workflows/forensic-retesting';
+import { runBackgroundTask } from '@/lib/background-tasks';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -89,17 +90,22 @@ export async function POST(
     }
 
     // Trigger workflow in background after the response completes
-    unstable_after(async () => {
-      try {
+    runBackgroundTask(
+      async () => {
         await processForensicRetesting({
           jobId: job.id,
           caseId,
         });
-      } catch (error) {
-        console.error('[Forensic Retesting API] Workflow failed:', error);
-        // Workflow will update job status to 'failed' internally
+      },
+      {
+        label: 'Forensic Retesting API',
+        scheduler: unstable_after,
+        onError: (error) => {
+          console.error('[Forensic Retesting API] Workflow failed:', error);
+          // Workflow will update job status to 'failed' internally
+        },
       }
-    });
+    );
 
     return withCors(
       NextResponse.json(
