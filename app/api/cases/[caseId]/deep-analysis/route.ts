@@ -5,6 +5,7 @@ import { processDeepAnalysis } from '@/lib/workflows/deep-analysis';
 import { listCaseDocuments, getStorageObject, addCaseAnalysis, getCaseById } from '@/lib/demo-data';
 import { analyzeCaseDocuments } from '@/lib/ai-analysis';
 import { fallbackDeepCaseAnalysis } from '@/lib/ai-fallback';
+import { runBackgroundTask } from '@/lib/background-tasks';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -149,17 +150,22 @@ export async function POST(
     }
 
     // Trigger workflow in background after response flushes
-    unstable_after(async () => {
-      try {
+    runBackgroundTask(
+      async () => {
         await processDeepAnalysis({
           jobId: job.id,
           caseId,
         });
-      } catch (error) {
-        console.error('[Deep Analysis API] Workflow failed:', error);
-        // Workflow will update job status to 'failed' internally
+      },
+      {
+        label: 'Deep Analysis API',
+        scheduler: unstable_after,
+        onError: (error) => {
+          console.error('[Deep Analysis API] Workflow failed:', error);
+          // Workflow will update job status to 'failed' internally
+        },
       }
-    });
+    );
 
     // Return immediately with job ID
     return withCors(
