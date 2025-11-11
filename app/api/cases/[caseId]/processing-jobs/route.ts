@@ -27,7 +27,7 @@ export async function GET(
     const activeOnly = searchParams.get('active') === 'true';
     const statusFilter = searchParams.get('status');
 
-    if (!caseId) {
+    if (!caseId || caseId === 'undefined') {
       return NextResponse.json(
         { error: 'Case ID is required' },
         { status: 400 }
