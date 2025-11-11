@@ -24,9 +24,13 @@ function isValidCronRequest(request: NextRequest): boolean {
     return true;
   }
 
-  // In production, verify the cron secret
-  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
-    return true;
+  // In production, verify the cron secret when configured
+  if (cronSecret) {
+    if (authHeader === `Bearer ${cronSecret}`) {
+      return true;
+    }
+
+    return false;
   }
 
   // Vercel automatically adds this header for cron jobs
