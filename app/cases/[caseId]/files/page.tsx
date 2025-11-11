@@ -92,7 +92,13 @@ export default function CaseFilesPage() {
   };
 
   const runAnalysis = async (analysisType: 'timeline' | 'deep-analysis' | 'victim-timeline') => {
-    const endpoint = `/api/cases/${caseId}/${analysisType}`;
+    // Map button types to correct API endpoints
+    const endpointMap = {
+      'timeline': `/api/cases/${caseId}/analyze`,
+      'deep-analysis': `/api/cases/${caseId}/deep-analysis`,
+      'victim-timeline': `/api/cases/${caseId}/victim-timeline`,
+    };
+    const endpoint = endpointMap[analysisType];
 
     try {
       const body = analysisType === 'victim-timeline'
