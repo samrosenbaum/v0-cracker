@@ -51,13 +51,28 @@ export default function ProcessingDashboard({
 
   // Fetch jobs and stats
   const fetchJobsAndStats = useCallback(async () => {
-    try {
-      const activeParam = filter === 'active' ? '?active=true' : '';
-      const statusParam = filter === 'completed' || filter === 'failed' ? `?status=${filter}` : '';
+    if (!caseId || caseId === 'undefined') {
+      setJobs([]);
+      setStats(null);
+      setLoading(false);
+      return;
+    }
 
-      const response = await fetch(
-        `/api/cases/${caseId}/processing-jobs${activeParam || statusParam}`
-      );
+    try {
+      const params = new URLSearchParams();
+
+      if (filter === 'active') {
+        params.set('active', 'true');
+      } else if (filter === 'completed' || filter === 'failed') {
+        params.set('status', filter);
+      }
+
+      const queryString = params.toString();
+      const url = `/api/cases/${caseId}/processing-jobs${
+        queryString ? `?${queryString}` : ''
+      }`;
+
+      const response = await fetch(url);
 
       if (!response.ok) {
         throw new Error('Failed to fetch processing jobs');
