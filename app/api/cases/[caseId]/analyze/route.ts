@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
-import { hasSupabaseServiceConfig } from '@/lib/environment';
+import { hasSupabaseServiceConfig, hasPartialSupabaseConfig } from '@/lib/environment';
 import { processTimelineAnalysis } from '@/lib/workflows/timeline-analysis';
 import { runBackgroundTask } from '@/lib/background-tasks';
 import {
@@ -392,6 +392,20 @@ export async function POST(
   context: { params: Promise<{ caseId: string }> | { caseId: string } }
 ) {
   const useSupabase = hasSupabaseServiceConfig();
+  const partialSupabaseConfig = hasPartialSupabaseConfig();
+
+  if (!useSupabase && partialSupabaseConfig) {
+    return withCors(
+      NextResponse.json(
+        {
+          error:
+            'Supabase service role key is missing. Add SUPABASE_SERVICE_ROLE_KEY to enable analysis workflows.',
+        },
+        { status: 500 }
+      )
+    );
+  }
+
   let resolvedCaseId = '';
   let createdJobId: string | null = null;
 
