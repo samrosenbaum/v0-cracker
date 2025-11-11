@@ -2,7 +2,7 @@
  * Workflow: Timeline Analysis
  *
  * Performs asynchronous timeline extraction and conflict detection.
- * This workflow runs in the background using Next.js unstable_after.
+ * This workflow runs in the background using Next.js after.
  *
  * Requires Fluid Compute enabled in Vercel for reliable execution.
  */

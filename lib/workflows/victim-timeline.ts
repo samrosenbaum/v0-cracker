@@ -2,7 +2,7 @@
  * Workflow: Victim Timeline Reconstruction
  *
  * Generates comprehensive victim movement timeline with gap analysis.
- * This workflow runs in the background using Next.js unstable_after.
+ * This workflow runs in the background using Next.js after.
  *
  * Requires Fluid Compute enabled in Vercel for reliable execution.
  */

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse, unstable_after } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { processBehavioralPatterns } from '@/lib/workflows/behavioral-patterns';
 import { runBackgroundTask } from '@/lib/background-tasks';
@@ -99,7 +99,7 @@ export async function POST(
       },
       {
         label: 'Behavioral Patterns API',
-        scheduler: unstable_after,
+        scheduler: after,
         onError: (error) => {
           console.error('[Behavioral Patterns API] Workflow failed:', error);
           // Workflow will update job status to 'failed' internally

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse, unstable_after } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { hasSupabaseServiceConfig } from '@/lib/environment';
 import { processVictimTimeline } from '@/lib/workflows/victim-timeline';
@@ -179,7 +179,7 @@ export async function POST(
       },
       {
         label: 'Victim Timeline API',
-        scheduler: unstable_after,
+        scheduler: after,
         onError: (error) => {
           console.error('[Victim Timeline API] Workflow failed:', error);
           // Workflow will update job status to 'failed' internally

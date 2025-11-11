@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse, unstable_after } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { hasSupabaseServiceConfig } from '@/lib/environment';
 import { processDeepAnalysis } from '@/lib/workflows/deep-analysis';
@@ -159,7 +159,7 @@ export async function POST(
       },
       {
         label: 'Deep Analysis API',
-        scheduler: unstable_after,
+        scheduler: after,
         onError: (error) => {
           console.error('[Deep Analysis API] Workflow failed:', error);
           // Workflow will update job status to 'failed' internally

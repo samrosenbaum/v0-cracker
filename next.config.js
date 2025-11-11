@@ -9,7 +9,8 @@ const nextConfig = {
   },
   // Enable experimental features for Next.js 15/16
   experimental: {
-    // Enable unstable_after API for background task execution
+    // Enable 'after' API for background task execution
+    // In Next.js 16+, this is stable and the flag can be removed
     // With Fluid Compute enabled in Vercel, this allows workflows to run
     // in the background after HTTP responses complete
     after: true,

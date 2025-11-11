@@ -2,11 +2,11 @@
 
 ## Overview
 
-This application uses **Vercel Workflow DevKit** for durable background processing of AI analysis workflows. The workflows are designed to execute reliably with built-in retries and persistence.
+This application uses **Next.js `after` API** with **Fluid Compute** for durable background processing of AI analysis workflows. The workflows are designed to execute reliably after HTTP responses complete.
 
 ### Architecture
 
-**Primary Execution:** Workflows with `'use workflow'` and `'use step'` directives execute via Workflow DevKit with built-in durability and retries
+**Primary Execution:** Background workflows execute via Next.js `after()` API (requires Fluid Compute)
 **Fallback Analysis:** Heuristic-based analysis runs if Anthropic API is unavailable
 
 This dual-layer approach ensures workflows execute reliably even if one layer fails.
@@ -71,11 +71,12 @@ INNGEST_SIGNING_KEY=
 
 ### next.config.js
 
-The `experimental.after` flag is required for `unstable_after` to work:
+In Next.js 16, the `after` API is available by default (no experimental flag needed):
 
 ```javascript
 experimental: {
-  after: true,
+  // 'after' is now stable in Next.js 16+
+  after: true,  // Can be removed in future versions
 }
 ```
 
@@ -151,5 +152,5 @@ This provides:
 ## Further Reading
 
 - [Vercel Fluid Compute Documentation](https://vercel.com/docs/fluid-compute)
-- [Next.js unstable_after Documentation](https://nextjs.org/docs/app/api-reference/functions/unstable_after)
+- [Next.js after Documentation](https://nextjs.org/docs/app/api-reference/functions/after)
 - [Vercel Functions Timeouts](https://vercel.com/guides/what-can-i-do-about-vercel-serverless-functions-timing-out)
