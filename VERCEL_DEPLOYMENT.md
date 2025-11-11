@@ -6,11 +6,10 @@ This application uses **Vercel Workflow DevKit** for durable background processi
 
 ### Architecture
 
-**Primary Execution:** Workflows with `'use workflow'` and `'use step'` directives execute via Workflow DevKit
-**Backup System:** Vercel Cron Job processes any pending jobs that don't start within 10 seconds
+**Primary Execution:** Workflows with `'use workflow'` and `'use step'` directives execute via Workflow DevKit with built-in durability and retries
 **Fallback Analysis:** Heuristic-based analysis runs if Anthropic API is unavailable
 
-This multi-layered approach ensures workflows execute reliably even if one layer fails.
+This dual-layer approach ensures workflows execute reliably even if one layer fails.
 
 ### How to Enable Fluid Compute
 
@@ -29,17 +28,18 @@ This multi-layered approach ensures workflows execute reliably even if one layer
 
 ### What Fluid Compute Does
 
-Fluid Compute is **still recommended** as it helps the primary execution path work better, but it's no longer strictly required thanks to the backup cron system.
+Fluid Compute is **recommended** for optimal performance with Workflow DevKit.
 
 **With Fluid Compute:**
 - ✅ Workflows execute immediately after button click
-- ✅ Faster processing (no 10-60 second delay)
+- ✅ Faster processing
 - ✅ Better resource utilization
+- ✅ Extended function execution time for long-running analysis
 
 **Without Fluid Compute:**
-- ⚠️ Workflows may not start immediately via `unstable_after`
-- ✅ Backup cron job picks up pending jobs within 60 seconds
-- ✅ All analysis features still work, just with slight delay
+- ⚠️ Workflows may be subject to shorter timeouts
+- ⚠️ Execution may be less reliable for complex analysis
+- ✅ Heuristic fallback ensures basic functionality still works
 
 ## Required Environment Variables
 
