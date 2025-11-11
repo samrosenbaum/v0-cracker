@@ -15,6 +15,7 @@ import {
   getActiveJobs,
   getCaseDocumentStats,
 } from '@/lib/progress-tracker';
+import { hasPartialSupabaseConfig } from '@/lib/environment';
 
 export async function GET(
   request: NextRequest,
@@ -31,6 +32,16 @@ export async function GET(
       return NextResponse.json(
         { error: 'Case ID is required' },
         { status: 400 }
+      );
+    }
+
+    if (hasPartialSupabaseConfig()) {
+      return NextResponse.json(
+        {
+          error:
+            'Supabase service role key missing. Processing job data cannot be retrieved until SUPABASE_SERVICE_ROLE_KEY is set.',
+        },
+        { status: 500 }
       );
     }
 

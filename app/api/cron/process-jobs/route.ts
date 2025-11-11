@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
-import { hasSupabaseServiceConfig } from '@/lib/environment';
+import { hasSupabaseServiceConfig, hasPartialSupabaseConfig } from '@/lib/environment';
 import { processTimelineAnalysis } from '@/lib/workflows/timeline-analysis';
 import { processDeepAnalysis } from '@/lib/workflows/deep-analysis';
 import { processVictimTimeline } from '@/lib/workflows/victim-timeline';
@@ -51,8 +51,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (!hasSupabaseServiceConfig()) {
+      const errorMessage = hasPartialSupabaseConfig()
+        ? 'Supabase service role key missing - server jobs cannot run.'
+        : 'Supabase not configured';
       return NextResponse.json(
-        { error: 'Supabase not configured' },
+        { error: errorMessage },
         { status: 500 }
       );
     }
