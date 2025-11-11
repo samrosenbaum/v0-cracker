@@ -18,6 +18,11 @@ const nextConfig = {
     // !! WARN !!
     ignoreBuildErrors: true,
   },
+  // Enable experimental features for Next.js 15/16
+  experimental: {
+    // Enable unstable_after API for background task execution
+    after: true,
+  },
   // Turbopack configuration (Next.js 16+ uses Turbopack by default)
   turbopack: {
     // Empty config to acknowledge Turbopack usage and silence migration warnings
