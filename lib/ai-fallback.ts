@@ -1,4 +1,5 @@
 import { CaseAnalysis, TimelineEvent } from './ai-analysis';
+import { isLikelyNonPersonEntity } from './text-heuristics';
 
 export type DocumentInput = {
   content: string;
@@ -55,7 +56,8 @@ function sanitizeDate(input: string, fallbackISO: string): string {
 
 function extractNames(text: string): string[] {
   const potential = text.match(/\b[A-Z][a-z]+\s[A-Z][a-z]+\b/g) || [];
-  return Array.from(new Set(potential.slice(0, 5)));
+  const filtered = potential.filter((name) => !isLikelyNonPersonEntity(name, [text]));
+  return Array.from(new Set(filtered)).slice(0, 5);
 }
 
 function isPlaceholderLine(line: string): boolean {
@@ -468,6 +470,10 @@ function buildPersonMentions(events: TimelineEvent[]) {
   const mentions = new Map<string, { count: number; sources: Set<string>; contexts: string[] }>();
   events.forEach((event) => {
     event.involvedPersons.forEach((person) => {
+      if (isLikelyNonPersonEntity(person, [event.description])) {
+        return;
+      }
+
       if (!mentions.has(person)) {
         mentions.set(person, { count: 0, sources: new Set(), contexts: [] });
       }

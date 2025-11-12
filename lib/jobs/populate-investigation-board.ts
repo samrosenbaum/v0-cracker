@@ -11,6 +11,7 @@
 import { inngest } from '@/lib/inngest-client';
 import { supabaseServer } from '@/lib/supabase-server';
 import { analyzeCaseDocuments } from '@/lib/ai-analysis';
+import { isLikelyNonPersonEntity } from '@/lib/text-heuristics';
 import OpenAI from 'openai';
 
 type StepRunner = {
@@ -515,6 +516,7 @@ async function runFallbackExtraction({
 
   analysis.personMentions.forEach((person) => {
     if (!person.name) return;
+    if (isLikelyNonPersonEntity(person.name, person.contexts)) return;
     const role = inferRoleFromContext(person.name, person.contexts);
     addEntity({
       name: person.name,
@@ -531,6 +533,10 @@ async function runFallbackExtraction({
     const entityNames = event.involvedPersons.filter(Boolean);
 
     entityNames.forEach((name) => {
+      if (isLikelyNonPersonEntity(name, [event.description])) {
+        return;
+      }
+
       if (!entityMap.has(name.toLowerCase())) {
         addEntity({
           name,
@@ -587,7 +593,9 @@ async function runFallbackExtraction({
   };
 
   timelineEvents.forEach((event, index) => {
-    const participants = event.entity_names || [];
+    const participants = (event.entity_names || []).filter(
+      (participant) => !isLikelyNonPersonEntity(participant, [event.description])
+    );
     for (let i = 0; i < participants.length; i += 1) {
       for (let j = i + 1; j < participants.length; j += 1) {
         pushConnection(
@@ -617,7 +625,11 @@ async function runFallbackExtraction({
   const alibis: ExtractedAlibi[] = [];
 
   analysis.timeline.forEach((event) => {
-    if (!event.involvedPersons.length) return;
+    const involvedPersons = event.involvedPersons.filter(
+      (name) => !isLikelyNonPersonEntity(name, [event.description])
+    );
+
+    if (!involvedPersons.length) return;
     const normalized = event.description.toLowerCase();
     const mentionsAlibi =
       normalized.includes('alibi') ||
@@ -627,7 +639,7 @@ async function runFallbackExtraction({
 
     if (!mentionsAlibi) return;
 
-    const subject = event.involvedPersons[0];
+    const subject = involvedPersons[0];
     const start = toISODateTime(event.date, event.time || event.startTime);
     if (!subject || !start) return;
 

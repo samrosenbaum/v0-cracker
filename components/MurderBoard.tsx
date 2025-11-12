@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 import { Database } from '@/app/types/database';
+import { isLikelyNonPersonEntity } from '@/lib/text-heuristics';
 import {
   User,
   MapPin,
@@ -127,9 +128,35 @@ export default function MurderBoard({
   // Build graph data
   const graphData = useMemo(() => {
     // Filter entities
-    const filteredEntities = entities.filter((entity) =>
-      selectedEntityTypes.includes(entity.entity_type)
-    );
+    const filteredEntities = entities.filter((entity) => {
+      if (!selectedEntityTypes.includes(entity.entity_type)) {
+        return false;
+      }
+
+      if (entity.entity_type === 'person') {
+        const contexts: string[] = [];
+        if (entity.description) contexts.push(entity.description);
+        if (entity.role) contexts.push(entity.role);
+
+        if (entity.metadata) {
+          if (typeof entity.metadata === 'string') {
+            contexts.push(entity.metadata);
+          } else if (typeof entity.metadata === 'object') {
+            try {
+              contexts.push(JSON.stringify(entity.metadata));
+            } catch (error) {
+              console.warn('Failed to stringify entity metadata', error);
+            }
+          }
+        }
+
+        if (isLikelyNonPersonEntity(entity.name, contexts)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
 
     // Create nodes
     const nodes: GraphNode[] = filteredEntities.map((entity) => {

@@ -262,7 +262,7 @@ export default function InvestigationBoardPage() {
               Timeline
             </TabsTrigger>
             <TabsTrigger value="board" className="data-[state=active]:bg-purple-600 data-[state=active]:text-white">
-              Murder Board
+              Relationship Map
             </TabsTrigger>
             <TabsTrigger value="alibis" className="data-[state=active]:bg-orange-600 data-[state=active]:text-white">
               Alibi Tracker
@@ -286,7 +286,7 @@ export default function InvestigationBoardPage() {
             />
           </TabsContent>
 
-          {/* Murder Board Tab */}
+          {/* Relationship Map Tab */}
           <TabsContent value="board" className="mt-0">
             <MurderBoard
               caseId={caseId}
