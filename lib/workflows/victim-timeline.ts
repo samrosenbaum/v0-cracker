@@ -91,7 +91,7 @@ export async function processVictimTimeline(params: VictimTimelineParams) {
     const docsForAnalysis = documents.map(doc => {
       const extraction = doc.storage_path ? extractionResults.get(doc.storage_path) : undefined;
       const fallbackText = typeof doc.metadata?.extracted_text === 'string' ? doc.metadata.extracted_text : '';
-      const content = extraction?.text?.trim() || fallbackText || `No extracted text available for ${doc.file_name}.`;
+      const content = extraction?.text?.trim() || fallbackText || `[No extracted text available for ${doc.file_name}]`;
       return {
         filename: doc.file_name,
         content,

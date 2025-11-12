@@ -13,11 +13,17 @@ const DATE_REGEX = /(\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b|\b(?:January|February|Mar
 
 const PLACEHOLDER_LINE_PATTERNS = [
   /\[no extracted text/i,
+  /no extracted text available/i,
+  /no extractable text/i,
+  /could not extract text/i,
+  /\[could not extract/i,
   /summary unavailable/i,
   /no readable text/i,
   /not available/i,
   /^n\/?a$/i,
   /^none$/i,
+  /unsupported file type/i,
+  /extraction not yet implemented/i,
 ];
 
 const LOCATION_KEYS = ['location', 'address', 'site', 'venue', 'place', 'area', 'city'];
@@ -86,6 +92,45 @@ function isMeaningfulLine(line: string): boolean {
     }
   }
   return /[A-Za-z]/.test(trimmed) && hasMeaningfulWords(trimmed);
+}
+
+/**
+ * Check if a document contains only placeholder text or is essentially empty
+ * Used to filter out documents that failed extraction before timeline generation
+ */
+function isPlaceholderDocument(content: string): boolean {
+  if (!content || content.trim().length === 0) {
+    return true;
+  }
+
+  const trimmed = content.trim();
+
+  // Check if the entire content is just one placeholder message
+  if (PLACEHOLDER_LINE_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+    return true;
+  }
+
+  // Check if all meaningful lines are placeholders
+  const lines = trimmed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines.length === 0) {
+    return true;
+  }
+
+  const meaningfulLines = lines.filter((line) => !isPlaceholderLine(line));
+
+  // If no meaningful lines at all, it's a placeholder document
+  if (meaningfulLines.length === 0) {
+    return true;
+  }
+
+  // If meaningful content is less than 50 characters total, it's likely not useful
+  const meaningfulContent = meaningfulLines.join(' ');
+  if (meaningfulContent.length < 50) {
+    return true;
+  }
+
+  // If we have at least 50 characters of meaningful content, it's valid
+  return false;
 }
 
 function normalizeTime(input?: string | null): string | undefined {
@@ -332,7 +377,14 @@ function extractMetadataContext(metadata: Record<string, any> | null | undefined
 function buildTimeline(documents: DocumentInput[], baseDate: string): TimelineEvent[] {
   const events: TimelineEvent[] = [];
 
-  documents.forEach((doc, docIndex) => {
+  // Filter out documents that are just placeholders or empty
+  const meaningfulDocuments = documents.filter((doc) => !isPlaceholderDocument(doc.content));
+
+  if (meaningfulDocuments.length === 0) {
+    console.log('[AI Fallback] No meaningful documents found for timeline generation');
+  }
+
+  meaningfulDocuments.forEach((doc, docIndex) => {
     const lines = doc.content.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
     const metadataContext = extractMetadataContext(doc.metadata || null, baseDate);
     const timestampQueue = [...metadataContext.timestamps];
@@ -439,16 +491,24 @@ function buildTimeline(documents: DocumentInput[], baseDate: string): TimelineEv
   });
 
   if (!events.length) {
+    const description = meaningfulDocuments.length === 0
+      ? 'No extractable timeline data found. Documents may need manual text extraction or OCR.'
+      : 'Document analysis fallback event summarizing case activity.';
+
     events.push({
       id: 'fallback-default',
       date: baseDate.split('T')[0],
       time: baseDate.split('T')[1]?.slice(0, 5) || '18:00',
-      description: 'Document analysis fallback event summarizing case activity.',
-      source: documents[0]?.filename || 'Unknown Document',
+      description,
+      source: meaningfulDocuments[0]?.filename || documents[0]?.filename || 'Unknown Document',
       sourceType: 'other',
       involvedPersons: ['Investigative Team'],
-      confidence: 0.5,
-      metadata: { fallback: true },
+      confidence: meaningfulDocuments.length === 0 ? 0 : 0.5,
+      metadata: {
+        fallback: true,
+        meaningfulDocuments: meaningfulDocuments.length,
+        totalDocuments: documents.length,
+      },
     });
   }
 
