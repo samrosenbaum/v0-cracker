@@ -16,6 +16,7 @@ import {
   getChunksForJob,
 } from '@/lib/document-chunker';
 import { extractDocumentContent } from '@/lib/document-parser';
+import { deriveChunkPersistencePlan } from '@/lib/extraction-outcome';
 import { supabaseServer } from '@/lib/supabase-server';
 import OpenAI from 'openai';
 
@@ -184,7 +185,7 @@ export const processChunkJob = inngest.createFunction(
         // For now, extract entire document (page-specific extraction to be added)
         const result = await extractDocumentContent(storagePath, false);
 
-        console.log(`[Job: Process Chunk] Extracted ${result.text.length} characters`);
+        console.log(`[Job: Process Chunk] Extraction method: ${result.method}`);
         return result;
       } catch (error: any) {
         console.error(`[Job: Process Chunk] Extraction failed:`, error);
@@ -192,14 +193,33 @@ export const processChunkJob = inngest.createFunction(
       }
     });
 
+    const plan = deriveChunkPersistencePlan(chunk, extractionResult);
+
+    if (plan.status === 'failed' && plan.error) {
+      console.warn(
+        `[Job: Process Chunk] Extraction produced no usable text. Marking chunk as failed (code=${plan.error.code}).`
+      );
+    } else {
+      console.log(
+        `[Job: Process Chunk] Extracted ${plan.contentForEmbedding?.length || 0} characters with confidence ${
+          extractionResult.confidence ?? 'n/a'
+        }`
+      );
+    }
+
     // Step 4: Generate embedding (if requested)
     let embedding: number[] | null = null;
-    if (generateEmbedding && extractionResult.text && extractionResult.text.length > 0) {
+    if (
+      plan.status === 'completed' &&
+      generateEmbedding &&
+      plan.contentForEmbedding &&
+      plan.contentForEmbedding.length > 0
+    ) {
       embedding = await step.run('generate-embedding', async () => {
         try {
           const response = await openai.embeddings.create({
             model: 'text-embedding-3-small',
-            input: extractionResult.text.substring(0, 8000), // OpenAI limit
+            input: plan.contentForEmbedding.substring(0, 8000), // OpenAI limit
           });
 
           console.log(`[Job: Process Chunk] Generated embedding`);
@@ -213,21 +233,9 @@ export const processChunkJob = inngest.createFunction(
 
     // Step 5: Update chunk with results
     await step.run('save-chunk-results', async () => {
-      await updateChunkStatus(chunkId, 'completed', {
-        content: extractionResult.text,
-        extraction_confidence: extractionResult.confidence,
-        extraction_method: extractionResult.method,
-        processed_at: new Date().toISOString(),
-        metadata: {
-          ...chunk.metadata,
-          extractionMethod: extractionResult.method,
-          pageCount: extractionResult.pageCount,
-          processingTimestamp: new Date().toISOString(),
-        },
-      });
+      await updateChunkStatus(chunkId, plan.status, plan.updates);
 
-      // Update embedding separately if generated
-      if (embedding) {
+      if (plan.status === 'completed' && embedding) {
         await supabaseServer
           .from('document_chunks')
           .update({
@@ -236,6 +244,14 @@ export const processChunkJob = inngest.createFunction(
           .eq('id', chunkId);
       }
     });
+
+    if (plan.status === 'failed') {
+      return {
+        chunkId,
+        failed: true,
+        error: plan.error,
+      };
+    }
 
     // Step 6: Update processing job progress
     await step.run('update-job-progress', async () => {
@@ -282,7 +298,7 @@ export const processChunkJob = inngest.createFunction(
 
     return {
       chunkId,
-      charactersExtracted: extractionResult.text.length,
+      charactersExtracted: plan.contentForEmbedding?.length || 0,
       confidence: extractionResult.confidence,
       hasEmbedding: !!embedding,
     };

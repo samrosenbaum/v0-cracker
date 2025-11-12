@@ -16,6 +16,7 @@ import { parsePdf } from './pdf-parse-compat';
 type PdfjsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 
 let pdfjsModulePromise: Promise<PdfjsModule | null> | null = null;
+let hasLoggedPdfjsLoad = false;
 
 // Polyfill DOMMatrix for Node.js environment
 if (typeof globalThis.DOMMatrix === 'undefined') {
@@ -28,33 +29,41 @@ if (typeof globalThis.DOMMatrix === 'undefined') {
 }
 
 async function loadPdfJsModule(): Promise<PdfjsModule | null> {
-  // DISABLED: pdfjs-dist requires full DOMMatrix implementation which is not available in Node.js
-  // The DOMMatrix polyfill is insufficient for pdfjs-dist's canvas operations
-  // Using pdf-parse instead, which works reliably in server-side environments
-  console.log('[Document Parser] pdfjs-dist disabled, using pdf-parse for PDF extraction');
-  return null;
+  if (typeof window !== 'undefined') {
+    // The ingestion pipeline only runs on the server – fall back to pdf-parse for browser builds.
+    return null;
+  }
 
-  // Original implementation (disabled):
-  // if (!pdfjsModulePromise) {
-  //   pdfjsModulePromise = import('pdfjs-dist/legacy/build/pdf.mjs')
-  //     .then(mod => {
-  //       try {
-  //         if (mod.GlobalWorkerOptions) {
-  //           mod.GlobalWorkerOptions.workerSrc = '';
-  //         }
-  //       } catch (workerError) {
-  //         console.warn('[Document Parser] Unable to configure pdfjs worker', workerError);
-  //       }
-  //       return mod;
-  //     })
-  //     .catch(error => {
-  //       console.error('[Document Parser] Failed to load pdfjs module:', error);
-  //       pdfjsModulePromise = null;
-  //       return null;
-  //     });
-  // }
-  //
-  // return pdfjsModulePromise;
+  if (!pdfjsModulePromise) {
+    pdfjsModulePromise = (async () => {
+      try {
+        const mod = await import('pdfjs-dist/legacy/build/pdf.mjs');
+
+        try {
+          const workerOptions = (mod as any).GlobalWorkerOptions;
+          if (workerOptions && typeof window !== 'undefined') {
+            workerOptions.workerSrc = workerOptions.workerSrc || '';
+          }
+        } catch (workerError) {
+          console.warn('[Document Parser] Unable to configure pdfjs worker, falling back to pdf-parse.', workerError);
+          return null;
+        }
+
+        if (!hasLoggedPdfjsLoad) {
+          const version = (mod as any).version || 'unknown';
+          console.log(`[Document Parser] pdfjs-dist backend ready (v${version})`);
+          hasLoggedPdfjsLoad = true;
+        }
+
+        return mod;
+      } catch (error) {
+        console.error('[Document Parser] Failed to load pdfjs-dist module:', error);
+        return null;
+      }
+    })();
+  }
+
+  return pdfjsModulePromise;
 }
 
 // Initialize OpenAI client for Whisper transcription
@@ -198,6 +207,13 @@ async function extractByFileType(
   };
 }
 
+export async function extractDocumentContentFromBuffer(
+  storagePath: string,
+  buffer: Buffer
+): Promise<ExtractionResult> {
+  return extractByFileType(storagePath, buffer);
+}
+
 /**
  * Extract text from PDF (handles both digital and scanned)
  */
@@ -212,7 +228,14 @@ async function extractFromPDF(buffer: Buffer): Promise<ExtractionResult> {
     return extractWithPdfParse(buffer);
   }
 
-  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer) });
+  let loadingTask: ReturnType<PdfjsModule['getDocument']>;
+
+  try {
+    loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer) });
+  } catch (initializationError) {
+    console.warn('[Document Parser] pdfjs failed to initialize, falling back to pdf-parse.', initializationError);
+    return extractWithPdfParse(buffer);
+  }
 
   try {
     const pdfDocument = await loadingTask.promise;

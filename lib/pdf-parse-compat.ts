@@ -1,4 +1,25 @@
-import { PDFParse } from 'pdf-parse';
+"use server";
+
+type PdfParseModule = typeof import('pdf-parse');
+
+let pdfParseModulePromise: Promise<PdfParseModule> | null = null;
+let workerConfigured = false;
+
+async function loadPdfParseModule(): Promise<PdfParseModule> {
+  if (typeof window !== 'undefined') {
+    throw new Error('[pdf-parse compat] pdf-parse is only available in server runtimes.');
+  }
+
+  if (!pdfParseModulePromise) {
+    pdfParseModulePromise = import('pdf-parse')
+      .catch((error) => {
+        pdfParseModulePromise = null;
+        throw error;
+      });
+  }
+
+  return pdfParseModulePromise;
+}
 
 interface LegacyPdfParseResult {
   text: string;
@@ -8,9 +29,7 @@ interface LegacyPdfParseResult {
   metadata?: Record<string, any> | null;
 }
 
-let workerConfigured = false;
-
-function ensureWorkerConfigured() {
+function ensureWorkerConfigured(PDFParseClass: PdfParseModule['PDFParse']) {
   if (workerConfigured) return;
 
   try {
@@ -20,15 +39,15 @@ function ensureWorkerConfigured() {
     // empty worker source caused pdf.js to throw "Unable to load PDF parser
     // module", which is exactly the error we saw in the Victim Timeline
     // Reconstruction output.
-    if (typeof PDFParse.setWorker === 'function') {
+    if (typeof PDFParseClass.setWorker === 'function') {
       if (typeof window !== 'undefined') {
-        PDFParse.setWorker(
+        PDFParseClass.setWorker(
           'https://cdn.jsdelivr.net/npm/pdf-parse@latest/dist/pdf-parse/web/pdf.worker.mjs'
         );
       } else {
         // In Node environments just touch the getter so pdf.js keeps its
         // default worker configuration.
-        PDFParse.setWorker();
+        PDFParseClass.setWorker();
       }
     }
   } catch (workerError) {
@@ -39,7 +58,8 @@ function ensureWorkerConfigured() {
 }
 
 export async function parsePdf(buffer: Buffer): Promise<LegacyPdfParseResult> {
-  ensureWorkerConfigured();
+  const { PDFParse } = await loadPdfParseModule();
+  ensureWorkerConfigured(PDFParse);
 
   const parser = new PDFParse({ data: buffer });
 
