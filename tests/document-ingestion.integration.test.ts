@@ -10,6 +10,8 @@ async function run() {
 
   assert.ok(extraction.error, 'extraction should surface an error message');
   assert.equal(extraction.text.trim().length, 0, 'no text should be returned for malformed input');
+  assert.equal(extraction.method, 'pdfjs-dist', 'malformed PDFs should fail without pdf-parse fallback');
+  assert.equal(extraction.needsReview, true, 'malformed PDFs should be flagged for review');
 
   const plan = deriveChunkPersistencePlan({ metadata: { pageNumber: 1 } } as any, extraction);
 

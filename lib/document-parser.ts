@@ -18,6 +18,13 @@ type PdfjsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 let pdfjsModulePromise: Promise<PdfjsModule | null> | null = null;
 let hasLoggedPdfjsLoad = false;
 
+const NON_RECOVERABLE_PDF_ERROR_NAMES = new Set([
+  'InvalidPDFException',
+  'MissingPDFException',
+  'PasswordException',
+  'UnexpectedResponseException',
+]);
+
 // Polyfill DOMMatrix for Node.js environment
 if (typeof globalThis.DOMMatrix === 'undefined') {
   // @ts-ignore - Polyfill for Node.js
@@ -64,6 +71,21 @@ async function loadPdfJsModule(): Promise<PdfjsModule | null> {
   }
 
   return pdfjsModulePromise;
+}
+
+function isNonRecoverablePdfError(error: any): boolean {
+  const name = typeof error?.name === 'string' ? error.name : '';
+  const message = typeof error?.message === 'string' ? error.message : '';
+
+  if (name && NON_RECOVERABLE_PDF_ERROR_NAMES.has(name)) {
+    return true;
+  }
+
+  if (!message) {
+    return false;
+  }
+
+  return /invalid pdf|missing pdf|password required|unexpected response/i.test(message);
 }
 
 // Initialize OpenAI client for Whisper transcription
@@ -286,7 +308,26 @@ async function extractFromPDF(buffer: Buffer): Promise<ExtractionResult> {
       uncertainSegments: hasMeaningfulText ? [] : undefined,
     };
   } catch (error: any) {
-    console.error('[Document Parser] PDF extraction failed, attempting pdf-parse fallback:', error);
+    console.error('[Document Parser] PDF extraction failed during parsing:', error);
+
+    if (isNonRecoverablePdfError(error)) {
+      return {
+        text: '',
+        pageCount: undefined,
+        method: 'pdfjs-dist',
+        confidence: 0,
+        error: error?.message || 'PDF extraction failed.',
+        metadata: {
+          failure: {
+            name: error?.name,
+            message: error?.message,
+          },
+        },
+        needsReview: true,
+      };
+    }
+
+    console.warn('[Document Parser] Falling back to pdf-parse after recoverable error.');
     return extractWithPdfParse(buffer);
   } finally {
     try {
