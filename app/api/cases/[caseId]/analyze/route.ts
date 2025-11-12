@@ -17,6 +17,7 @@ import {
   detectTimeConflicts,
   identifyOverlookedSuspects,
   generateConflictSummary,
+  TimelineEvent,
 } from '@/lib/ai-analysis';
 
 const CORS_HEADERS: Record<string, string> = {
@@ -163,6 +164,342 @@ function deriveTextFromString(rawText: string): string {
   }
 
   return combineSegments(segments);
+}
+
+const PLACEHOLDER_VALUE_PATTERN = /\b(?:unknown|tbd|unspecified|unconfirmed|pending|not provided|n\/a|none)\b|^[-?_.\s]+$/i;
+
+function normalizeGapValue(value?: string | null): string {
+  if (typeof value !== 'string') {
+    return 'placeholder:empty';
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return 'placeholder:empty';
+  }
+
+  if (PLACEHOLDER_VALUE_PATTERN.test(trimmed)) {
+    return `placeholder:${trimmed.toLowerCase()}`;
+  }
+
+  return trimmed;
+}
+
+function isConcreteLocation(location?: string | null): location is string {
+  if (typeof location !== 'string') {
+    return false;
+  }
+
+  const trimmed = location.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  return !PLACEHOLDER_VALUE_PATTERN.test(trimmed);
+}
+
+function parseDateOnly(value?: string | null): Date | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseDateTime(dateValue?: string | null, timeValue?: string | null): Date | null {
+  if (!timeValue) {
+    return null;
+  }
+
+  const trimmedTime = timeValue.trim();
+  if (!trimmedTime) {
+    return null;
+  }
+
+  if (trimmedTime.includes('T')) {
+    const isoParsed = new Date(trimmedTime);
+    if (!Number.isNaN(isoParsed.getTime())) {
+      return isoParsed;
+    }
+  }
+
+  if (dateValue) {
+    const candidateIso = new Date(`${dateValue}T${trimmedTime}`);
+    if (!Number.isNaN(candidateIso.getTime())) {
+      return candidateIso;
+    }
+
+    const candidateSpace = new Date(`${dateValue} ${trimmedTime}`);
+    if (!Number.isNaN(candidateSpace.getTime())) {
+      return candidateSpace;
+    }
+  }
+
+  const ampmMatch = trimmedTime.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/i);
+  if (ampmMatch && dateValue) {
+    const base = parseDateOnly(dateValue);
+    if (base) {
+      let hours = Number.parseInt(ampmMatch[1]!, 10) % 12;
+      if (ampmMatch[3]?.toLowerCase() === 'pm') {
+        hours += 12;
+      }
+      const minutes = Number.parseInt(ampmMatch[2] || '0', 10);
+      const result = new Date(base);
+      result.setHours(hours, minutes, 0, 0);
+      return result;
+    }
+  }
+
+  const timeMatch = trimmedTime.match(/^(\d{1,2})(?::(\d{2}))?$/);
+  if (timeMatch && dateValue) {
+    const base = parseDateOnly(dateValue);
+    if (base) {
+      const hours = Number.parseInt(timeMatch[1]!, 10);
+      const minutes = Number.parseInt(timeMatch[2] || '0', 10);
+      const result = new Date(base);
+      result.setHours(hours, minutes, 0, 0);
+      return result;
+    }
+  }
+
+  return null;
+}
+
+type AnchoredEvent = {
+  event: TimelineEvent;
+  start: Date;
+  end: Date;
+};
+
+type TimelineGapSummary = {
+  id?: string;
+  startEventId?: string;
+  endEventId?: string;
+  startTime?: string;
+  endTime?: string;
+  lastKnownLocation?: string;
+  nextKnownLocation?: string;
+  durationMinutes?: number;
+  description?: string;
+  priority?: 'low' | 'medium' | 'high' | 'critical';
+  source?: 'derived' | 'provided';
+};
+
+type TimelineTopPriority = {
+  focus: string;
+  rationale: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  durationMinutes?: number;
+};
+
+function extractAnchoredEvents(timeline: TimelineEvent[]): AnchoredEvent[] {
+  const anchored: AnchoredEvent[] = [];
+
+  for (const event of timeline) {
+    if (!isConcreteLocation(event.location)) {
+      continue;
+    }
+
+    const dateValue = typeof event.date === 'string' ? event.date : undefined;
+    let start: Date | null = null;
+    let end: Date | null = null;
+
+    if (event.startTime) {
+      start = parseDateTime(dateValue, event.startTime);
+      if (!start && event.startTime.includes('T')) {
+        start = new Date(event.startTime);
+        if (Number.isNaN(start.getTime())) {
+          start = null;
+        }
+      }
+
+      if (event.endTime) {
+        end = parseDateTime(dateValue, event.endTime);
+        if (!end && event.endTime.includes('T')) {
+          end = new Date(event.endTime);
+          if (Number.isNaN(end.getTime())) {
+            end = null;
+          }
+        }
+      }
+
+      if (!end && start) {
+        end = new Date(start);
+      }
+    } else if (event.time) {
+      start = parseDateTime(dateValue, event.time);
+      if (!start && event.time.includes('T')) {
+        start = new Date(event.time);
+        if (Number.isNaN(start.getTime())) {
+          start = null;
+        }
+      }
+      if (start) {
+        end = new Date(start);
+      }
+    }
+
+    if (!start || !end) {
+      continue;
+    }
+
+    anchored.push({
+      event,
+      start,
+      end,
+    });
+  }
+
+  return anchored.sort((a, b) => a.start.getTime() - b.start.getTime());
+}
+
+function deriveTimelineGaps(anchoredEvents: AnchoredEvent[]): TimelineGapSummary[] {
+  if (anchoredEvents.length < 2) {
+    return [];
+  }
+
+  const gaps: TimelineGapSummary[] = [];
+
+  for (let index = 0; index < anchoredEvents.length - 1; index += 1) {
+    const current = anchoredEvents[index]!;
+    const next = anchoredEvents[index + 1]!;
+
+    if (next.start.getTime() <= current.end.getTime()) {
+      continue;
+    }
+
+    const durationMinutes = Math.round((next.start.getTime() - current.end.getTime()) / (60 * 1000));
+    if (durationMinutes <= 0) {
+      continue;
+    }
+
+    const priority: 'low' | 'medium' | 'high' | 'critical' =
+      durationMinutes >= 240 ? 'critical' : durationMinutes >= 120 ? 'high' : 'medium';
+
+    gaps.push({
+      id: `gap-${current.event.id}-${next.event.id}`,
+      startEventId: current.event.id,
+      endEventId: next.event.id,
+      startTime: current.end.toISOString(),
+      endTime: next.start.toISOString(),
+      lastKnownLocation: current.event.location,
+      nextKnownLocation: next.event.location,
+      durationMinutes,
+      description: `No confirmed activity between ${current.event.location} and ${next.event.location}.`,
+      priority,
+      source: 'derived',
+    });
+  }
+
+  return gaps;
+}
+
+function sanitizeProvidedGaps(rawGaps: unknown): TimelineGapSummary[] {
+  if (!Array.isArray(rawGaps)) {
+    return [];
+  }
+
+  const sanitized: TimelineGapSummary[] = [];
+
+  for (const gap of rawGaps) {
+    if (!gap || typeof gap !== 'object') {
+      continue;
+    }
+
+    const maybeGap = gap as Record<string, any>;
+    const startTime = typeof maybeGap.startTime === 'string' ? maybeGap.startTime.trim() : undefined;
+    const endTime = typeof maybeGap.endTime === 'string' ? maybeGap.endTime.trim() : undefined;
+    const lastKnownLocation =
+      typeof maybeGap.lastKnownLocation === 'string' ? maybeGap.lastKnownLocation.trim() : undefined;
+    const nextKnownLocation =
+      typeof maybeGap.nextKnownLocation === 'string' ? maybeGap.nextKnownLocation.trim() : undefined;
+
+    const emptyTimes = (!startTime || PLACEHOLDER_VALUE_PATTERN.test(startTime)) &&
+      (!endTime || PLACEHOLDER_VALUE_PATTERN.test(endTime));
+    const emptyLocations = (!lastKnownLocation || PLACEHOLDER_VALUE_PATTERN.test(lastKnownLocation)) &&
+      (!nextKnownLocation || PLACEHOLDER_VALUE_PATTERN.test(nextKnownLocation));
+
+    if (emptyTimes && emptyLocations) {
+      continue;
+    }
+
+    sanitized.push({
+      ...maybeGap,
+      startTime,
+      endTime,
+      lastKnownLocation,
+      nextKnownLocation,
+      source: 'provided',
+    });
+  }
+
+  return sanitized;
+}
+
+function dedupeGaps(gaps: TimelineGapSummary[]): TimelineGapSummary[] {
+  const deduped = new Map<string, TimelineGapSummary>();
+
+  for (const gap of gaps) {
+    const startKey = normalizeGapValue(gap.startTime);
+    const endKey = normalizeGapValue(gap.endTime);
+    const lastLocationKey = normalizeGapValue(gap.lastKnownLocation);
+    const nextLocationKey = normalizeGapValue(gap.nextKnownLocation);
+
+    const key = `${startKey}|${endKey}|${lastLocationKey}|${nextLocationKey}`;
+    const existing = deduped.get(key);
+
+    if (!existing) {
+      deduped.set(key, gap);
+      continue;
+    }
+
+    const isExistingDerived = existing.source === 'derived';
+    const isIncomingDerived = gap.source === 'derived';
+
+    if (!isExistingDerived && isIncomingDerived) {
+      deduped.set(key, gap);
+    }
+  }
+
+  return Array.from(deduped.values());
+}
+
+function buildTopPrioritiesFromGaps(gaps: TimelineGapSummary[]): TimelineTopPriority[] {
+  if (!gaps.length) {
+    return [];
+  }
+
+  return gaps.slice(0, 3).map((gap) => ({
+    focus: `Investigate gap between ${gap.lastKnownLocation || 'last known location'} and ${
+      gap.nextKnownLocation || 'next known location'
+    }`,
+    rationale:
+      gap.description ||
+      'No confirmed activity recorded between these anchored events. Verify alibis and gather corroborating evidence.',
+    severity: gap.priority || 'medium',
+    durationMinutes: gap.durationMinutes,
+  }));
+}
+
+function synthesizeGapInsights(
+  analysis: { timeline: TimelineEvent[]; gaps?: unknown; topPriorities?: unknown }
+): { gaps: TimelineGapSummary[]; topPriorities: TimelineTopPriority[] } {
+  const providedGaps = sanitizeProvidedGaps(analysis.gaps);
+  const anchoredEvents = extractAnchoredEvents(analysis.timeline || []);
+  const derivedGaps = anchoredEvents.length >= 2 ? deriveTimelineGaps(anchoredEvents) : [];
+
+  const combined = dedupeGaps([...providedGaps, ...derivedGaps]);
+
+  const providedTopPriorities = Array.isArray(analysis.topPriorities)
+    ? (analysis.topPriorities as TimelineTopPriority[])
+    : [];
+
+  const topPriorities = providedTopPriorities.length
+    ? providedTopPriorities
+    : buildTopPrioritiesFromGaps(combined);
+
+  return { gaps: combined, topPriorities };
 }
 
 async function resolveDocumentContent(
@@ -335,6 +672,7 @@ async function runFallbackAnalysis(
 
   const analysis = await analyzeCaseDocuments(documents, caseId);
   const timeConflicts = detectTimeConflicts(analysis.timeline);
+  const { gaps, topPriorities } = synthesizeGapInsights(analysis);
 
   const combinedConflicts = [...analysis.conflicts];
   for (const conflict of timeConflicts) {
@@ -384,6 +722,8 @@ async function runFallbackAnalysis(
     conflicts: combinedConflicts,
     overlookedSuspects,
     conflictSummary: generateConflictSummary(combinedConflicts),
+    gaps,
+    topPriorities,
   };
 
   const totalUnits = 5;
