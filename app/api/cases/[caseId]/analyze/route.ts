@@ -3,6 +3,7 @@ import { supabaseServer } from '@/lib/supabase-server';
 import { hasSupabaseServiceConfig, hasPartialSupabaseConfig } from '@/lib/environment';
 import { processTimelineAnalysis } from '@/lib/workflows/timeline-analysis';
 import { runBackgroundTask } from '@/lib/background-tasks';
+import { extractMultipleDocuments, queueDocumentForReview } from '@/lib/document-parser';
 import {
   listCaseDocuments,
   getStorageObject,
@@ -20,6 +21,10 @@ import {
   TimelineEvent,
 } from '@/lib/ai-analysis';
 import type { DocumentInput } from '@/lib/ai-fallback';
+
+type ExtractionResult = Awaited<ReturnType<typeof extractMultipleDocuments>> extends Map<string, infer R>
+  ? R
+  : never;
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -54,6 +59,7 @@ export async function GET() {
 
 const PLACEHOLDER_PATTERNS = [
   /^\s*\[no extracted text[\s\S]*\]\s*$/i,
+  /^\s*\[no extractable text[\s\S]*\]\s*$/i,
   /^\s*\[could not extract text[\s\S]*\]\s*$/i,
   /^\s*summary unavailable for[\s\S]*$/i,
 ];
@@ -549,38 +555,124 @@ async function gatherDocumentsForAnalysis(caseId: string, preferSupabase: boolea
     try {
       const { data: supabaseDocs, error: docError } = await supabaseServer
         .from('case_documents')
-        .select('file_name, document_type, storage_path, metadata')
+        .select('id, file_name, document_type, storage_path, metadata')
         .eq('case_id', caseId);
 
       if (!docError && supabaseDocs && supabaseDocs.length > 0) {
         const documents: DocumentInput[] = [];
         const skippedDocuments: string[] = [];
 
+        const storagePaths = Array.from(
+          new Set(
+            supabaseDocs
+              .map((doc) => doc.storage_path)
+              .filter((path): path is string => typeof path === 'string' && path.length > 0)
+          )
+        );
+
+        let extractionResults: Map<string, ExtractionResult>;
+
+        if (storagePaths.length > 0) {
+          try {
+            extractionResults = await extractMultipleDocuments(storagePaths, 5);
+          } catch (extractionError) {
+            console.error(
+              '[Timeline Analysis API] Failed to extract Supabase documents:',
+              extractionError
+            );
+            extractionResults = new Map();
+          }
+        } else {
+          extractionResults = new Map();
+        }
+
+        let queuedForReview = 0;
+
         for (const doc of supabaseDocs) {
-          const content = await resolveDocumentContent(
-            doc.storage_path,
-            doc.metadata as Record<string, any> | undefined
-          );
+          const extractionResult = doc.storage_path
+            ? extractionResults.get(doc.storage_path)
+            : undefined;
+
+          if (extractionResult?.needsReview && doc.id) {
+            try {
+              const queued = await queueDocumentForReview(doc.id, caseId, extractionResult);
+              if (queued) {
+                queuedForReview++;
+              }
+            } catch (queueError) {
+              console.error('[Timeline Analysis API] Failed to queue document for review:', queueError);
+            }
+          }
+
+          let content = extractionResult?.text || '';
+
+          if (!isMeaningfulContent(content)) {
+            const fallbackContent = await resolveDocumentContent(
+              doc.storage_path,
+              doc.metadata as Record<string, any> | undefined
+            );
+            if (isMeaningfulContent(fallbackContent)) {
+              content = fallbackContent;
+            }
+          }
 
           if (isMeaningfulContent(content)) {
+            const metadata: Record<string, any> = {};
+
+            if (doc.metadata && typeof doc.metadata === 'object' && !Array.isArray(doc.metadata)) {
+              Object.assign(metadata, doc.metadata as Record<string, any>);
+            }
+
+            if (doc.storage_path) {
+              metadata.storagePath = doc.storage_path;
+            }
+
+            if (extractionResult) {
+              const extractionMetadata: Record<string, any> = {
+                method: extractionResult.method,
+                confidence: extractionResult.confidence ?? null,
+                needsReview: extractionResult.needsReview ?? false,
+                error: extractionResult.error || null,
+              };
+
+              if (extractionResult.uncertainSegments?.length) {
+                extractionMetadata.uncertainSegments = extractionResult.uncertainSegments;
+              }
+
+              metadata.extraction = extractionMetadata;
+            }
+
             documents.push({
               content,
               filename: doc.file_name,
               type: doc.document_type || 'other',
-              metadata: (doc.metadata as Record<string, any> | null) || null,
+              metadata: Object.keys(metadata).length > 0 ? metadata : null,
             });
           } else {
             skippedDocuments.push(doc.file_name);
           }
         }
 
+        const totalCharacters = documents.reduce((sum, doc) => sum + doc.content.length, 0);
+
         if (documents.length > 0) {
+          console.log(
+            `[Timeline Analysis API] Prepared ${documents.length}/${supabaseDocs.length} documents (${totalCharacters.toLocaleString()} characters)`
+          );
+
+          if (queuedForReview > 0) {
+            console.log(
+              `[Timeline Analysis API] Queued ${queuedForReview} document(s) for human OCR review`
+            );
+          }
+
           if (skippedDocuments.length > 0) {
             console.warn(
               '[Timeline Analysis API] Skipping documents with no extractable text:',
               skippedDocuments
             );
           }
+
           return documents;
         }
 
@@ -591,6 +683,7 @@ async function gatherDocumentsForAnalysis(caseId: string, preferSupabase: boolea
             skippedDocuments
           );
         }
+
       }
     } catch (error) {
       console.error('[Timeline Analysis API] Failed to gather documents from Supabase:', error);
