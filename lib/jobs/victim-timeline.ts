@@ -2,6 +2,24 @@ import { inngest } from '@/lib/inngest-client';
 import { supabaseServer } from '@/lib/supabase-server';
 import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { generateComprehensiveVictimTimeline } from '@/lib/victim-timeline';
+import { extractMultipleDocuments, queueDocumentForReview } from '@/lib/document-parser';
+
+type ExtractionResult = Awaited<ReturnType<typeof extractMultipleDocuments>> extends Map<string, infer R>
+  ? R
+  : never;
+
+function hasMeaningfulExtraction(extraction?: ExtractionResult | null): extraction is ExtractionResult {
+  if (!extraction?.text) {
+    return false;
+  }
+
+  const normalized = extraction.text.replace(/\r\n/g, '\n').trim();
+  if (!normalized) {
+    return false;
+  }
+
+  return !/^\[(?:no extracted|no extractable|could not extract)/i.test(normalized);
+}
 
 interface VictimTimelineEventData {
   jobId: string;
@@ -84,11 +102,119 @@ export const processVictimTimelineJob = inngest.createFunction(
         return { documents: documents || [], files: files || [] };
       });
 
-      const docsForAnalysis = documents.map(doc => ({
-        filename: doc.file_name,
-        content: `[Document content would be loaded from: ${doc.storage_path}]`,
-        type: doc.document_type as any,
-      }));
+      const { extractionResults } = await step.run('extract-documents', async () => {
+        const storagePaths = documents
+          .map((doc) => doc.storage_path)
+          .filter((path): path is string => typeof path === 'string' && path.length > 0);
+
+        if (storagePaths.length === 0) {
+          await updateProcessingJob(jobId, {
+            completed_units: 2,
+            progress_percentage: Math.round((2 / totalUnits) * 100),
+          });
+
+          return { extractionResults: new Map<string, ExtractionResult>(), queuedForReview: 0 };
+        }
+
+        console.log(
+          `[VictimTimelineJob] Extracting content from ${storagePaths.length} document(s) before analysis...`
+        );
+
+        const extractionResults = await extractMultipleDocuments(storagePaths, 5);
+
+        let queuedForReview = 0;
+        for (const doc of documents) {
+          if (!doc.storage_path) continue;
+          const extraction = extractionResults.get(doc.storage_path);
+          if (extraction?.needsReview && doc.id) {
+            try {
+              const queued = await queueDocumentForReview(doc.id, caseId, extraction);
+              if (queued) {
+                queuedForReview++;
+              }
+            } catch (queueError) {
+              console.error('[VictimTimelineJob] Failed to queue document for review:', queueError);
+            }
+          }
+        }
+
+        if (queuedForReview > 0) {
+          console.log(`[VictimTimelineJob] Queued ${queuedForReview} document(s) for human review`);
+        }
+
+        await updateProcessingJob(jobId, {
+          completed_units: 2,
+          progress_percentage: Math.round((2 / totalUnits) * 100),
+        });
+
+        return { extractionResults, queuedForReview };
+      });
+
+      const docsForAnalysis = documents.map((doc) => {
+        const extraction = doc.storage_path ? extractionResults.get(doc.storage_path) : undefined;
+
+        let content = '';
+        if (hasMeaningfulExtraction(extraction)) {
+          content = extraction.text;
+        }
+
+        const metadataValue: Record<string, any> =
+          doc.metadata && typeof doc.metadata === 'object' && !Array.isArray(doc.metadata)
+            ? { ...(doc.metadata as Record<string, any>) }
+            : {};
+
+        if (!content) {
+          const candidateKeys = ['extracted_text', 'extractedText', 'text', 'content', 'transcript', 'body', 'notes', 'summary'];
+          for (const key of candidateKeys) {
+            const value = metadataValue[key];
+            if (typeof value === 'string' && value.trim().length > 0) {
+              content = value;
+              break;
+            }
+          }
+        }
+
+        if (!content) {
+          content = `[Could not extract text from ${doc.file_name}]`;
+        }
+
+        const metadata: Record<string, any> = { ...metadataValue };
+
+        if (doc.storage_path) {
+          metadata.storagePath = doc.storage_path;
+        }
+
+        if (extraction) {
+          const extractionMetadata: Record<string, any> = {
+            method: extraction.method,
+            confidence: extraction.confidence ?? null,
+            needsReview: extraction.needsReview ?? false,
+            error: extraction.error || null,
+          };
+
+          if (extraction.uncertainSegments?.length) {
+            extractionMetadata.uncertainSegments = extraction.uncertainSegments;
+          }
+
+          metadata.extraction = extractionMetadata;
+        }
+
+        return {
+          filename: doc.file_name,
+          content,
+          type: doc.document_type || 'other',
+          metadata: Object.keys(metadata).length > 0 ? metadata : null,
+        };
+      });
+
+      const totalExtractedCharacters = docsForAnalysis.reduce(
+        (sum, doc) => sum + (doc.content?.length || 0),
+        0
+      );
+
+      console.log(
+        `[VictimTimelineJob] Prepared ${docsForAnalysis.length} document(s) (${totalExtractedCharacters.toLocaleString()} characters)`
+      );
 
       const caseData = {
         documents: docsForAnalysis,
@@ -111,8 +237,8 @@ export const processVictimTimelineJob = inngest.createFunction(
         );
 
         await updateProcessingJob(jobId, {
-          completed_units: 2,
-          progress_percentage: Math.round((2 / totalUnits) * 100),
+          completed_units: 3,
+          progress_percentage: Math.round((3 / totalUnits) * 100),
         });
 
         return result;
@@ -185,8 +311,8 @@ export const processVictimTimelineJob = inngest.createFunction(
         }
 
         await updateProcessingJob(jobId, {
-          completed_units: 3,
-          progress_percentage: Math.round((3 / totalUnits) * 100),
+          completed_units: 4,
+          progress_percentage: Math.round((4 / totalUnits) * 100),
         });
       });
 
