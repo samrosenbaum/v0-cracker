@@ -11,6 +11,7 @@
 import { inngest } from '@/lib/inngest-client';
 import { supabaseServer } from '@/lib/supabase-server';
 import { analyzeCaseDocuments } from '@/lib/ai-analysis';
+import { extractDocumentContent, extractDocumentContentFromBuffer } from '@/lib/document-parser';
 import OpenAI from 'openai';
 
 type StepRunner = {
@@ -32,8 +33,6 @@ const createStepRunner = (step?: StepRunner): StepRunner => {
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || '',
 });
-
-const textDecoder = new TextDecoder();
 
 /**
  * Types for extracted data
@@ -1084,8 +1083,17 @@ async function downloadTextFromStorage(storagePath: string): Promise<string | nu
       return null;
     }
 
-    const buffer = await data.arrayBuffer();
-    return textDecoder.decode(buffer);
+    const buffer = Buffer.from(await data.arrayBuffer());
+
+    // Use document parser to properly extract text from PDFs, images, audio, etc.
+    const result = await extractDocumentContentFromBuffer(storagePath, buffer);
+
+    if (result.error) {
+      console.error(`[Board Population] Failed to extract content from ${storagePath}:`, result.error);
+      return null;
+    }
+
+    return result.text || null;
   } catch (error) {
     console.error('[Board Population] Failed to download storage object:', error);
     return null;
