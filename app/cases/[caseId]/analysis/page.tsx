@@ -16,7 +16,8 @@ import {
   TrendingUp,
   CheckCircle,
   XCircle,
-  Loader2
+  Loader2,
+  Trash2
 } from 'lucide-react';
 
 interface AnalysisResult {
@@ -37,6 +38,7 @@ export default function AnalysisPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [runningAnalysis, setRunningAnalysis] = useState<string | null>(null);
   const [documentCount, setDocumentCount] = useState(0);
+  const [deletingAnalysis, setDeletingAnalysis] = useState<string | null>(null);
 
   const parseAnalysisData = (analysisData: any) => {
     if (!analysisData) return null;
@@ -852,6 +854,31 @@ export default function AnalysisPage() {
     }
   };
 
+  const deleteAnalysis = async (analysisId: string) => {
+    const confirmed = confirm('Are you sure you want to delete this analysis? This action cannot be undone.');
+    if (!confirmed) return;
+
+    setDeletingAnalysis(analysisId);
+    try {
+      const response = await fetch(`/api/analysis/${analysisId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete analysis');
+      }
+
+      // Remove the analysis from the local state
+      setAnalyses(prev => prev.filter(a => a.id !== analysisId));
+    } catch (error: any) {
+      console.error('Delete analysis error:', error);
+      alert(`Failed to delete analysis: ${error.message}`);
+    } finally {
+      setDeletingAnalysis(null);
+    }
+  };
+
   const formatDate = (dateString: string): string => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -1142,6 +1169,7 @@ export default function AnalysisPage() {
                 const normalizedType = normalizeAnalysisType(analysis.analysis_type);
                 const Icon = getAnalysisIcon(analysis.analysis_type);
                 const analysisData = parseAnalysisData(analysis.analysis_data);
+                const isDeleting = deletingAnalysis === analysis.id;
                 return (
                   <div key={analysis.id} className="p-6 hover:bg-gray-50 transition-colors">
                     <div className="flex items-start justify-between gap-4">
@@ -1188,6 +1216,19 @@ export default function AnalysisPage() {
                           )}
                         </div>
                       </div>
+                      <button
+                        onClick={() => deleteAnalysis(analysis.id)}
+                        disabled={isDeleting}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Delete this analysis"
+                      >
+                        {isDeleting ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                        <span className="hidden sm:inline">Delete</span>
+                      </button>
                     </div>
                   </div>
                 );
