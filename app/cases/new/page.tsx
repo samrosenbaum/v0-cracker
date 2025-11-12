@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase-client';
 import { ArrowLeft, Save } from 'lucide-react';
@@ -12,6 +12,7 @@ const FALLBACK_DEV_AGENCY_ID =
 export default function NewCasePage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [formData, setFormData] = useState({
     name: '',
     title: '',
@@ -19,6 +20,26 @@ export default function NewCasePage() {
     status: 'active',
     priority: 'medium',
   });
+
+  // Check authentication on page load
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+      // If no user session and no fallback configured, redirect to login
+      if (!user && !FALLBACK_DEV_USER_ID &&
+          (userError?.message === 'Auth session missing!' ||
+           userError?.name === 'AuthSessionMissingError')) {
+        console.error('No active user session - redirecting to login');
+        router.push('/login?redirect=/cases/new');
+        return;
+      }
+
+      setIsCheckingAuth(false);
+    };
+
+    checkAuth();
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,16 +52,20 @@ export default function NewCasePage() {
         error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError) {
+      // Only throw error if it's not a missing session error
+      // Missing sessions are expected and handled by fallback logic
+      if (userError &&
+          userError.message !== 'Auth session missing!' &&
+          userError.name !== 'AuthSessionMissingError') {
         throw userError;
       }
 
       const userId = user?.id ?? FALLBACK_DEV_USER_ID;
 
       if (!userId) {
-        alert(
-          'No active user session and NEXT_PUBLIC_SUPABASE_DEV_USER_ID is not configured. Please set a fallback user ID to create cases without signing in.'
-        );
+        // No authenticated user and no fallback configured - redirect to login
+        console.error('No active user session and no fallback user ID configured');
+        router.push('/login?redirect=/cases/new');
         return;
       }
 
@@ -106,6 +131,15 @@ export default function NewCasePage() {
       [e.target.name]: e.target.value,
     }));
   };
+
+  // Show loading state while checking auth
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-8 flex items-center justify-center">
+        <div className="text-gray-600">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
