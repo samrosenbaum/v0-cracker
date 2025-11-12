@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 // import { Inter } from 'next/font/google'
 import './globals.css'
+import TopNavigation from '@/components/TopNavigation'
 
 // const inter = Inter({ subsets: ['latin'] })
 
@@ -32,7 +33,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="font-sans">{children}</body>
+      <body className="font-sans">
+        <TopNavigation />
+        {children}
+      </body>
     </html>
   )
 }
