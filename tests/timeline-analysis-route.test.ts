@@ -135,8 +135,10 @@ function createSupabaseStub() {
 async function run() {
   const supabaseModulePath = require.resolve('../lib/supabase-server.ts');
   const aiAnalysisModulePath = require.resolve('../lib/ai-analysis.ts');
+  const routeModulePath = require.resolve('../app/api/cases/[caseId]/analyze/route.ts');
   const originalSupabaseModule = require.cache[supabaseModulePath];
   const originalAiModule = require.cache[aiAnalysisModulePath];
+  const originalRouteModule = require.cache[routeModulePath];
 
   const supabaseStub = createSupabaseStub();
   let analyzedDocuments: any[] | null = null;
@@ -236,6 +238,7 @@ async function run() {
   } as NodeModule;
 
   try {
+    delete require.cache[routeModulePath];
     const routeModule = require('../app/api/cases/[caseId]/analyze/route.ts');
     const { runFallbackAnalysis } = routeModule.__testables;
 
@@ -293,6 +296,12 @@ async function run() {
       require.cache[aiAnalysisModulePath] = originalAiModule;
     } else {
       delete require.cache[aiAnalysisModulePath];
+    }
+
+    if (originalRouteModule) {
+      require.cache[routeModulePath] = originalRouteModule;
+    } else {
+      delete require.cache[routeModulePath];
     }
   }
 }
