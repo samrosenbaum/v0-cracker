@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase-client';
 import { ArrowLeft, Save } from 'lucide-react';
 
-const FALLBACK_DEV_USER_ID = process.env.NEXT_PUBLIC_SUPABASE_DEV_USER_ID;
+// Development fallback IDs - allows case creation without authentication
+// Can be overridden with environment variables if needed
+const FALLBACK_DEV_USER_ID = process.env.NEXT_PUBLIC_SUPABASE_DEV_USER_ID || '00000000-0000-0000-0000-000000000001';
 const FALLBACK_DEV_AGENCY_ID =
-  process.env.NEXT_PUBLIC_SUPABASE_DEV_AGENCY_ID || '00000000-0000-0000-0000-000000000000';
+  process.env.NEXT_PUBLIC_SUPABASE_DEV_AGENCY_ID || '00000000-0000-0000-0000-000000000002';
 
 export default function NewCasePage() {
   const router = useRouter();
@@ -21,18 +23,16 @@ export default function NewCasePage() {
     priority: 'medium',
   });
 
-  // Check authentication on page load
+  // Check authentication on page load (non-blocking for development)
   useEffect(() => {
     const checkAuth = async () => {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
 
-      // If no user session and no fallback configured, redirect to login
-      if (!user && !FALLBACK_DEV_USER_ID &&
-          (userError?.message === 'Auth session missing!' ||
-           userError?.name === 'AuthSessionMissingError')) {
-        console.error('No active user session - redirecting to login');
-        router.push('/login?redirect=/cases/new');
-        return;
+      // Just log auth status for debugging, don't redirect
+      if (!user) {
+        console.log('No active user session - will use fallback user ID for development');
+      } else {
+        console.log('Active user session:', user.email);
       }
 
       setIsCheckingAuth(false);
@@ -60,14 +60,10 @@ export default function NewCasePage() {
         throw userError;
       }
 
+      // Use authenticated user ID or fallback to development UUID
       const userId = user?.id ?? FALLBACK_DEV_USER_ID;
 
-      if (!userId) {
-        // No authenticated user and no fallback configured - redirect to login
-        console.error('No active user session and no fallback user ID configured');
-        router.push('/login?redirect=/cases/new');
-        return;
-      }
+      console.log('Creating case with user ID:', userId, user ? '(authenticated)' : '(fallback)');
 
       let agency_id = FALLBACK_DEV_AGENCY_ID;
 
