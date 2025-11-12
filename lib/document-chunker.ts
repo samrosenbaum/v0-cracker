@@ -10,7 +10,7 @@
  */
 
 import { supabaseServer } from './supabase-server';
-import * as pdfParse from 'pdf-parse';
+import { parsePdf } from './pdf-parse-compat';
 import type { Database } from '@/app/types/database';
 
 export interface ChunkingStrategy {
@@ -152,7 +152,7 @@ async function getDocumentMetadata(storagePath: string): Promise<{
 
       if (fileData) {
         const buffer = Buffer.from(await fileData.arrayBuffer());
-        const pdfData = await (pdfParse as any)(buffer);
+        const pdfData = await parsePdf(buffer);
         pageCount = pdfData.numpages;
       }
     } catch (error) {
