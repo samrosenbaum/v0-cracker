@@ -56,8 +56,14 @@ export default function AnalysisPage() {
     return analysisData;
   };
 
-  const normalizeAnalysisType = (analysisType: string) =>
-    analysisType === 'victim_timeline' ? 'victim-timeline' : analysisType;
+  const normalizeAnalysisType = (analysisType: string) => {
+    if (!analysisType) return analysisType;
+    if (analysisType === 'victim_timeline') return 'victim-timeline';
+    if (analysisType === 'comprehensive_cold_case' || analysisType === 'comprehensive-cold-case') {
+      return 'deep-analysis';
+    }
+    return analysisType;
+  };
 
   const isTimelineAnalysisType = (analysisType: string) => {
     const normalizedType = normalizeAnalysisType(analysisType);

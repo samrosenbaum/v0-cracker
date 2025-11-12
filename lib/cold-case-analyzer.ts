@@ -511,20 +511,72 @@ export interface HiddenConnection {
   discoveredFrom: string[]; // Which documents revealed it
 }
 
-function fallbackRelationshipNetwork(documents: string[]): {
+type RelationshipDocumentInput =
+  | string
+  | {
+      filename?: string;
+      content?: string;
+      text?: string;
+      summary?: string;
+      source?: string;
+    };
+
+interface NormalizedRelationshipDocument {
+  source: string;
+  text: string;
+}
+
+function normaliseRelationshipDocuments(
+  documents: RelationshipDocumentInput[],
+): NormalizedRelationshipDocument[] {
+  return documents
+    .map((doc, index) => {
+      if (typeof doc === 'string') {
+        const text = doc.trim();
+        if (!text) return null;
+        return {
+          source: `Document ${index + 1}`,
+          text,
+        };
+      }
+
+      const text = doc.content || doc.text || doc.summary || '';
+      const trimmed = text.trim();
+      if (!trimmed) return null;
+
+      const source = doc.filename || doc.source || `Document ${index + 1}`;
+
+      return {
+        source,
+        text: trimmed,
+      };
+    })
+    .filter((doc): doc is NormalizedRelationshipDocument => Boolean(doc));
+}
+
+function fallbackRelationshipNetwork(
+  suspects: string[],
+  witnesses: string[],
+  documents: NormalizedRelationshipDocument[],
+): {
   nodes: RelationshipNode[];
   hiddenConnections: HiddenConnection[];
 } {
   const nodeMap = new Map<string, RelationshipNode>();
   const connectionMap = new Map<string, Map<string, { count: number; contexts: string[]; suspicious: boolean }>>();
 
-  const ensureNode = (name: string) => {
+  const ensureNode = (name: string, preferredRole: RelationshipNode['role'] = 'unknown') => {
     if (!nodeMap.has(name)) {
       nodeMap.set(name, {
         name,
-        role: 'unknown',
+        role: preferredRole,
         connections: [],
       });
+    } else if (preferredRole !== 'unknown') {
+      const existing = nodeMap.get(name)!;
+      if (existing.role === 'unknown') {
+        existing.role = preferredRole;
+      }
     }
     return nodeMap.get(name)!;
   };
@@ -550,8 +602,11 @@ function fallbackRelationshipNetwork(documents: string[]): {
     }
   };
 
-  documents.forEach(documentText => {
-    const sentences = splitSentences(documentText);
+  suspects.map(name => name.trim()).filter(Boolean).forEach(name => ensureNode(name, 'suspect'));
+  witnesses.map(name => name.trim()).filter(Boolean).forEach(name => ensureNode(name, 'witness'));
+
+  documents.forEach(document => {
+    const sentences = splitSentences(document.text);
     sentences.forEach(sentence => {
       const names = extractProperNames(sentence);
       if (names.length === 0) return;
@@ -570,7 +625,7 @@ function fallbackRelationshipNetwork(documents: string[]): {
 
       for (let i = 0; i < names.length; i += 1) {
         for (let j = i + 1; j < names.length; j += 1) {
-          addConnection(names[i], names[j], sentence);
+          addConnection(names[i], names[j], `${document.source}: ${sentence}`);
         }
       }
     });
@@ -634,17 +689,35 @@ function fallbackRelationshipNetwork(documents: string[]): {
 }
 
 export async function mapRelationshipNetwork(
-  documents: string[]
+  suspects: string[],
+  witnesses: string[],
+  documents: RelationshipDocumentInput[],
 ): Promise<{ nodes: RelationshipNode[]; hiddenConnections: HiddenConnection[] }> {
+  const cleanedSuspects = suspects.map(name => name.trim()).filter(Boolean);
+  const cleanedWitnesses = witnesses.map(name => name.trim()).filter(Boolean);
+  const normalizedDocuments = normaliseRelationshipDocuments(documents);
 
-  if (!documents.length) {
+  if (!normalizedDocuments.length && !cleanedSuspects.length && !cleanedWitnesses.length) {
     return { nodes: [], hiddenConnections: [] };
   }
 
   if (!isAnthropicConfigured()) {
     console.warn('[ColdCaseAnalyzer] Anthropic key missing for relationship network analysis. Using heuristic fallback.');
-    return fallbackRelationshipNetwork(documents);
+    return fallbackRelationshipNetwork(cleanedSuspects, cleanedWitnesses, normalizedDocuments);
   }
+
+  const suspectSection = cleanedSuspects.length
+    ? cleanedSuspects.map(name => `- ${name}`).join('\n')
+    : 'None provided';
+  const witnessSection = cleanedWitnesses.length
+    ? cleanedWitnesses.map(name => `- ${name}`).join('\n')
+    : 'None provided';
+
+  const documentSection = normalizedDocuments.length
+    ? normalizedDocuments
+        .map((doc, index) => `Document ${index + 1} (${doc.source}):\n${doc.text}`)
+        .join('\n\n---\n\n')
+    : 'No documents were available. Base your analysis on the known persons of interest only.';
 
   const prompt = `You are a detective specializing in uncovering hidden relationships. Analyze these documents to map ALL relationships between people involved in this case.
 
@@ -665,8 +738,14 @@ FOCUS ON:
    - Omitting shared history
    - Multiple people connected to same person but claiming independence
 
-DOCUMENTS:
-${documents.join('\n\n---\n\n')}
+KNOWN SUSPECTS:
+${suspectSection}
+
+KNOWN WITNESSES OR ASSOCIATES:
+${witnessSection}
+
+DOCUMENTS AND NOTES:
+${documentSection}
 
 Create a network map showing:
 - All people involved
@@ -692,7 +771,7 @@ Return JSON with nodes (RelationshipNode[]) and hiddenConnections (HiddenConnect
     return safeJsonExtract(content.text, /\{[\s\S]*\}/);
   } catch (error) {
     console.error('[ColdCaseAnalyzer] Relationship network analysis failed. Falling back to heuristics.', error);
-    return fallbackRelationshipNetwork(documents);
+    return fallbackRelationshipNetwork(cleanedSuspects, cleanedWitnesses, normalizedDocuments);
   }
 }
 
@@ -1398,6 +1477,62 @@ export async function performComprehensiveAnalysis(
 
   console.log(`Starting comprehensive analysis for case ${caseId}...`);
 
+  const suspectNames = Array.isArray(caseData.suspects)
+    ? caseData.suspects
+        .map((suspect: any) =>
+          typeof suspect === 'string'
+            ? suspect
+            : suspect?.name || suspect?.fullName || suspect?.personName || '',
+        )
+        .map((name: string) => name.trim())
+        .filter(Boolean)
+    : [];
+
+  const witnessNames = Array.isArray(caseData.witnesses)
+    ? caseData.witnesses
+        .map((witness: any) =>
+          typeof witness === 'string'
+            ? witness
+            : witness?.name || witness?.fullName || witness?.personName || '',
+        )
+        .map((name: string) => name.trim())
+        .filter(Boolean)
+    : [];
+
+  const documentInputs = Array.isArray(caseData.documents)
+    ? caseData.documents
+        .map((doc: any, index: number) => {
+          if (typeof doc === 'string') {
+            const text = doc.trim();
+            if (!text) {
+              return null;
+            }
+            return {
+              filename: `Document ${index + 1}`,
+              content: text,
+            };
+          }
+
+          if (!doc) {
+            return null;
+          }
+
+          const content = (doc.content || doc.text || doc.summary || '').toString().trim();
+          if (!content) {
+            return null;
+          }
+
+          const filename = doc.filename || doc.title || doc.name || `Document ${index + 1}`;
+
+          return {
+            ...doc,
+            filename,
+            content,
+          };
+        })
+        .filter((doc: any) => Boolean(doc))
+    : [];
+
   // Run all analyses in parallel for speed
   const [
     behavioralPatterns,
@@ -1407,8 +1542,8 @@ export async function performComprehensiveAnalysis(
   ] = await Promise.all([
     analyzeBehavioralPatterns(caseData.interviews || []),
     identifyEvidenceGaps(caseData),
-    mapRelationshipNetwork(caseData.documents || []),
-    findOverlookedDetails(caseData.documents || []),
+    mapRelationshipNetwork(suspectNames, witnessNames, documentInputs),
+    findOverlookedDetails(documentInputs),
   ]);
 
   // Generate interrogation strategies for top suspects
