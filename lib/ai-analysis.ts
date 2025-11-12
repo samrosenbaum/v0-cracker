@@ -1,5 +1,6 @@
 import { DEFAULT_ANTHROPIC_MODEL, getAnthropicClient, isAnthropicConfigured } from './anthropic-client';
 import { fallbackCaseAnalysis, fallbackDeepCaseAnalysis } from './ai-fallback';
+import type { DocumentInput } from './ai-fallback';
 import { getCaseById } from './demo-data';
 
 export interface TimelineEvent {
@@ -102,7 +103,7 @@ Return your analysis as a JSON object matching the CaseAnalysis interface.
 Be thorough, objective, and flag anything suspicious or requiring attention.`;
 
 export async function analyzeCaseDocuments(
-  documents: { content: string; filename: string; type: string }[],
+  documents: DocumentInput[],
   caseId?: string
 ): Promise<CaseAnalysis> {
   const baseCase = caseId ? getCaseById(caseId) : null;

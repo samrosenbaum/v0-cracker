@@ -155,7 +155,79 @@ async function run() {
     exports: {
       analyzeCaseDocuments: async (docs: any[]) => {
         analyzedDocuments = docs;
-        return { timeline: [], conflicts: [], personMentions: [] };
+        const providedAnalysis = {
+          timeline: [
+            {
+              id: 'event-early',
+              date: '2024-01-01',
+              startTime: '2024-01-01T08:00:00Z',
+              endTime: '2024-01-01T09:00:00Z',
+              description: 'Victim meets coworker for breakfast.',
+              source: 'metadata-report.txt',
+              sourceType: 'report',
+              location: 'Harbor Cafe',
+              involvedPersons: ['Victim', 'Coworker'],
+              confidence: 0.92,
+            },
+            {
+              id: 'event-no-location',
+              date: '2024-01-01',
+              time: '10:15',
+              description: 'Witness mentions an encounter but cannot recall the location.',
+              source: 'metadata-report.txt',
+              sourceType: 'report',
+              location: 'Unknown',
+              involvedPersons: ['Witness A'],
+              confidence: 0.55,
+            },
+            {
+              id: 'event-mid',
+              date: '2024-01-01',
+              description: 'Anonymous tip references a meetup without a solid time anchor.',
+              source: 'ocr-scan.json',
+              sourceType: 'scan',
+              location: 'Riverwalk Overlook',
+              involvedPersons: ['Victim'],
+              confidence: 0.48,
+            },
+            {
+              id: 'event-late',
+              date: '2024-01-01',
+              startTime: '2024-01-01T13:30:00Z',
+              endTime: '2024-01-01T14:00:00Z',
+              description: 'Victim seen entering downtown loft on security footage.',
+              source: 'ocr-scan.json',
+              sourceType: 'scan',
+              location: 'Downtown Loft',
+              involvedPersons: ['Victim'],
+              confidence: 0.88,
+            },
+          ],
+          conflicts: [],
+          personMentions: [],
+          gaps: [
+            {
+              startTime: 'Unknown',
+              endTime: 'Unknown',
+              lastKnownLocation: 'Unknown',
+              nextKnownLocation: 'Unknown',
+            },
+            {
+              startTime: 'Unknown',
+              endTime: 'Unknown',
+              lastKnownLocation: 'Unknown',
+              nextKnownLocation: 'Unknown',
+            },
+            {
+              startTime: '2024-01-01T09:00:00.000Z',
+              endTime: '2024-01-01T13:30:00.000Z',
+              lastKnownLocation: 'Harbor Cafe',
+              nextKnownLocation: 'Downtown Loft',
+            },
+          ],
+          topPriorities: [],
+        };
+        return providedAnalysis;
       },
       detectTimeConflicts: () => [],
       identifyOverlookedSuspects: () => [],
@@ -167,7 +239,9 @@ async function run() {
     const routeModule = require('../app/api/cases/[caseId]/analyze/route.ts');
     const { runFallbackAnalysis } = routeModule.__testables;
 
-    await runFallbackAnalysis('case-123', { reason: 'unit-test', useSupabase: true });
+    const response = await runFallbackAnalysis('case-123', { reason: 'unit-test', useSupabase: true });
+    const payload = await response.json();
+    const analysis = payload.analysis;
 
     assert.ok(analyzedDocuments, 'analyzeCaseDocuments should be invoked');
     assert.equal(analyzedDocuments!.length, 2, 'only documents with meaningful text should be analyzed');
@@ -193,6 +267,21 @@ async function run() {
       analyzedDocuments!.every((doc) => !/\[No extracted text/i.test(doc.content)),
       'placeholder strings must not be forwarded to analysis'
     );
+
+    assert.ok(Array.isArray(analysis.gaps), 'analysis should include sanitized gaps');
+    const anchoredGap = analysis.gaps.find(
+      (gap: any) => gap.startEventId === 'event-early' && gap.endEventId === 'event-late'
+    );
+    assert.ok(anchoredGap, 'gaps should connect anchored events with concrete time and location');
+    assert.equal(
+      analysis.gaps.filter((gap: any) => gap.startEventId === 'event-no-location').length,
+      0,
+      'events without concrete locations should not anchor gaps'
+    );
+    const placeholderDeduped = analysis.gaps.filter((gap: any) => {
+      return /unknown/i.test(gap.lastKnownLocation || '') && /unknown/i.test(gap.nextKnownLocation || '');
+    });
+    assert.ok(placeholderDeduped.length <= 1, 'duplicate placeholder gaps should be removed');
   } finally {
     if (originalSupabaseModule) {
       require.cache[supabaseModulePath] = originalSupabaseModule;
