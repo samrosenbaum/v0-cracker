@@ -18,6 +18,7 @@ import {
   identifyOverlookedSuspects,
   generateConflictSummary,
 } from '@/lib/ai-analysis';
+import type { DocumentInput } from '@/lib/ai-fallback';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -215,7 +216,7 @@ async function gatherDocumentsForAnalysis(caseId: string, preferSupabase: boolea
         .eq('case_id', caseId);
 
       if (!docError && supabaseDocs && supabaseDocs.length > 0) {
-        const documents: { content: string; filename: string; type: string }[] = [];
+        const documents: DocumentInput[] = [];
         const skippedDocuments: string[] = [];
 
         for (const doc of supabaseDocs) {
@@ -229,6 +230,7 @@ async function gatherDocumentsForAnalysis(caseId: string, preferSupabase: boolea
               content,
               filename: doc.file_name,
               type: doc.document_type || 'other',
+              metadata: (doc.metadata as Record<string, any> | null) || null,
             });
           } else {
             skippedDocuments.push(doc.file_name);
@@ -259,7 +261,7 @@ async function gatherDocumentsForAnalysis(caseId: string, preferSupabase: boolea
   }
 
   const demoDocs = listCaseDocuments(caseId);
-  const demoDocuments: { content: string; filename: string; type: string }[] = [];
+  const demoDocuments: DocumentInput[] = [];
   const skippedDemoDocs: string[] = [];
 
   for (const doc of demoDocs) {
@@ -280,6 +282,7 @@ async function gatherDocumentsForAnalysis(caseId: string, preferSupabase: boolea
         content,
         filename: doc.file_name,
         type: doc.document_type || 'other',
+        metadata: (doc.metadata as Record<string, any> | null) || null,
       });
     } else {
       skippedDemoDocs.push(doc.file_name);
