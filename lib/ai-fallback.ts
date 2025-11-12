@@ -72,6 +72,27 @@ function hasMeaningfulWords(line: string): boolean {
   return informativeTokens.length >= 2;
 }
 
+function looksLikePdfArtifact(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+
+  if (/[\uFFFD\u0000]/.test(trimmed)) {
+    return true;
+  }
+
+  const symbolOnly = trimmed.replace(/[A-Za-z0-9\s,.'"()\-:;]/g, '');
+  if (symbolOnly.length / trimmed.length > 0.35) {
+    return true;
+  }
+
+  const pdfTokens = trimmed.match(/\/[A-Za-z0-9]+/g) || [];
+  if (pdfTokens.length >= 3 && /<</.test(trimmed)) {
+    return true;
+  }
+
+  return /^(?:<<|>>|xref\b|obj\b|endobj\b|stream\b|endstream\b)/i.test(trimmed);
+}
+
 function isMeaningfulLine(line: string): boolean {
   if (!line) return false;
   if (isPlaceholderLine(line)) return false;
@@ -84,6 +105,9 @@ function isMeaningfulLine(line: string): boolean {
     if (tokens.length <= 3 || !hasMeaningfulWords(trimmed)) {
       return false;
     }
+  }
+  if (looksLikePdfArtifact(trimmed)) {
+    return false;
   }
   return /[A-Za-z]/.test(trimmed) && hasMeaningfulWords(trimmed);
 }
