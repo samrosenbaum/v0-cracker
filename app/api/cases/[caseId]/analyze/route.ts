@@ -50,43 +50,157 @@ export async function GET() {
   );
 }
 
-async function resolveDocumentContent(
-  storagePath?: string | null,
-  metadata?: Record<string, any>
-): Promise<string> {
-  if (metadata) {
-    const textLikeFields = ['extracted_text', 'text', 'content', 'body', 'summary'];
-    for (const field of textLikeFields) {
-      const value = metadata[field];
-      if (typeof value === 'string' && value.trim().length > 0) {
-        return value;
+const PLACEHOLDER_PATTERNS = [
+  /^\s*\[no extracted text[\s\S]*\]\s*$/i,
+  /^\s*\[could not extract text[\s\S]*\]\s*$/i,
+  /^\s*summary unavailable for[\s\S]*$/i,
+];
+
+function isPlaceholderText(text: string): boolean {
+  return PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function isMeaningfulContent(text?: string | null): text is string {
+  if (typeof text !== 'string') {
+    return false;
+  }
+
+  const normalized = text.replace(/\r\n/g, '\n').trim();
+  if (!normalized) {
+    return false;
+  }
+
+  return !isPlaceholderText(normalized);
+}
+
+function extractTextSegments(value: unknown, seen: WeakSet<object>): string[] {
+  const segments: string[] = [];
+
+  function traverse(input: unknown) {
+    if (input === null || input === undefined) {
+      return;
+    }
+
+    if (typeof input === 'string') {
+      segments.push(input);
+      return;
+    }
+
+    if (Array.isArray(input)) {
+      for (const item of input) {
+        traverse(item);
+      }
+      return;
+    }
+
+    if (typeof input === 'object') {
+      const objectValue = input as Record<string, unknown>;
+      if (seen.has(objectValue)) {
+        return;
+      }
+      seen.add(objectValue);
+      for (const value of Object.values(objectValue)) {
+        traverse(value);
       }
     }
   }
 
-  if (!storagePath) {
+  traverse(value);
+  return segments;
+}
+
+function combineSegments(segments: string[]): string {
+  const orderedSegments: string[] = [];
+  const seen = new Set<string>();
+
+  for (const segment of segments) {
+    const normalized = segment.replace(/\r\n/g, '\n').trim();
+    if (!isMeaningfulContent(normalized)) {
+      continue;
+    }
+    if (seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    orderedSegments.push(normalized);
+  }
+
+  return orderedSegments.join('\n\n');
+}
+
+function extractTextFromMetadata(metadata?: Record<string, any>): string {
+  if (!metadata) {
     return '';
   }
 
-  try {
-    const { data, error } = await supabaseServer.storage
-      .from('case-files')
-      .download(storagePath);
+  const segments = extractTextSegments(metadata, new WeakSet<object>());
+  return combineSegments(segments);
+}
 
-    if (!error && data) {
-      const buffer = Buffer.from(await data.arrayBuffer());
-      const text = buffer.toString('utf-8');
-      if (text.trim().length > 0) {
-        return text;
-      }
-    }
-  } catch (storageError) {
-    console.warn('[Timeline Analysis API] Failed to download from storage:', storageError);
+function looksLikeJson(text: string): boolean {
+  const trimmed = text.trim();
+  return (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  );
+}
+
+function deriveTextFromString(rawText: string): string {
+  if (!rawText) {
+    return '';
   }
 
-  const fallbackObject = getStorageObject('case-files', storagePath);
-  if (fallbackObject?.content) {
-    return fallbackObject.content;
+  const trimmed = rawText.replace(/\r\n/g, '\n');
+  const segments: string[] = [trimmed];
+
+  if (looksLikeJson(trimmed)) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      segments.push(...extractTextSegments(parsed, new WeakSet<object>()));
+    } catch (error) {
+      console.warn('[Timeline Analysis API] Unable to parse storage JSON payload:', error);
+    }
+  }
+
+  return combineSegments(segments);
+}
+
+async function resolveDocumentContent(
+  storagePath?: string | null,
+  metadata?: Record<string, any>,
+  options: { skipSupabaseStorage?: boolean } = {}
+): Promise<string> {
+  const metadataText = extractTextFromMetadata(metadata);
+  if (isMeaningfulContent(metadataText)) {
+    return metadataText;
+  }
+
+  if (!options.skipSupabaseStorage && storagePath) {
+    try {
+      const { data, error } = await supabaseServer.storage
+        .from('case-files')
+        .download(storagePath);
+
+      if (!error && data) {
+        const buffer = Buffer.from(await data.arrayBuffer());
+        const text = deriveTextFromString(buffer.toString('utf-8'));
+        if (isMeaningfulContent(text)) {
+          return text;
+        }
+      }
+    } catch (storageError) {
+      console.warn('[Timeline Analysis API] Failed to download from storage:', storageError);
+    }
+  }
+
+  if (storagePath) {
+    const fallbackObject = getStorageObject('case-files', storagePath);
+    if (fallbackObject?.content) {
+      const fallbackText = deriveTextFromString(fallbackObject.content);
+      if (isMeaningfulContent(fallbackText)) {
+        return fallbackText;
+      }
+    }
   }
 
   return '';
@@ -102,16 +216,41 @@ async function gatherDocumentsForAnalysis(caseId: string, preferSupabase: boolea
 
       if (!docError && supabaseDocs && supabaseDocs.length > 0) {
         const documents: { content: string; filename: string; type: string }[] = [];
+        const skippedDocuments: string[] = [];
+
         for (const doc of supabaseDocs) {
-          const content = await resolveDocumentContent(doc.storage_path, doc.metadata);
-          documents.push({
-            content: content || `[No extracted text available for ${doc.file_name}]`,
-            filename: doc.file_name,
-            type: doc.document_type || 'other',
-          });
+          const content = await resolveDocumentContent(
+            doc.storage_path,
+            doc.metadata as Record<string, any> | undefined
+          );
+
+          if (isMeaningfulContent(content)) {
+            documents.push({
+              content,
+              filename: doc.file_name,
+              type: doc.document_type || 'other',
+            });
+          } else {
+            skippedDocuments.push(doc.file_name);
+          }
         }
+
         if (documents.length > 0) {
+          if (skippedDocuments.length > 0) {
+            console.warn(
+              '[Timeline Analysis API] Skipping documents with no extractable text:',
+              skippedDocuments
+            );
+          }
           return documents;
+        }
+
+        if (skippedDocuments.length > 0) {
+          console.warn(
+            '[Timeline Analysis API] No extractable Supabase document content found for case:',
+            caseId,
+            skippedDocuments
+          );
         }
       }
     } catch (error) {
@@ -120,21 +259,38 @@ async function gatherDocumentsForAnalysis(caseId: string, preferSupabase: boolea
   }
 
   const demoDocs = listCaseDocuments(caseId);
-  return demoDocs.map((doc) => {
-    const storage = doc.storage_path
-      ? getStorageObject('case-files', doc.storage_path)
-      : null;
-    const content =
-      (typeof doc.metadata?.extracted_text === 'string' && doc.metadata.extracted_text) ||
-      storage?.content ||
-      '';
+  const demoDocuments: { content: string; filename: string; type: string }[] = [];
+  const skippedDemoDocs: string[] = [];
 
-    return {
-      content: content || `Summary unavailable for ${doc.file_name}.`,
-      filename: doc.file_name,
-      type: doc.document_type || 'other',
-    };
-  });
+  for (const doc of demoDocs) {
+    const metadataText = extractTextFromMetadata(doc.metadata as Record<string, any> | undefined);
+    let content = metadataText;
+
+    if (!isMeaningfulContent(content)) {
+      const storage = doc.storage_path
+        ? getStorageObject('case-files', doc.storage_path)
+        : null;
+      if (storage?.content) {
+        content = deriveTextFromString(storage.content);
+      }
+    }
+
+    if (isMeaningfulContent(content)) {
+      demoDocuments.push({
+        content,
+        filename: doc.file_name,
+        type: doc.document_type || 'other',
+      });
+    } else {
+      skippedDemoDocs.push(doc.file_name);
+    }
+  }
+
+  if (skippedDemoDocs.length > 0) {
+    console.warn('[Timeline Analysis API] Demo documents without usable text:', skippedDemoDocs);
+  }
+
+  return demoDocuments;
 }
 
 async function runFallbackAnalysis(
@@ -394,6 +550,15 @@ async function runFallbackAnalysis(
     )
   );
 }
+
+export const __testables = {
+  resolveDocumentContent,
+  gatherDocumentsForAnalysis,
+  runFallbackAnalysis,
+  extractTextFromMetadata,
+  deriveTextFromString,
+  isMeaningfulContent,
+};
 
 export async function POST(
   request: NextRequest,
