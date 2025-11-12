@@ -14,7 +14,23 @@ function ensureWorkerConfigured() {
   if (workerConfigured) return;
 
   try {
-    PDFParse.setWorker('');
+    // Only configure the worker when running in a browser context. On the
+    // server (where our document parsing runs) pdfjs-dist falls back to a
+    // synchronous parser and does not require a worker script. Setting an
+    // empty worker source caused pdf.js to throw "Unable to load PDF parser
+    // module", which is exactly the error we saw in the Victim Timeline
+    // Reconstruction output.
+    if (typeof PDFParse.setWorker === 'function') {
+      if (typeof window !== 'undefined') {
+        PDFParse.setWorker(
+          'https://cdn.jsdelivr.net/npm/pdf-parse@latest/dist/pdf-parse/web/pdf.worker.mjs'
+        );
+      } else {
+        // In Node environments just touch the getter so pdf.js keeps its
+        // default worker configuration.
+        PDFParse.setWorker();
+      }
+    }
   } catch (workerError) {
     console.warn('[pdf-parse compat] Failed to configure worker', workerError);
   } finally {
