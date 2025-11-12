@@ -1,5 +1,41 @@
 const fs = require('node:fs');
+const path = require('node:path');
+const Module = require('module');
 const ts = require('typescript');
+
+const baseUrl = path.resolve(__dirname, '..');
+
+const originalResolveFilename = Module._resolveFilename;
+Module._resolveFilename = function patchedResolveFilename(request, parent, isMain, options) {
+  if (typeof request === 'string') {
+    if (request.startsWith('@/')) {
+      const absolutePath = path.join(baseUrl, request.slice(2));
+      return originalResolveFilename.call(this, absolutePath, parent, isMain, options);
+    }
+
+    if (request === 'pdfjs-dist/legacy/build/pdf.mjs') {
+      const stubPath = path.join(__dirname, 'stubs', 'pdfjs-dist', 'legacy', 'build', 'pdf.mjs');
+      return originalResolveFilename.call(this, stubPath, parent, isMain, options);
+    }
+
+    if (request.startsWith('pdfjs-dist/')) {
+      try {
+        return originalResolveFilename.call(this, request, parent, isMain, options);
+      } catch (error) {
+        const nestedRequest = path.join(
+          baseUrl,
+          'node_modules',
+          'pdf-parse',
+          'node_modules',
+          request
+        );
+        return originalResolveFilename.call(this, nestedRequest, parent, isMain, options);
+      }
+    }
+  }
+
+  return originalResolveFilename.call(this, request, parent, isMain, options);
+};
 
 const compilerOptions = {
   module: ts.ModuleKind.CommonJS,
@@ -8,22 +44,6 @@ const compilerOptions = {
   resolveJsonModule: true,
   jsx: ts.JsxEmit.ReactJSX,
   moduleResolution: ts.ModuleResolutionKind.NodeNext,
-};
-
-const Module = require('node:module');
-const path = require('node:path');
-const originalResolveFilename = Module._resolveFilename;
-
-Module._resolveFilename = function patchedResolveFilename(request, parent, isMain, options) {
-  if (typeof request === 'string' && request.startsWith('@/')) {
-    const absolutePath = path.join(__dirname, '..', request.slice(2));
-    return originalResolveFilename.call(this, absolutePath, parent, isMain, options);
-  }
-  if (request === 'pdfjs-dist/legacy/build/pdf.mjs') {
-    const stubPath = path.join(__dirname, 'stubs', 'pdfjs-dist', 'legacy', 'build', 'pdf.mjs');
-    return originalResolveFilename.call(this, stubPath, parent, isMain, options);
-  }
-  return originalResolveFilename.call(this, request, parent, isMain, options);
 };
 
 require.extensions['.ts'] = function registerTsExtension(module, filename) {

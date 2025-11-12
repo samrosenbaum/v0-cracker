@@ -544,7 +544,7 @@ async function resolveDocumentContent(
   return '';
 }
 
-async function gatherDocumentsForAnalysis(caseId: string, preferSupabase: boolean) {
+export async function gatherDocumentsForAnalysis(caseId: string, preferSupabase: boolean) {
   if (preferSupabase) {
     try {
       const { data: supabaseDocs, error: docError } = await supabaseServer
@@ -592,8 +592,11 @@ async function gatherDocumentsForAnalysis(caseId: string, preferSupabase: boolea
           );
         }
       }
+
+      return [];
     } catch (error) {
       console.error('[Timeline Analysis API] Failed to gather documents from Supabase:', error);
+      return [];
     }
   }
 
