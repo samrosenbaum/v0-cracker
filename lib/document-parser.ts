@@ -28,26 +28,33 @@ if (typeof globalThis.DOMMatrix === 'undefined') {
 }
 
 async function loadPdfJsModule(): Promise<PdfjsModule | null> {
-  if (!pdfjsModulePromise) {
-    pdfjsModulePromise = import('pdfjs-dist/legacy/build/pdf.mjs')
-      .then(mod => {
-        try {
-          if (mod.GlobalWorkerOptions) {
-            mod.GlobalWorkerOptions.workerSrc = '';
-          }
-        } catch (workerError) {
-          console.warn('[Document Parser] Unable to configure pdfjs worker', workerError);
-        }
-        return mod;
-      })
-      .catch(error => {
-        console.error('[Document Parser] Failed to load pdfjs module:', error);
-        pdfjsModulePromise = null;
-        return null;
-      });
-  }
+  // DISABLED: pdfjs-dist requires full DOMMatrix implementation which is not available in Node.js
+  // The DOMMatrix polyfill is insufficient for pdfjs-dist's canvas operations
+  // Using pdf-parse instead, which works reliably in server-side environments
+  console.log('[Document Parser] pdfjs-dist disabled, using pdf-parse for PDF extraction');
+  return null;
 
-  return pdfjsModulePromise;
+  // Original implementation (disabled):
+  // if (!pdfjsModulePromise) {
+  //   pdfjsModulePromise = import('pdfjs-dist/legacy/build/pdf.mjs')
+  //     .then(mod => {
+  //       try {
+  //         if (mod.GlobalWorkerOptions) {
+  //           mod.GlobalWorkerOptions.workerSrc = '';
+  //         }
+  //       } catch (workerError) {
+  //         console.warn('[Document Parser] Unable to configure pdfjs worker', workerError);
+  //       }
+  //       return mod;
+  //     })
+  //     .catch(error => {
+  //       console.error('[Document Parser] Failed to load pdfjs module:', error);
+  //       pdfjsModulePromise = null;
+  //       return null;
+  //     });
+  // }
+  //
+  // return pdfjsModulePromise;
 }
 
 // Initialize OpenAI client for Whisper transcription

@@ -207,11 +207,16 @@ export const processTimelineAnalysisJob = inngest.createFunction(
       // Step 6: Save conflicts and complete analysis
       await step.run('save-conflicts-and-finalize', async () => {
         // Identify overlooked suspects
-        const { data: formalSuspects } = await supabaseServer
+        const { data: formalSuspects, error: suspectsError } = await supabaseServer
           .from('persons_of_interest')
           .select('name')
           .eq('case_id', caseId)
           .eq('status', 'suspect');
+
+        // Handle missing persons_of_interest table gracefully
+        if (suspectsError && suspectsError.message.includes('does not exist')) {
+          console.warn('[Timeline Analysis Job] persons_of_interest table not found, using empty suspects list');
+        }
 
         const overlookedSuspects = identifyOverlookedSuspects(
           analysis.personMentions,

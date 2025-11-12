@@ -201,7 +201,14 @@ async function runFallbackAnalysis(
         .select('name')
         .eq('case_id', caseId)
         .eq('status', 'suspect');
-      if (!suspectError && suspects) {
+
+      if (suspectError) {
+        if (suspectError.message.includes('does not exist')) {
+          console.warn('[Timeline Analysis API] persons_of_interest table not found, using empty suspects list');
+        } else {
+          console.warn('[Timeline Analysis API] Error fetching suspects:', suspectError);
+        }
+      } else if (suspects) {
         formalSuspects = suspects
           .map((suspect) => suspect?.name)
           .filter((name): name is string => Boolean(name));

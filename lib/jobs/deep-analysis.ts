@@ -85,8 +85,24 @@ export const processDeepAnalysisJob = inngest.createFunction(
           supabaseServer.from('case_files').select('*').eq('case_id', caseId),
         ]);
 
-        if (docsError) throw new Error(`Failed to fetch documents: ${docsError.message}`);
-        if (suspectsError) throw new Error(`Failed to fetch suspects: ${suspectsError.message}`);
+        // Handle missing case_documents table gracefully
+        if (docsError) {
+          if (docsError.message.includes('does not exist')) {
+            console.warn('[Deep Analysis Job] case_documents table not found, using empty documents list');
+          } else {
+            throw new Error(`Failed to fetch documents: ${docsError.message}`);
+          }
+        }
+
+        // Handle missing persons_of_interest table gracefully
+        if (suspectsError) {
+          if (suspectsError.message.includes('does not exist')) {
+            console.warn('[Deep Analysis Job] persons_of_interest table not found, using empty suspects list');
+          } else {
+            throw new Error(`Failed to fetch suspects: ${suspectsError.message}`);
+          }
+        }
+
         if (evidenceError) throw new Error(`Failed to fetch evidence: ${evidenceError.message}`);
 
         console.log(`[Deep Analysis] Found:`);
