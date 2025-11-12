@@ -27,6 +27,8 @@ class MockQueryBuilder<T extends Record<string, any>> {
   private orderBys: { column: string; ascending: boolean }[] = [];
   private pendingRows: T[] | null;
   private rangeArgs: { from: number; to?: number } | null = null;
+  private selectedColumns: string = '*';
+  private selectOptions?: { count?: 'exact' | 'planned' | 'estimated'; head?: boolean };
 
   constructor(private tableName: string, pendingRows: T[] | null = null) {
     this.pendingRows = pendingRows;
@@ -115,7 +117,21 @@ class MockQueryBuilder<T extends Record<string, any>> {
     return this;
   }
 
-  async select(columns: string = '*', options?: { count?: 'exact' | 'planned' | 'estimated'; head?: boolean }): QueryResult<T> {
+  select(columns: string = '*', options?: { count?: 'exact' | 'planned' | 'estimated'; head?: boolean }): this {
+    this.selectedColumns = columns;
+    this.selectOptions = options;
+    return this;
+  }
+
+  private resetSelection() {
+    this.selectedColumns = '*';
+    this.selectOptions = undefined;
+  }
+
+  private async executeSelect(
+    columns: string = this.selectedColumns,
+    options: { count?: 'exact' | 'planned' | 'estimated'; head?: boolean } | undefined = this.selectOptions,
+  ): QueryResult<T> {
     const rows = this.pendingRows ? [...this.pendingRows] : cloneRow(getTable<T>(this.tableName));
     const filtered = this.pendingRows ? rows : this.applyFilters(rows);
     const ordered = this.applyOrder(filtered);
@@ -124,15 +140,25 @@ class MockQueryBuilder<T extends Record<string, any>> {
     const count = options?.count ? filtered.length : null;
 
     if (options?.head) {
-      return Promise.resolve({ data: [], error: null, count });
+      this.resetSelection();
+      this.filters = [];
+      this.orderBys = [];
+      this.rangeArgs = null;
+      this.pendingRows = null;
+      return { data: [], error: null, count };
     }
 
     const data = ranged.map((row) => this.pickColumns(row, columns));
-    return Promise.resolve({ data, error: null, count });
+    this.resetSelection();
+    this.filters = [];
+    this.orderBys = [];
+    this.rangeArgs = null;
+    this.pendingRows = null;
+    return { data, error: null, count };
   }
 
   async single(columns: string = '*'): SingleResult<T> {
-    const { data, error } = await this.select(columns);
+    const { data, error } = await this.executeSelect(columns, this.selectOptions);
     if (error) return { data: null, error };
     if (!data || data.length === 0) {
       return {
@@ -148,9 +174,16 @@ class MockQueryBuilder<T extends Record<string, any>> {
   }
 
   async maybeSingle(columns: string = '*'): SingleResult<T> {
-    const { data, error } = await this.select(columns);
+    const { data, error } = await this.executeSelect(columns, this.selectOptions);
     if (error) return { data: null, error };
     return { data: data && data.length ? data[0] : null, error: null };
+  }
+
+  then<TResult1 = QueryResult<T>, TResult2 = never>(
+    onfulfilled?: (value: QueryResult<T>) => TResult1 | PromiseLike<TResult1>,
+    onrejected?: (reason: any) => TResult2 | PromiseLike<TResult2>,
+  ) {
+    return this.executeSelect(this.selectedColumns, this.selectOptions).then(onfulfilled, onrejected);
   }
 
   insert(values: Partial<T> | Partial<T>[]) {

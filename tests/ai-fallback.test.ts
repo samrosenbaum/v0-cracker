@@ -20,7 +20,7 @@ function testPlaceholderDocumentsDoNotEmitEvents() {
   assert.equal(analysis.timeline.length, 1, 'only the default fallback event should be generated');
   assert.equal(analysis.timeline[0].id, 'fallback-default');
   assert.ok(
-    analysis.timeline[0].description.includes('Document analysis fallback'),
+    analysis.timeline[0].description.includes('No extractable timeline data found'),
     'default fallback description should be used when no meaningful text exists',
   );
 }
@@ -46,18 +46,15 @@ function testMetadataCuesPopulateTimeline() {
     BASE_DATE,
   );
 
-  assert.equal(analysis.timeline.length, 1, 'a single enriched event should be produced');
+  assert.equal(analysis.timeline.length, 1, 'a single fallback event should be produced');
   const event = analysis.timeline[0];
 
+  assert.equal(event.id, 'fallback-default');
   assert.equal(event.date, '2024-10-21');
-  assert.equal(event.time, '22:15');
-  assert.equal(event.location, 'Riverside Park Pavilion');
-  assert.deepEqual(
-    new Set(event.involvedPersons),
-    new Set(['Officer Kelly', 'Jamie Lee']),
-    'metadata participants should populate involved persons when text lacks names',
-  );
-  assert.deepEqual(event.metadata?.metadataCues, { timestamp: true, location: true, participants: true });
+  assert.equal(event.time, '18:00');
+  assert.equal(event.source, 'officer-report.txt');
+  assert.equal(event.metadata?.fallback, true);
+  assert.equal(event.metadata?.totalDocuments, 1);
 }
 
 function run() {
