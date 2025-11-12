@@ -1,3 +1,4 @@
+import '../polyfills/dom-matrix';
 import { PDFParse } from 'pdf-parse';
 
 interface LegacyPdfParseResult {
