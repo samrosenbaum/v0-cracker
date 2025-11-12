@@ -72,8 +72,23 @@ export const processEvidenceGapsJob = inngest.createFunction(
         ]);
 
         if (evidenceError) throw new Error(`Failed to fetch evidence: ${evidenceError.message}`);
-        if (suspectsError) throw new Error(`Failed to fetch suspects: ${suspectsError.message}`);
-        if (witnessesError) throw new Error(`Failed to fetch witnesses: ${witnessesError.message}`);
+
+        // Handle missing persons_of_interest table gracefully
+        if (suspectsError) {
+          if (suspectsError.message.includes('does not exist')) {
+            console.warn('[Evidence Gaps Job] persons_of_interest table not found, using empty suspects list');
+          } else {
+            throw new Error(`Failed to fetch suspects: ${suspectsError.message}`);
+          }
+        }
+
+        if (witnessesError) {
+          if (witnessesError.message.includes('does not exist')) {
+            console.warn('[Evidence Gaps Job] persons_of_interest table not found, using empty witnesses list');
+          } else {
+            throw new Error(`Failed to fetch witnesses: ${witnessesError.message}`);
+          }
+        }
 
         console.log(`[Evidence Gaps] Found: ${evidence?.length || 0} evidence items, ${suspects?.length || 0} suspects, ${witnesses?.length || 0} witnesses`);
 

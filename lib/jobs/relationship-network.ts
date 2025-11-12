@@ -64,9 +64,31 @@ export const processRelationshipNetworkJob = inngest.createFunction(
           supabaseServer.from('case_documents').select('*').eq('case_id', caseId),
         ]);
 
-        if (suspectsError) throw new Error(`Failed to fetch suspects: ${suspectsError.message}`);
-        if (witnessesError) throw new Error(`Failed to fetch witnesses: ${witnessesError.message}`);
-        if (docsError) throw new Error(`Failed to fetch documents: ${docsError.message}`);
+        // Handle missing persons_of_interest table gracefully
+        if (suspectsError) {
+          if (suspectsError.message.includes('does not exist')) {
+            console.warn('[Relationship Network Job] persons_of_interest table not found, using empty suspects list');
+          } else {
+            throw new Error(`Failed to fetch suspects: ${suspectsError.message}`);
+          }
+        }
+
+        if (witnessesError) {
+          if (witnessesError.message.includes('does not exist')) {
+            console.warn('[Relationship Network Job] persons_of_interest table not found, using empty witnesses list');
+          } else {
+            throw new Error(`Failed to fetch witnesses: ${witnessesError.message}`);
+          }
+        }
+
+        // Handle missing case_documents table gracefully
+        if (docsError) {
+          if (docsError.message.includes('does not exist')) {
+            console.warn('[Relationship Network Job] case_documents table not found, using empty documents list');
+          } else {
+            throw new Error(`Failed to fetch documents: ${docsError.message}`);
+          }
+        }
 
         console.log(`[Relationship Network] Found: ${suspects?.length || 0} suspects, ${witnesses?.length || 0} witnesses, ${documents?.length || 0} documents`);
 

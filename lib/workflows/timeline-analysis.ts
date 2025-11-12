@@ -213,11 +213,16 @@ export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
     async function saveConflictsAndFinalize() {
 
       // Identify overlooked suspects
-      const { data: formalSuspects } = await supabaseServer
+      const { data: formalSuspects, error: suspectsError } = await supabaseServer
         .from('persons_of_interest')
         .select('name')
         .eq('case_id', caseId)
         .eq('status', 'suspect');
+
+      // Handle missing persons_of_interest table gracefully
+      if (suspectsError && suspectsError.message.includes('does not exist')) {
+        console.warn('[Timeline Analysis] persons_of_interest table not found, using empty suspects list');
+      }
 
       const overlookedSuspects = identifyOverlookedSuspects(
         analysis.personMentions,
