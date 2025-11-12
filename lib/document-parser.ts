@@ -13,48 +13,12 @@ import Tesseract from 'tesseract.js';
 import OpenAI from 'openai';
 import { parsePdf } from './pdf-parse-compat';
 
-type PdfjsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
-
-let pdfjsModulePromise: Promise<PdfjsModule | null> | null = null;
-
-// Polyfill DOMMatrix for Node.js environment
-if (typeof globalThis.DOMMatrix === 'undefined') {
-  // @ts-ignore - Polyfill for Node.js
-  globalThis.DOMMatrix = class DOMMatrix {
-    constructor() {
-      // Minimal DOMMatrix implementation for pdfjs-dist compatibility
-    }
-  };
-}
-
-async function loadPdfJsModule(): Promise<PdfjsModule | null> {
-  // DISABLED: pdfjs-dist requires full DOMMatrix implementation which is not available in Node.js
-  // The DOMMatrix polyfill is insufficient for pdfjs-dist's canvas operations
-  // Using pdf-parse instead, which works reliably in server-side environments
+// pdfjs-dist is DISABLED because it requires DOMMatrix and canvas operations
+// that are not available in Node.js server environments. We use pdf-parse instead,
+// which works reliably server-side without browser dependencies.
+async function loadPdfJsModule(): Promise<null> {
   console.log('[Document Parser] pdfjs-dist disabled, using pdf-parse for PDF extraction');
   return null;
-
-  // Original implementation (disabled):
-  // if (!pdfjsModulePromise) {
-  //   pdfjsModulePromise = import('pdfjs-dist/legacy/build/pdf.mjs')
-  //     .then(mod => {
-  //       try {
-  //         if (mod.GlobalWorkerOptions) {
-  //           mod.GlobalWorkerOptions.workerSrc = '';
-  //         }
-  //       } catch (workerError) {
-  //         console.warn('[Document Parser] Unable to configure pdfjs worker', workerError);
-  //       }
-  //       return mod;
-  //     })
-  //     .catch(error => {
-  //       console.error('[Document Parser] Failed to load pdfjs module:', error);
-  //       pdfjsModulePromise = null;
-  //       return null;
-  //     });
-  // }
-  //
-  // return pdfjsModulePromise;
 }
 
 // Initialize OpenAI client for Whisper transcription
@@ -200,80 +164,14 @@ async function extractByFileType(
 
 /**
  * Extract text from PDF (handles both digital and scanned)
+ * Uses pdf-parse library which works reliably in server-side environments
  */
 async function extractFromPDF(buffer: Buffer): Promise<ExtractionResult> {
-
   console.log('[Document Parser] Processing PDF...');
 
-  const pdfjs = await loadPdfJsModule();
-
-  if (!pdfjs) {
-    console.warn('[Document Parser] pdfjs module unavailable, falling back to pdf-parse.');
-    return extractWithPdfParse(buffer);
-  }
-
-  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer) });
-
-  try {
-    const pdfDocument = await loadingTask.promise;
-    const pageTexts: string[] = [];
-
-    for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
-      const page = await pdfDocument.getPage(pageNum);
-      const textContent = await page.getTextContent();
-
-      const pageText = textContent.items
-        .map(item => {
-          const anyItem = item as any;
-          if (typeof anyItem.str === 'string') return anyItem.str;
-          if (typeof anyItem.text === 'string') return anyItem.text;
-          if (typeof anyItem.unicode === 'string') return anyItem.unicode;
-          return '';
-        })
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      if (pageText) {
-        pageTexts.push(pageText);
-      }
-
-      try {
-        page.cleanup();
-      } catch (cleanupError) {
-        console.warn('[Document Parser] Failed to cleanup PDF page', cleanupError);
-      }
-    }
-
-    const combinedText = pageTexts.join('\n\n');
-    const hasMeaningfulText = combinedText.trim().length > 0;
-    const pageCount = pdfDocument.numPages;
-
-    const confidence = hasMeaningfulText
-      ? Math.min(0.95, Math.max(0.4, combinedText.length / (pageCount * 1500)))
-      : 0.1;
-
-    return {
-      text: hasMeaningfulText ? combinedText : '[No extractable text found in this PDF]',
-      pageCount,
-      method: 'pdfjs-dist',
-      confidence,
-      metadata: { pageCount },
-      needsReview: !hasMeaningfulText,
-      uncertainSegments: hasMeaningfulText ? [] : undefined,
-    };
-  } catch (error: any) {
-    console.error('[Document Parser] PDF extraction failed, attempting pdf-parse fallback:', error);
-    return extractWithPdfParse(buffer);
-  } finally {
-    try {
-      if (typeof loadingTask.destroy === 'function') {
-        await loadingTask.destroy();
-      }
-    } catch (destroyError) {
-      console.warn('[Document Parser] Failed to destroy PDF loading task', destroyError);
-    }
-  }
+  // pdfjs-dist is disabled due to DOMMatrix/canvas dependencies
+  // Always use pdf-parse for server-side PDF extraction
+  return extractWithPdfParse(buffer);
 }
 
 async function extractWithPdfParse(buffer: Buffer): Promise<ExtractionResult> {
