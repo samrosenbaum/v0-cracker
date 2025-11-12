@@ -6,11 +6,16 @@ const ts = require('typescript');
 const baseUrl = path.resolve(__dirname, '..');
 
 const originalResolveFilename = Module._resolveFilename;
-Module._resolveFilename = function patchedResolve(request, parent, isMain, options) {
+Module._resolveFilename = function patchedResolveFilename(request, parent, isMain, options) {
   if (typeof request === 'string') {
     if (request.startsWith('@/')) {
-      const resolved = path.join(baseUrl, request.slice(2));
-      return originalResolveFilename.call(this, resolved, parent, isMain, options);
+      const absolutePath = path.join(baseUrl, request.slice(2));
+      return originalResolveFilename.call(this, absolutePath, parent, isMain, options);
+    }
+
+    if (request === 'pdfjs-dist/legacy/build/pdf.mjs') {
+      const stubPath = path.join(__dirname, 'stubs', 'pdfjs-dist', 'legacy', 'build', 'pdf.mjs');
+      return originalResolveFilename.call(this, stubPath, parent, isMain, options);
     }
 
     if (request.startsWith('pdfjs-dist/')) {

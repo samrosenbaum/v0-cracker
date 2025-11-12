@@ -93,12 +93,18 @@ async function run() {
 
     const summaryDoc = documents.find((doc) => doc.filename === 'Investigation Summary.pdf');
     assert.ok(summaryDoc, 'summary document should be present');
-    assert.equal(
-      summaryDoc?.content,
-      'Case summary generated from processing pipeline.',
-      'metadata processed_text should be preferred over placeholder'
+    assert.ok(
+      summaryDoc?.content.includes('Case summary generated from processing pipeline.'),
+      'metadata processed_text should be included'
     );
-    assert.ok(!/No extracted text/i.test(summaryDoc!.content));
+    assert.ok(
+      summaryDoc?.content.includes('Page 1 fragment'),
+      'page fragments should also be extracted'
+    );
+    assert.ok(
+      !summaryDoc?.content.includes('[No extracted text'),
+      'placeholder text should be filtered out'
+    );
 
     const audioDoc = documents.find((doc) => doc.filename === 'Audio Interview.mp3');
     assert.ok(audioDoc, 'audio document should be present');

@@ -17,7 +17,9 @@ import {
   detectTimeConflicts,
   identifyOverlookedSuspects,
   generateConflictSummary,
+  TimelineEvent,
 } from '@/lib/ai-analysis';
+import type { DocumentInput } from '@/lib/ai-fallback';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -51,155 +53,492 @@ export async function GET() {
 }
 
 const PLACEHOLDER_PATTERNS = [
-  /^\[?no extracted text/i,
-  /^summary unavailable/i,
-  /^no text extracted/i,
+  /^\s*\[no extracted text[\s\S]*\]\s*$/i,
+  /^\s*\[could not extract text[\s\S]*\]\s*$/i,
+  /^\s*summary unavailable for[\s\S]*$/i,
 ];
 
-function isPlaceholderContent(value: string): boolean {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return true;
+function isPlaceholderText(text: string): boolean {
+  return PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function isMeaningfulContent(text?: string | null): text is string {
+  if (typeof text !== 'string') {
+    return false;
   }
-  return PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(trimmed));
+
+  const normalized = text.replace(/\r\n/g, '\n').trim();
+  if (!normalized) {
+    return false;
+  }
+
+  return !isPlaceholderText(normalized);
 }
 
-type TextCandidate = { path: string; text: string; score: number };
+function extractTextSegments(value: unknown, seen: WeakSet<object>): string[] {
+  const segments: string[] = [];
 
-const TEXT_PRIORITY: { pattern: RegExp; weight: number }[] = [
-  { pattern: /extracted[_-]?text/i, weight: 120 },
-  { pattern: /processed[_-]?text/i, weight: 115 },
-  { pattern: /full[_-]?text/i, weight: 110 },
-  { pattern: /ocr|transcrib|transcript|transcription/i, weight: 105 },
-  { pattern: /textract/i, weight: 100 },
-  { pattern: /content|body|summary/i, weight: 90 },
-  { pattern: /pages?\./i, weight: 85 },
-  { pattern: /paragraph|line|section/i, weight: 70 },
-];
-
-function scoreCandidate(path: string, text: string): number {
-  const base = TEXT_PRIORITY.find((entry) => entry.pattern.test(path))?.weight ?? 50;
-  const lengthBonus = Math.min(text.length / 500, 10);
-  return base + lengthBonus;
-}
-
-function normalizeCandidatePath(path: string): string {
-  return path.replace(/\.(\d+)(?=\.|$)/g, '.[]');
-}
-
-function collectTextCandidates(
-  value: unknown,
-  path: string[] = [],
-  accumulator: Map<string, { texts: string[]; score: number; originalPath: string }>
-) {
-  if (typeof value === 'string') {
-    if (isPlaceholderContent(value)) {
+  function traverse(input: unknown) {
+    if (input === null || input === undefined) {
       return;
     }
-    const normalizedPath = normalizeCandidatePath(path.join('.')) || 'root';
-    const trimmed = value.trim();
-    if (!trimmed) {
+
+    if (typeof input === 'string') {
+      segments.push(input);
       return;
     }
-    const entry = accumulator.get(normalizedPath) || {
-      texts: [],
-      score: 0,
-      originalPath: path.join('.'),
-    };
-    entry.texts.push(trimmed);
-    entry.score = Math.max(entry.score, scoreCandidate(entry.originalPath, trimmed));
-    accumulator.set(normalizedPath, entry);
-    return;
-  }
 
-  if (Array.isArray(value)) {
-    const stringValues = value
-      .map((item) => (typeof item === 'string' ? item.trim() : ''))
-      .filter((text) => text && !isPlaceholderContent(text));
-    if (stringValues.length) {
-      const normalizedPath = normalizeCandidatePath([...path, '[]'].join('.'));
-      const entry = accumulator.get(normalizedPath) || {
-        texts: [],
-        score: 0,
-        originalPath: [...path, '[]'].join('.'),
-      };
-      const combined = stringValues.join('\n');
-      entry.texts.push(combined);
-      entry.score = Math.max(entry.score, scoreCandidate(entry.originalPath, combined));
-      accumulator.set(normalizedPath, entry);
+    if (Array.isArray(input)) {
+      for (const item of input) {
+        traverse(item);
+      }
+      return;
     }
 
-    value.forEach((item, index) => {
-      collectTextCandidates(item, [...path, index.toString()], accumulator);
-    });
-    return;
+    if (typeof input === 'object') {
+      const objectValue = input as Record<string, unknown>;
+      if (seen.has(objectValue)) {
+        return;
+      }
+      seen.add(objectValue);
+      for (const value of Object.values(objectValue)) {
+        traverse(value);
+      }
+    }
   }
 
-  if (value && typeof value === 'object') {
-    Object.entries(value as Record<string, unknown>).forEach(([key, nestedValue]) => {
-      collectTextCandidates(nestedValue, [...path, key], accumulator);
-    });
+  traverse(value);
+  return segments;
+}
+
+function combineSegments(segments: string[]): string {
+  const orderedSegments: string[] = [];
+  const seen = new Set<string>();
+
+  for (const segment of segments) {
+    const normalized = segment.replace(/\r\n/g, '\n').trim();
+    if (!isMeaningfulContent(normalized)) {
+      continue;
+    }
+    if (seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    orderedSegments.push(normalized);
   }
+
+  return orderedSegments.join('\n\n');
 }
 
 function extractTextFromMetadata(metadata?: Record<string, any>): string {
-  if (!metadata || typeof metadata !== 'object') {
+  if (!metadata) {
     return '';
   }
 
-  const accumulator = new Map<string, { texts: string[]; score: number; originalPath: string }>();
-  collectTextCandidates(metadata, [], accumulator);
-
-  if (!accumulator.size) {
-    return '';
-  }
-
-  const candidates: TextCandidate[] = Array.from(accumulator.values()).map(({ texts, score, originalPath }) => ({
-    path: originalPath,
-    text: Array.from(new Set(texts)).join('\n').trim(),
-    score: score,
-  }));
-
-  candidates.sort((a, b) => {
-    if (b.score !== a.score) {
-      return b.score - a.score;
-    }
-    return b.text.length - a.text.length;
-  });
-
-  return candidates[0]?.text || '';
+  const segments = extractTextSegments(metadata, new WeakSet<object>());
+  return combineSegments(segments);
 }
 
-export async function resolveDocumentContent(
+function looksLikeJson(text: string): boolean {
+  const trimmed = text.trim();
+  return (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  );
+}
+
+function deriveTextFromString(rawText: string): string {
+  if (!rawText) {
+    return '';
+  }
+
+  const trimmed = rawText.replace(/\r\n/g, '\n');
+  const segments: string[] = [trimmed];
+
+  if (looksLikeJson(trimmed)) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      segments.push(...extractTextSegments(parsed, new WeakSet<object>()));
+    } catch (error) {
+      console.warn('[Timeline Analysis API] Unable to parse storage JSON payload:', error);
+    }
+  }
+
+  return combineSegments(segments);
+}
+
+const PLACEHOLDER_VALUE_PATTERN = /\b(?:unknown|tbd|unspecified|unconfirmed|pending|not provided|n\/a|none)\b|^[-?_.\s]+$/i;
+
+function normalizeGapValue(value?: string | null): string {
+  if (typeof value !== 'string') {
+    return 'placeholder:empty';
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return 'placeholder:empty';
+  }
+
+  if (PLACEHOLDER_VALUE_PATTERN.test(trimmed)) {
+    return `placeholder:${trimmed.toLowerCase()}`;
+  }
+
+  return trimmed;
+}
+
+function isConcreteLocation(location?: string | null): location is string {
+  if (typeof location !== 'string') {
+    return false;
+  }
+
+  const trimmed = location.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  return !PLACEHOLDER_VALUE_PATTERN.test(trimmed);
+}
+
+function parseDateOnly(value?: string | null): Date | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseDateTime(dateValue?: string | null, timeValue?: string | null): Date | null {
+  if (!timeValue) {
+    return null;
+  }
+
+  const trimmedTime = timeValue.trim();
+  if (!trimmedTime) {
+    return null;
+  }
+
+  if (trimmedTime.includes('T')) {
+    const isoParsed = new Date(trimmedTime);
+    if (!Number.isNaN(isoParsed.getTime())) {
+      return isoParsed;
+    }
+  }
+
+  if (dateValue) {
+    const candidateIso = new Date(`${dateValue}T${trimmedTime}`);
+    if (!Number.isNaN(candidateIso.getTime())) {
+      return candidateIso;
+    }
+
+    const candidateSpace = new Date(`${dateValue} ${trimmedTime}`);
+    if (!Number.isNaN(candidateSpace.getTime())) {
+      return candidateSpace;
+    }
+  }
+
+  const ampmMatch = trimmedTime.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/i);
+  if (ampmMatch && dateValue) {
+    const base = parseDateOnly(dateValue);
+    if (base) {
+      let hours = Number.parseInt(ampmMatch[1]!, 10) % 12;
+      if (ampmMatch[3]?.toLowerCase() === 'pm') {
+        hours += 12;
+      }
+      const minutes = Number.parseInt(ampmMatch[2] || '0', 10);
+      const result = new Date(base);
+      result.setHours(hours, minutes, 0, 0);
+      return result;
+    }
+  }
+
+  const timeMatch = trimmedTime.match(/^(\d{1,2})(?::(\d{2}))?$/);
+  if (timeMatch && dateValue) {
+    const base = parseDateOnly(dateValue);
+    if (base) {
+      const hours = Number.parseInt(timeMatch[1]!, 10);
+      const minutes = Number.parseInt(timeMatch[2] || '0', 10);
+      const result = new Date(base);
+      result.setHours(hours, minutes, 0, 0);
+      return result;
+    }
+  }
+
+  return null;
+}
+
+type AnchoredEvent = {
+  event: TimelineEvent;
+  start: Date;
+  end: Date;
+};
+
+type TimelineGapSummary = {
+  id?: string;
+  startEventId?: string;
+  endEventId?: string;
+  startTime?: string;
+  endTime?: string;
+  lastKnownLocation?: string;
+  nextKnownLocation?: string;
+  durationMinutes?: number;
+  description?: string;
+  priority?: 'low' | 'medium' | 'high' | 'critical';
+  source?: 'derived' | 'provided';
+};
+
+type TimelineTopPriority = {
+  focus: string;
+  rationale: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  durationMinutes?: number;
+};
+
+function extractAnchoredEvents(timeline: TimelineEvent[]): AnchoredEvent[] {
+  const anchored: AnchoredEvent[] = [];
+
+  for (const event of timeline) {
+    if (!isConcreteLocation(event.location)) {
+      continue;
+    }
+
+    const dateValue = typeof event.date === 'string' ? event.date : undefined;
+    let start: Date | null = null;
+    let end: Date | null = null;
+
+    if (event.startTime) {
+      start = parseDateTime(dateValue, event.startTime);
+      if (!start && event.startTime.includes('T')) {
+        start = new Date(event.startTime);
+        if (Number.isNaN(start.getTime())) {
+          start = null;
+        }
+      }
+
+      if (event.endTime) {
+        end = parseDateTime(dateValue, event.endTime);
+        if (!end && event.endTime.includes('T')) {
+          end = new Date(event.endTime);
+          if (Number.isNaN(end.getTime())) {
+            end = null;
+          }
+        }
+      }
+
+      if (!end && start) {
+        end = new Date(start);
+      }
+    } else if (event.time) {
+      start = parseDateTime(dateValue, event.time);
+      if (!start && event.time.includes('T')) {
+        start = new Date(event.time);
+        if (Number.isNaN(start.getTime())) {
+          start = null;
+        }
+      }
+      if (start) {
+        end = new Date(start);
+      }
+    }
+
+    if (!start || !end) {
+      continue;
+    }
+
+    anchored.push({
+      event,
+      start,
+      end,
+    });
+  }
+
+  return anchored.sort((a, b) => a.start.getTime() - b.start.getTime());
+}
+
+function deriveTimelineGaps(anchoredEvents: AnchoredEvent[]): TimelineGapSummary[] {
+  if (anchoredEvents.length < 2) {
+    return [];
+  }
+
+  const gaps: TimelineGapSummary[] = [];
+
+  for (let index = 0; index < anchoredEvents.length - 1; index += 1) {
+    const current = anchoredEvents[index]!;
+    const next = anchoredEvents[index + 1]!;
+
+    if (next.start.getTime() <= current.end.getTime()) {
+      continue;
+    }
+
+    const durationMinutes = Math.round((next.start.getTime() - current.end.getTime()) / (60 * 1000));
+    if (durationMinutes <= 0) {
+      continue;
+    }
+
+    const priority: 'low' | 'medium' | 'high' | 'critical' =
+      durationMinutes >= 240 ? 'critical' : durationMinutes >= 120 ? 'high' : 'medium';
+
+    gaps.push({
+      id: `gap-${current.event.id}-${next.event.id}`,
+      startEventId: current.event.id,
+      endEventId: next.event.id,
+      startTime: current.end.toISOString(),
+      endTime: next.start.toISOString(),
+      lastKnownLocation: current.event.location,
+      nextKnownLocation: next.event.location,
+      durationMinutes,
+      description: `No confirmed activity between ${current.event.location} and ${next.event.location}.`,
+      priority,
+      source: 'derived',
+    });
+  }
+
+  return gaps;
+}
+
+function sanitizeProvidedGaps(rawGaps: unknown): TimelineGapSummary[] {
+  if (!Array.isArray(rawGaps)) {
+    return [];
+  }
+
+  const sanitized: TimelineGapSummary[] = [];
+
+  for (const gap of rawGaps) {
+    if (!gap || typeof gap !== 'object') {
+      continue;
+    }
+
+    const maybeGap = gap as Record<string, any>;
+    const startTime = typeof maybeGap.startTime === 'string' ? maybeGap.startTime.trim() : undefined;
+    const endTime = typeof maybeGap.endTime === 'string' ? maybeGap.endTime.trim() : undefined;
+    const lastKnownLocation =
+      typeof maybeGap.lastKnownLocation === 'string' ? maybeGap.lastKnownLocation.trim() : undefined;
+    const nextKnownLocation =
+      typeof maybeGap.nextKnownLocation === 'string' ? maybeGap.nextKnownLocation.trim() : undefined;
+
+    const emptyTimes = (!startTime || PLACEHOLDER_VALUE_PATTERN.test(startTime)) &&
+      (!endTime || PLACEHOLDER_VALUE_PATTERN.test(endTime));
+    const emptyLocations = (!lastKnownLocation || PLACEHOLDER_VALUE_PATTERN.test(lastKnownLocation)) &&
+      (!nextKnownLocation || PLACEHOLDER_VALUE_PATTERN.test(nextKnownLocation));
+
+    if (emptyTimes && emptyLocations) {
+      continue;
+    }
+
+    sanitized.push({
+      ...maybeGap,
+      startTime,
+      endTime,
+      lastKnownLocation,
+      nextKnownLocation,
+      source: 'provided',
+    });
+  }
+
+  return sanitized;
+}
+
+function dedupeGaps(gaps: TimelineGapSummary[]): TimelineGapSummary[] {
+  const deduped = new Map<string, TimelineGapSummary>();
+
+  for (const gap of gaps) {
+    const startKey = normalizeGapValue(gap.startTime);
+    const endKey = normalizeGapValue(gap.endTime);
+    const lastLocationKey = normalizeGapValue(gap.lastKnownLocation);
+    const nextLocationKey = normalizeGapValue(gap.nextKnownLocation);
+
+    const key = `${startKey}|${endKey}|${lastLocationKey}|${nextLocationKey}`;
+    const existing = deduped.get(key);
+
+    if (!existing) {
+      deduped.set(key, gap);
+      continue;
+    }
+
+    const isExistingDerived = existing.source === 'derived';
+    const isIncomingDerived = gap.source === 'derived';
+
+    if (!isExistingDerived && isIncomingDerived) {
+      deduped.set(key, gap);
+    }
+  }
+
+  return Array.from(deduped.values());
+}
+
+function buildTopPrioritiesFromGaps(gaps: TimelineGapSummary[]): TimelineTopPriority[] {
+  if (!gaps.length) {
+    return [];
+  }
+
+  return gaps.slice(0, 3).map((gap) => ({
+    focus: `Investigate gap between ${gap.lastKnownLocation || 'last known location'} and ${
+      gap.nextKnownLocation || 'next known location'
+    }`,
+    rationale:
+      gap.description ||
+      'No confirmed activity recorded between these anchored events. Verify alibis and gather corroborating evidence.',
+    severity: gap.priority || 'medium',
+    durationMinutes: gap.durationMinutes,
+  }));
+}
+
+function synthesizeGapInsights(
+  analysis: { timeline: TimelineEvent[]; gaps?: unknown; topPriorities?: unknown }
+): { gaps: TimelineGapSummary[]; topPriorities: TimelineTopPriority[] } {
+  const providedGaps = sanitizeProvidedGaps(analysis.gaps);
+  const anchoredEvents = extractAnchoredEvents(analysis.timeline || []);
+  const derivedGaps = anchoredEvents.length >= 2 ? deriveTimelineGaps(anchoredEvents) : [];
+
+  const combined = dedupeGaps([...providedGaps, ...derivedGaps]);
+
+  const providedTopPriorities = Array.isArray(analysis.topPriorities)
+    ? (analysis.topPriorities as TimelineTopPriority[])
+    : [];
+
+  const topPriorities = providedTopPriorities.length
+    ? providedTopPriorities
+    : buildTopPrioritiesFromGaps(combined);
+
+  return { gaps: combined, topPriorities };
+}
+
+async function resolveDocumentContent(
   storagePath?: string | null,
-  metadata?: Record<string, any>
+  metadata?: Record<string, any>,
+  options: { skipSupabaseStorage?: boolean } = {}
 ): Promise<string> {
   const metadataText = extractTextFromMetadata(metadata);
-  if (metadataText) {
+  if (isMeaningfulContent(metadataText)) {
     return metadataText;
   }
 
-  if (!storagePath) {
-    return '';
+  if (!options.skipSupabaseStorage && storagePath) {
+    try {
+      const { data, error } = await supabaseServer.storage
+        .from('case-files')
+        .download(storagePath);
+
+      if (!error && data) {
+        const buffer = Buffer.from(await data.arrayBuffer());
+        const text = deriveTextFromString(buffer.toString('utf-8'));
+        if (isMeaningfulContent(text)) {
+          return text;
+        }
+      }
+    } catch (storageError) {
+      console.warn('[Timeline Analysis API] Failed to download from storage:', storageError);
+    }
   }
 
-  try {
-    const { data, error } = await supabaseServer.storage.from('case-files').download(storagePath);
-
-    if (!error && data) {
-      const buffer = Buffer.from(await data.arrayBuffer());
-      const text = buffer.toString('utf-8').trim();
-      if (text && !isPlaceholderContent(text)) {
-        return text;
+  if (storagePath) {
+    const fallbackObject = getStorageObject('case-files', storagePath);
+    if (fallbackObject?.content) {
+      const fallbackText = deriveTextFromString(fallbackObject.content);
+      if (isMeaningfulContent(fallbackText)) {
+        return fallbackText;
       }
     }
-  } catch (storageError) {
-    console.warn('[Timeline Analysis API] Failed to download from storage:', storageError);
-  }
-
-  const fallbackObject = storagePath ? getStorageObject('case-files', storagePath) : null;
-  if (fallbackObject?.content && !isPlaceholderContent(fallbackObject.content)) {
-    return fallbackObject.content.trim();
   }
 
   return '';
@@ -213,35 +552,44 @@ export async function gatherDocumentsForAnalysis(caseId: string, preferSupabase:
         .select('file_name, document_type, storage_path, metadata')
         .eq('case_id', caseId);
 
-      if (docError) {
-        console.error('[Timeline Analysis API] Failed to gather documents from Supabase:', docError);
-        return [];
-      }
-
-      if (supabaseDocs && supabaseDocs.length > 0) {
-        const documents: { content: string; filename: string; type: string }[] = [];
-        const skipped: string[] = [];
+      if (!docError && supabaseDocs && supabaseDocs.length > 0) {
+        const documents: DocumentInput[] = [];
+        const skippedDocuments: string[] = [];
 
         for (const doc of supabaseDocs) {
-          const content = await resolveDocumentContent(doc.storage_path, doc.metadata as Record<string, any>);
-          if (!content) {
-            skipped.push(doc.file_name || doc.storage_path || 'unknown');
-            continue;
+          const content = await resolveDocumentContent(
+            doc.storage_path,
+            doc.metadata as Record<string, any> | undefined
+          );
+
+          if (isMeaningfulContent(content)) {
+            documents.push({
+              content,
+              filename: doc.file_name,
+              type: doc.document_type || 'other',
+              metadata: (doc.metadata as Record<string, any> | null) || null,
+            });
+          } else {
+            skippedDocuments.push(doc.file_name);
           }
-
-          documents.push({
-            content,
-            filename: doc.file_name,
-            type: doc.document_type || 'other',
-          });
-        }
-
-        if (skipped.length) {
-          console.warn('[Timeline Analysis API] Skipped documents with no extracted content:', skipped);
         }
 
         if (documents.length > 0) {
+          if (skippedDocuments.length > 0) {
+            console.warn(
+              '[Timeline Analysis API] Skipping documents with no extractable text:',
+              skippedDocuments
+            );
+          }
           return documents;
+        }
+
+        if (skippedDocuments.length > 0) {
+          console.warn(
+            '[Timeline Analysis API] No extractable Supabase document content found for case:',
+            caseId,
+            skippedDocuments
+          );
         }
       }
 
@@ -253,20 +601,39 @@ export async function gatherDocumentsForAnalysis(caseId: string, preferSupabase:
   }
 
   const demoDocs = listCaseDocuments(caseId);
-  return demoDocs
-    .map((doc) => {
-      const storage = doc.storage_path ? getStorageObject('case-files', doc.storage_path) : null;
-      const extracted =
-        (typeof doc.metadata?.extracted_text === 'string' ? doc.metadata.extracted_text : '')?.trim() || '';
-      const content = extracted || storage?.content || '';
+  const demoDocuments: DocumentInput[] = [];
+  const skippedDemoDocs: string[] = [];
 
-      return {
-        content: content || `Summary unavailable for ${doc.file_name}.`,
+  for (const doc of demoDocs) {
+    const metadataText = extractTextFromMetadata(doc.metadata as Record<string, any> | undefined);
+    let content = metadataText;
+
+    if (!isMeaningfulContent(content)) {
+      const storage = doc.storage_path
+        ? getStorageObject('case-files', doc.storage_path)
+        : null;
+      if (storage?.content) {
+        content = deriveTextFromString(storage.content);
+      }
+    }
+
+    if (isMeaningfulContent(content)) {
+      demoDocuments.push({
+        content,
         filename: doc.file_name,
         type: doc.document_type || 'other',
-      };
-    })
-    .filter((doc) => !isPlaceholderContent(doc.content));
+        metadata: (doc.metadata as Record<string, any> | null) || null,
+      });
+    } else {
+      skippedDemoDocs.push(doc.file_name);
+    }
+  }
+
+  if (skippedDemoDocs.length > 0) {
+    console.warn('[Timeline Analysis API] Demo documents without usable text:', skippedDemoDocs);
+  }
+
+  return demoDocuments;
 }
 
 async function runFallbackAnalysis(
@@ -311,6 +678,7 @@ async function runFallbackAnalysis(
 
   const analysis = await analyzeCaseDocuments(documents, caseId);
   const timeConflicts = detectTimeConflicts(analysis.timeline);
+  const { gaps, topPriorities } = synthesizeGapInsights(analysis);
 
   const combinedConflicts = [...analysis.conflicts];
   for (const conflict of timeConflicts) {
@@ -360,6 +728,8 @@ async function runFallbackAnalysis(
     conflicts: combinedConflicts,
     overlookedSuspects,
     conflictSummary: generateConflictSummary(combinedConflicts),
+    gaps,
+    topPriorities,
   };
 
   const totalUnits = 5;
@@ -526,6 +896,15 @@ async function runFallbackAnalysis(
     )
   );
 }
+
+export const __testables = {
+  resolveDocumentContent,
+  gatherDocumentsForAnalysis,
+  runFallbackAnalysis,
+  extractTextFromMetadata,
+  deriveTextFromString,
+  isMeaningfulContent,
+};
 
 export async function POST(
   request: NextRequest,
