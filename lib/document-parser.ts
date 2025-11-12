@@ -13,12 +13,79 @@ import Tesseract from 'tesseract.js';
 import OpenAI from 'openai';
 import { parsePdf } from './pdf-parse-compat';
 
-// pdfjs-dist is DISABLED because it requires DOMMatrix and canvas operations
-// that are not available in Node.js server environments. We use pdf-parse instead,
-// which works reliably server-side without browser dependencies.
-async function loadPdfJsModule(): Promise<null> {
-  console.log('[Document Parser] pdfjs-dist disabled, using pdf-parse for PDF extraction');
-  return null;
+type PdfjsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
+
+let pdfjsModulePromise: Promise<PdfjsModule | null> | null = null;
+let hasLoggedPdfjsLoad = false;
+
+const NON_RECOVERABLE_PDF_ERROR_NAMES = new Set([
+  'InvalidPDFException',
+  'MissingPDFException',
+  'PasswordException',
+  'UnexpectedResponseException',
+]);
+
+// Polyfill DOMMatrix for Node.js environment
+if (typeof globalThis.DOMMatrix === 'undefined') {
+  // @ts-ignore - Polyfill for Node.js
+  globalThis.DOMMatrix = class DOMMatrix {
+    constructor() {
+      // Minimal DOMMatrix implementation for pdfjs-dist compatibility
+    }
+  };
+}
+
+async function loadPdfJsModule(): Promise<PdfjsModule | null> {
+  if (typeof window !== 'undefined') {
+    // The ingestion pipeline only runs on the server – fall back to pdf-parse for browser builds.
+    return null;
+  }
+
+  if (!pdfjsModulePromise) {
+    pdfjsModulePromise = (async () => {
+      try {
+        const mod = await import('pdfjs-dist/legacy/build/pdf.mjs');
+
+        try {
+          const workerOptions = (mod as any).GlobalWorkerOptions;
+          if (workerOptions && typeof window !== 'undefined') {
+            workerOptions.workerSrc = workerOptions.workerSrc || '';
+          }
+        } catch (workerError) {
+          console.warn('[Document Parser] Unable to configure pdfjs worker, falling back to pdf-parse.', workerError);
+          return null;
+        }
+
+        if (!hasLoggedPdfjsLoad) {
+          const version = (mod as any).version || 'unknown';
+          console.log(`[Document Parser] pdfjs-dist backend ready (v${version})`);
+          hasLoggedPdfjsLoad = true;
+        }
+
+        return mod;
+      } catch (error) {
+        console.error('[Document Parser] Failed to load pdfjs-dist module:', error);
+        return null;
+      }
+    })();
+  }
+
+  return pdfjsModulePromise;
+}
+
+function isNonRecoverablePdfError(error: any): boolean {
+  const name = typeof error?.name === 'string' ? error.name : '';
+  const message = typeof error?.message === 'string' ? error.message : '';
+
+  if (name && NON_RECOVERABLE_PDF_ERROR_NAMES.has(name)) {
+    return true;
+  }
+
+  if (!message) {
+    return false;
+  }
+
+  return /invalid pdf|missing pdf|password required|unexpected response/i.test(message);
 }
 
 // Initialize OpenAI client for Whisper transcription
@@ -162,16 +229,115 @@ async function extractByFileType(
   };
 }
 
+export async function extractDocumentContentFromBuffer(
+  storagePath: string,
+  buffer: Buffer
+): Promise<ExtractionResult> {
+  return extractByFileType(storagePath, buffer);
+}
+
 /**
  * Extract text from PDF (handles both digital and scanned)
- * Uses pdf-parse library which works reliably in server-side environments
  */
 async function extractFromPDF(buffer: Buffer): Promise<ExtractionResult> {
+
   console.log('[Document Parser] Processing PDF...');
 
-  // pdfjs-dist is disabled due to DOMMatrix/canvas dependencies
-  // Always use pdf-parse for server-side PDF extraction
-  return extractWithPdfParse(buffer);
+  const pdfjs = await loadPdfJsModule();
+
+  if (!pdfjs) {
+    console.warn('[Document Parser] pdfjs module unavailable, falling back to pdf-parse.');
+    return extractWithPdfParse(buffer);
+  }
+
+  let loadingTask: ReturnType<PdfjsModule['getDocument']>;
+
+  try {
+    loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer) });
+  } catch (initializationError) {
+    console.warn('[Document Parser] pdfjs failed to initialize, falling back to pdf-parse.', initializationError);
+    return extractWithPdfParse(buffer);
+  }
+
+  try {
+    const pdfDocument = await loadingTask.promise;
+    const pageTexts: string[] = [];
+
+    for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
+      const page = await pdfDocument.getPage(pageNum);
+      const textContent = await page.getTextContent();
+
+      const pageText = textContent.items
+        .map(item => {
+          const anyItem = item as any;
+          if (typeof anyItem.str === 'string') return anyItem.str;
+          if (typeof anyItem.text === 'string') return anyItem.text;
+          if (typeof anyItem.unicode === 'string') return anyItem.unicode;
+          return '';
+        })
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (pageText) {
+        pageTexts.push(pageText);
+      }
+
+      try {
+        page.cleanup();
+      } catch (cleanupError) {
+        console.warn('[Document Parser] Failed to cleanup PDF page', cleanupError);
+      }
+    }
+
+    const combinedText = pageTexts.join('\n\n');
+    const hasMeaningfulText = combinedText.trim().length > 0;
+    const pageCount = pdfDocument.numPages;
+
+    const confidence = hasMeaningfulText
+      ? Math.min(0.95, Math.max(0.4, combinedText.length / (pageCount * 1500)))
+      : 0.1;
+
+    return {
+      text: hasMeaningfulText ? combinedText : '[No extractable text found in this PDF]',
+      pageCount,
+      method: 'pdfjs-dist',
+      confidence,
+      metadata: { pageCount },
+      needsReview: !hasMeaningfulText,
+      uncertainSegments: hasMeaningfulText ? [] : undefined,
+    };
+  } catch (error: any) {
+    console.error('[Document Parser] PDF extraction failed during parsing:', error);
+
+    if (isNonRecoverablePdfError(error)) {
+      return {
+        text: '',
+        pageCount: undefined,
+        method: 'pdfjs-dist',
+        confidence: 0,
+        error: error?.message || 'PDF extraction failed.',
+        metadata: {
+          failure: {
+            name: error?.name,
+            message: error?.message,
+          },
+        },
+        needsReview: true,
+      };
+    }
+
+    console.warn('[Document Parser] Falling back to pdf-parse after recoverable error.');
+    return extractWithPdfParse(buffer);
+  } finally {
+    try {
+      if (typeof loadingTask.destroy === 'function') {
+        await loadingTask.destroy();
+      }
+    } catch (destroyError) {
+      console.warn('[Document Parser] Failed to destroy PDF loading task', destroyError);
+    }
+  }
 }
 
 async function extractWithPdfParse(buffer: Buffer): Promise<ExtractionResult> {
