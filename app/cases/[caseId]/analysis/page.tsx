@@ -19,6 +19,7 @@ import {
   Loader2,
   Trash2
 } from 'lucide-react';
+import ComprehensiveColdCaseAnalysisView from '@/components/ComprehensiveColdCaseAnalysisView';
 
 interface AnalysisResult {
   id: string;
@@ -65,6 +66,9 @@ export default function AnalysisPage() {
 
   const isVictimTimelineAnalysisType = (analysisType: string) =>
     normalizeAnalysisType(analysisType) === 'victim-timeline';
+
+  const isComprehensiveColdCaseAnalysis = (analysisType: string) =>
+    normalizeAnalysisType(analysisType) === 'deep-analysis';
 
   const formatEventDateTime = (event: any) => {
     const date = event?.date ? new Date(event.date) : null;
@@ -1205,6 +1209,11 @@ export default function AnalysisPage() {
                                 ? renderTimelineDetails(analysisData)
                                 : isVictimTimelineAnalysisType(analysis.analysis_type)
                                 ? renderVictimTimelineDetails(analysisData)
+                                : isComprehensiveColdCaseAnalysis(analysis.analysis_type)
+                                ? <ComprehensiveColdCaseAnalysisView
+                                    analysis={analysisData}
+                                    caseName={caseInfo?.name}
+                                  />
                                 : (
                                     <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
                                       <pre className="text-xs text-gray-700 overflow-x-auto max-h-40">
