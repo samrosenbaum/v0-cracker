@@ -23,6 +23,13 @@ interface BoardData {
   summary: any;
 }
 
+interface BoardApiResponse {
+  success: boolean;
+  data: BoardData;
+  autoPopulated?: boolean;
+  error?: string;
+}
+
 export default function InvestigationBoardPage() {
   const params = useParams();
   const router = useRouter();
@@ -39,7 +46,7 @@ export default function InvestigationBoardPage() {
       if (showToast) setIsRefreshing(true);
 
       const response = await fetch(`/api/cases/${caseId}/board`);
-      const result = await response.json();
+      const result: BoardApiResponse = await response.json();
 
       if (!response.ok) {
         throw new Error(result.error || 'Failed to fetch board data');
@@ -47,7 +54,9 @@ export default function InvestigationBoardPage() {
 
       setBoardData(result.data);
 
-      if (showToast) {
+      if (result.autoPopulated) {
+        toast.success('Investigation board auto-populated from case documents');
+      } else if (showToast) {
         toast.success('Board data refreshed');
       }
 

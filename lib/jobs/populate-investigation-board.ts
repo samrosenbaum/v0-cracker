@@ -942,6 +942,41 @@ async function collectDocumentsForFallback({
     metadata: Record<string, any> | null;
   }>;
 }): Promise<DocumentForAnalysis[]> {
+  const documents: DocumentForAnalysis[] = [];
+  const addedDocuments = new Set<string>();
+  let generatedNameCounter = 1;
+
+  const addDocument = ({
+    id,
+    filename,
+    content,
+    type,
+  }: {
+    id?: string | null;
+    filename?: string | null;
+    content?: string | null;
+    type?: string | null;
+  }) => {
+    if (!content) return;
+    const trimmed = content.trim();
+    if (!trimmed) return;
+
+    let resolvedFilename = filename?.trim();
+    if (!resolvedFilename) {
+      resolvedFilename = `Document ${generatedNameCounter++}`;
+    }
+
+    const key = `${(id || '').toLowerCase()}|${resolvedFilename.toLowerCase()}`;
+    if (addedDocuments.has(key)) return;
+
+    addedDocuments.add(key);
+    documents.push({
+      content: trimmed,
+      filename: resolvedFilename,
+      type: type || 'document',
+    });
+  };
+
   if (chunks.length) {
     const grouped = new Map<string, { contents: string[]; metadata: Record<string, any> | null }>();
 
@@ -956,65 +991,86 @@ async function collectDocumentsForFallback({
       }
     });
 
-    const documents: DocumentForAnalysis[] = [];
     let docIndex = 1;
-    grouped.forEach(({ contents, metadata }) => {
+    grouped.forEach(({ contents, metadata }, key) => {
       const combined = contents.join('\n\n');
       if (!combined.trim()) return;
-      documents.push({
-        content: combined,
+
+      addDocument({
+        id: typeof key === 'string' ? key : null,
         filename: metadata?.file_name || metadata?.original_filename || `Document ${docIndex++}`,
+        content: combined,
         type: metadata?.document_type || metadata?.type || 'document',
       });
     });
-
-    if (documents.length) {
-      return documents;
-    }
   }
 
-  const documents: DocumentForAnalysis[] = [];
-
-  const fetchAndAdd = async (rows: Array<{ id: string; file_name: string; storage_path: string | null; file_type?: string | null }>) => {
-    for (const row of rows) {
-      if (caseFileId && row.id !== caseFileId) continue;
-      if (!row.storage_path) continue;
-
-      const text = await downloadTextFromStorage(row.storage_path);
-      if (!text) continue;
-
-      documents.push({
-        content: text,
-        filename: row.file_name,
-        type: row.file_type || 'document',
-      });
-    }
-  };
-
-  const { data: caseFiles } = await supabaseServer
+  const { data: aggregatedTextFiles } = await supabaseServer
     .from('case_files')
-    .select('id, file_name, storage_path, file_type')
-    .eq('case_id', caseId);
+    .select('id, file_name, file_type, ai_extracted_text')
+    .eq('case_id', caseId)
+    .not('ai_extracted_text', 'is', null);
 
-  if (caseFiles && caseFiles.length) {
-    await fetchAndAdd(caseFiles);
-  }
+  aggregatedTextFiles?.forEach((file: {
+    id: string;
+    file_name: string;
+    file_type?: string | null;
+    ai_extracted_text?: string | null;
+  }) => {
+    if (caseFileId && file.id !== caseFileId) return;
+    addDocument({
+      id: file.id,
+      filename: file.file_name,
+      content: file.ai_extracted_text || null,
+      type: file.file_type || 'document',
+    });
+  });
 
   if (!documents.length) {
-    const { data: caseDocuments } = await supabaseServer
-      .from('case_documents')
-      .select('id, file_name, storage_path, document_type')
+    const fetchAndAdd = async (
+      rows: Array<{ id: string; file_name: string; storage_path: string | null; file_type?: string | null }>,
+    ) => {
+      for (const row of rows) {
+        if (caseFileId && row.id !== caseFileId) continue;
+        if (!row.storage_path) continue;
+
+        const text = await downloadTextFromStorage(row.storage_path);
+        if (!text) continue;
+
+        addDocument({
+          id: row.id,
+          filename: row.file_name,
+          content: text,
+          type: row.file_type || 'document',
+        });
+      }
+    };
+
+    const { data: caseFiles } = await supabaseServer
+      .from('case_files')
+      .select('id, file_name, storage_path, file_type')
       .eq('case_id', caseId);
 
-    if (caseDocuments && caseDocuments.length) {
-      await fetchAndAdd(
-        caseDocuments.map((doc) => ({
-          id: doc.id,
-          file_name: doc.file_name,
-          storage_path: doc.storage_path,
-          file_type: doc.document_type || 'document',
-        })),
-      );
+    if (caseFiles && caseFiles.length) {
+      await fetchAndAdd(caseFiles);
+    }
+
+    if (!documents.length) {
+      const { data: caseDocuments } = await supabaseServer
+        .from('case_documents')
+        .select('id, file_name, storage_path, document_type')
+        .eq('case_id', caseId);
+
+      if (caseDocuments && caseDocuments.length) {
+        await fetchAndAdd(
+          caseDocuments.map((doc) => ({
+            id: doc.id,
+            file_name: doc.file_name,
+            storage_path: doc.storage_path,
+            file_type: doc.document_type || 'document',
+          })),
+        );
+      }
     }
   }
 
