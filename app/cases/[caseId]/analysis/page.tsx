@@ -53,8 +53,16 @@ export default function AnalysisPage() {
     return analysisData;
   };
 
-  const isTimelineAnalysisType = (analysisType: string) =>
-    analysisType === 'timeline' || analysisType === 'timeline_and_conflicts';
+  const normalizeAnalysisType = (analysisType: string) =>
+    analysisType === 'victim_timeline' ? 'victim-timeline' : analysisType;
+
+  const isTimelineAnalysisType = (analysisType: string) => {
+    const normalizedType = normalizeAnalysisType(analysisType);
+    return normalizedType === 'timeline' || normalizedType === 'timeline_and_conflicts';
+  };
+
+  const isVictimTimelineAnalysisType = (analysisType: string) =>
+    normalizeAnalysisType(analysisType) === 'victim-timeline';
 
   const formatEventDateTime = (event: any) => {
     const date = event?.date ? new Date(event.date) : null;
@@ -284,6 +292,367 @@ export default function AnalysisPage() {
     );
   };
 
+  const renderVictimTimelineDetails = (data: any) => {
+    if (!data || typeof data !== 'object') return null;
+
+    const timelineData = data.timeline || {};
+    const movements = Array.isArray(timelineData.movements) ? timelineData.movements : [];
+    const timelineGaps = Array.isArray(timelineData.timelineGaps) ? timelineData.timelineGaps : [];
+    const criticalAreas = Array.isArray(timelineData.criticalAreas) ? timelineData.criticalAreas : [];
+    const suspiciousPatterns = Array.isArray(timelineData.suspiciousPatterns) ? timelineData.suspiciousPatterns : [];
+    const investigationPriorities = Array.isArray(timelineData.investigationPriorities)
+      ? timelineData.investigationPriorities
+      : [];
+    const executiveSummary = data.executiveSummary || {};
+    const summaryPriorities = Array.isArray(executiveSummary.topInvestigationPriorities)
+      ? executiveSummary.topInvestigationPriorities
+      : [];
+    const lastKnownCommunication = timelineData.lastKnownCommunication || data.lastKnownCommunication;
+    const lastConfirmedAlive = timelineData.lastConfirmedAlive || data.lastConfirmedAlive;
+
+    const formatTimestamp = (value?: string) => {
+      if (!value) return 'Unknown time';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return value;
+      }
+      return date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+    };
+
+    const formatDuration = (minutes?: number) => {
+      if (typeof minutes !== 'number' || Number.isNaN(minutes)) return 'Unknown duration';
+      const hours = Math.floor(minutes / 60);
+      const remainingMinutes = Math.round(minutes % 60);
+      const parts: string[] = [];
+      if (hours > 0) {
+        parts.push(`${hours} hr${hours === 1 ? '' : 's'}`);
+      }
+      if (remainingMinutes > 0) {
+        parts.push(`${remainingMinutes} min${remainingMinutes === 1 ? '' : 's'}`);
+      }
+      if (parts.length === 0) {
+        return '0 mins';
+      }
+      return parts.join(' ');
+    };
+
+    const stats = [
+      {
+        label: 'Documented Movements',
+        value: movements.length.toString(),
+      },
+      {
+        label: 'Timeline Gaps',
+        value: timelineGaps.length.toString(),
+      },
+      {
+        label: 'Critical Areas',
+        value: criticalAreas.length.toString(),
+      },
+      {
+        label: 'Suspicious Patterns',
+        value: suspiciousPatterns.length.toString(),
+      },
+    ].filter((item) => item.value !== '0');
+
+    return (
+      <div className="mt-4 space-y-6">
+        {stats.length > 0 && (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {stats.map((stat) => (
+              <div key={stat.label} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                <p className="text-xs font-medium uppercase text-gray-500">{stat.label}</p>
+                <p className="mt-1 text-2xl font-semibold text-gray-900">{stat.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {(executiveSummary.lastConfirmedAliveTime || executiveSummary.lastSeenBy || executiveSummary.likelyScenario) && (
+          <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">Executive Summary</h4>
+            <div className="space-y-2 text-sm text-gray-700">
+              {executiveSummary.lastConfirmedAliveTime && (
+                <p>
+                  <span className="font-medium text-gray-900">Last confirmed alive:</span>{' '}
+                  {formatTimestamp(executiveSummary.lastConfirmedAliveTime)}
+                </p>
+              )}
+              {executiveSummary.lastSeenBy && (
+                <p>
+                  <span className="font-medium text-gray-900">Last seen by:</span> {executiveSummary.lastSeenBy}
+                </p>
+              )}
+              {executiveSummary.likelyScenario && (
+                <p>
+                  <span className="font-medium text-gray-900">Likely scenario:</span> {executiveSummary.likelyScenario}
+                </p>
+              )}
+              {(executiveSummary.criticalGapStart || executiveSummary.criticalGapEnd) && (
+                <p>
+                  <span className="font-medium text-gray-900">Critical gap:</span>{' '}
+                  {executiveSummary.criticalGapStart ? formatTimestamp(executiveSummary.criticalGapStart) : 'Unknown'}
+                  {' — '}
+                  {executiveSummary.criticalGapEnd ? formatTimestamp(executiveSummary.criticalGapEnd) : 'Unknown'}
+                </p>
+              )}
+            </div>
+
+            {summaryPriorities.length > 0 && (
+              <div className="mt-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
+                  Top Investigation Priorities
+                </p>
+                <ul className="list-disc pl-5 space-y-1 text-sm text-gray-700">
+                  {summaryPriorities.map((priority: string, index: number) => (
+                    <li key={index}>{priority}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
+        {movements.length > 0 && (
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">Victim Movements</h4>
+            <div className="space-y-3">
+              {movements.map((movement: any, index: number) => (
+                <div key={movement.timestamp || index} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {movement.activity || 'Activity unknown'}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {formatTimestamp(movement.timestamp)}
+                        {movement.location ? ` • ${movement.location}` : ''}
+                      </p>
+                    </div>
+                    {movement.significance && (
+                      <span
+                        className={`rounded-full px-2 py-1 text-xs font-medium ${getSeverityBadgeClasses(
+                          movement.significance
+                        )}`}
+                      >
+                        {movement.significance.charAt(0).toUpperCase() + movement.significance.slice(1)}
+                      </span>
+                    )}
+                  </div>
+                  {movement.source && (
+                    <p className="mt-2 text-xs text-gray-600">
+                      <span className="font-medium text-gray-700">Source:</span> {movement.source}
+                    </p>
+                  )}
+                  {movement.evidence && Array.isArray(movement.evidence) && movement.evidence.length > 0 && (
+                    <p className="mt-2 text-xs text-gray-600">
+                      <span className="font-medium text-gray-700">Evidence:</span> {movement.evidence.join(', ')}
+                    </p>
+                  )}
+                  {movement.investigatorNotes && (
+                    <p className="mt-2 text-xs text-gray-600">
+                      <span className="font-medium text-gray-700">Notes:</span> {movement.investigatorNotes}
+                    </p>
+                  )}
+                  {(movement.timestampConfidence || movement.locationConfidence) && (
+                    <p className="mt-2 text-xs text-gray-500">
+                      Confidence — Time: {movement.timestampConfidence || 'unknown'}, Location:{' '}
+                      {movement.locationConfidence || 'unknown'}
+                    </p>
+                  )}
+                  {movement.witnessedBy && movement.witnessedBy.length > 0 && (
+                    <p className="mt-2 text-xs text-gray-600">
+                      <span className="font-medium text-gray-700">Witnessed by:</span>{' '}
+                      {movement.witnessedBy.join(', ')}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {timelineGaps.length > 0 && (
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">Timeline Gaps</h4>
+            <div className="space-y-3">
+              {timelineGaps.map((gap: any, index: number) => (
+                <div key={gap.startTime || index} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-gray-900">
+                      {formatTimestamp(gap.startTime)} — {formatTimestamp(gap.endTime)}
+                    </p>
+                    {typeof gap.durationMinutes === 'number' && (
+                      <span className="rounded-full bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700">
+                        {formatDuration(gap.durationMinutes)}
+                      </span>
+                    )}
+                  </div>
+                  {gap.lastKnownLocation && (
+                    <p className="mt-2 text-xs text-gray-600">
+                      <span className="font-medium text-gray-700">Last known location:</span> {gap.lastKnownLocation}
+                    </p>
+                  )}
+                  {gap.nextKnownLocation && (
+                    <p className="mt-1 text-xs text-gray-600">
+                      <span className="font-medium text-gray-700">Next known location:</span> {gap.nextKnownLocation}
+                    </p>
+                  )}
+                  {gap.potentialEvidence && gap.potentialEvidence.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Potential Evidence</p>
+                      <ul className="mt-1 space-y-1 text-xs text-gray-600">
+                        {gap.potentialEvidence.map((item: string, itemIndex: number) => (
+                          <li key={itemIndex}>• {item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {gap.questionsToAnswer && gap.questionsToAnswer.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Questions to Answer</p>
+                      <ul className="mt-1 space-y-1 text-xs text-gray-600">
+                        {gap.questionsToAnswer.map((question: string, questionIndex: number) => (
+                          <li key={questionIndex}>• {question}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {criticalAreas.length > 0 && (
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">Critical Areas</h4>
+            <div className="space-y-3">
+              {criticalAreas.map((area: any, index: number) => (
+                <div key={area.location || index} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                  <p className="text-sm font-semibold text-gray-900">{area.location || 'Unknown location'}</p>
+                  {area.timeRange && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      {formatTimestamp(area.timeRange.start)} — {formatTimestamp(area.timeRange.end)}
+                    </p>
+                  )}
+                  {area.whyCritical && (
+                    <p className="mt-2 text-xs text-gray-600">{area.whyCritical}</p>
+                  )}
+                  {area.evidenceAvailable && area.evidenceAvailable.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Evidence Available</p>
+                      <ul className="mt-1 space-y-1 text-xs text-gray-600">
+                        {area.evidenceAvailable.map((item: string, itemIndex: number) => (
+                          <li key={itemIndex}>• {item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {area.evidenceMissing && area.evidenceMissing.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Evidence Needed</p>
+                      <ul className="mt-1 space-y-1 text-xs text-gray-600">
+                        {area.evidenceMissing.map((item: string, itemIndex: number) => (
+                          <li key={itemIndex}>• {item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {area.investigationActions && area.investigationActions.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Recommended Actions</p>
+                      <ul className="mt-1 space-y-1 text-xs text-gray-600">
+                        {area.investigationActions.map((action: any, actionIndex: number) => (
+                          <li key={actionIndex}>
+                            <span className="font-medium text-gray-700">{action.action}</span>
+                            {action.priority ? ` • Priority: ${action.priority}` : ''}
+                            {action.estimatedEffort ? ` • Effort: ${action.estimatedEffort}` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {investigationPriorities.length > 0 && (
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">Investigation Priorities</h4>
+            <div className="space-y-3">
+              {investigationPriorities.map((priority: any, index: number) => (
+                <div key={priority.action || index} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                  <p className="text-sm font-semibold text-gray-900">{priority.action}</p>
+                  {typeof priority.priority === 'number' && (
+                    <p className="mt-1 text-xs text-gray-500">Priority score: {priority.priority.toFixed(2)}</p>
+                  )}
+                  {priority.rationale && (
+                    <p className="mt-1 text-xs text-gray-600">{priority.rationale}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {suspiciousPatterns.length > 0 && (
+          <div>
+            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">Suspicious Patterns</h4>
+            <ul className="space-y-2">
+              {suspiciousPatterns.map((pattern: any, index: number) => (
+                <li key={pattern.pattern || index} className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+                  <p className="text-sm font-semibold text-gray-900">{pattern.pattern}</p>
+                  {pattern.significance && (
+                    <p className="mt-1 text-xs text-gray-500">Significance: {pattern.significance}</p>
+                  )}
+                  {pattern.investigationNeeded && (
+                    <p className="mt-1 text-xs text-gray-600">{pattern.investigationNeeded}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {(lastKnownCommunication || lastConfirmedAlive) && (
+          <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">Key Confirmations</h4>
+            <div className="space-y-2 text-sm text-gray-700">
+              {lastConfirmedAlive && (
+                <p>
+                  <span className="font-medium text-gray-900">Last confirmed alive:</span>{' '}
+                  {formatTimestamp(lastConfirmedAlive.time || lastConfirmedAlive)}
+                  {lastConfirmedAlive.location ? ` • ${lastConfirmedAlive.location}` : ''}
+                  {lastConfirmedAlive.confidence ? ` (${lastConfirmedAlive.confidence})` : ''}
+                </p>
+              )}
+              {lastKnownCommunication && (
+                <p>
+                  <span className="font-medium text-gray-900">Last communication:</span>{' '}
+                  {formatTimestamp(lastKnownCommunication.time)}
+                  {lastKnownCommunication.type ? ` • ${lastKnownCommunication.type}` : ''}
+                  {lastKnownCommunication.withWhom ? ` with ${lastKnownCommunication.withWhom}` : ''}
+                </p>
+              )}
+              {lastKnownCommunication?.content && (
+                <p className="text-xs text-gray-600">“{lastKnownCommunication.content}”</p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   useEffect(() => {
     loadOverview();
   }, [caseId]);
@@ -494,6 +863,7 @@ export default function AnalysisPage() {
   };
 
   const getAnalysisIcon = (type: string) => {
+    const normalizedType = normalizeAnalysisType(type);
     const icons: Record<string, any> = {
       timeline: Clock,
       timeline_and_conflicts: Clock,
@@ -507,10 +877,11 @@ export default function AnalysisPage() {
       'interrogation-questions': MessageSquare,
       'forensic-retesting': Fingerprint,
     };
-    return icons[type] || PlayCircle;
+    return icons[normalizedType] || PlayCircle;
   };
 
   const getAnalysisTitle = (type: string): string => {
+    const normalizedType = normalizeAnalysisType(type);
     const titles: Record<string, string> = {
       timeline: 'Timeline Analysis',
       timeline_and_conflicts: 'Timeline & Conflict Analysis',
@@ -524,10 +895,11 @@ export default function AnalysisPage() {
       'interrogation-questions': 'Interrogation Question Generator',
       'forensic-retesting': 'Forensic Retesting Recommendations',
     };
-    return titles[type] || type;
+    return titles[normalizedType] || normalizedType;
   };
 
   const getAnalysisDescription = (type: string): string => {
+    const normalizedType = normalizeAnalysisType(type);
     const descriptions: Record<string, string> = {
       timeline: 'Extract and analyze timeline conflicts and inconsistencies',
       timeline_and_conflicts: 'Extract events, flag conflicts, and highlight overlooked suspects',
@@ -541,7 +913,7 @@ export default function AnalysisPage() {
       'interrogation-questions': 'Generate targeted questions for re-interviews',
       'forensic-retesting': 'Recommend evidence for modern forensic techniques',
     };
-    return descriptions[type] || 'Advanced case analysis';
+    return descriptions[normalizedType] || 'Advanced case analysis';
   };
 
   const analysisTypes = [
@@ -690,10 +1062,13 @@ export default function AnalysisPage() {
               const Icon = getAnalysisIcon(id);
               const colors = getColorClasses(color, available);
               const isRunning = runningAnalysis === id;
-              const hasBeenRun = analyses.some(a =>
-                a.analysis_type === id ||
-                (id === 'timeline' && a.analysis_type === 'timeline_and_conflicts')
-              );
+              const hasBeenRun = analyses.some(a => {
+                const normalizedType = normalizeAnalysisType(a.analysis_type);
+                if (id === 'timeline') {
+                  return normalizedType === 'timeline' || normalizedType === 'timeline_and_conflicts';
+                }
+                return normalizedType === id;
+              });
 
               return (
                 <button
@@ -764,6 +1139,7 @@ export default function AnalysisPage() {
           ) : (
             <div className="divide-y">
               {analyses.map(analysis => {
+                const normalizedType = normalizeAnalysisType(analysis.analysis_type);
                 const Icon = getAnalysisIcon(analysis.analysis_type);
                 const analysisData = parseAnalysisData(analysis.analysis_data);
                 return (
@@ -785,7 +1161,9 @@ export default function AnalysisPage() {
                           <p className="text-sm text-gray-600 mb-2">
                             Completed {formatDate(analysis.created_at)}
                           </p>
-                          {(analysis.analysis_type === 'timeline' || analysis.analysis_type === 'timeline_and_conflicts' || analysis.analysis_type === 'victim-timeline') && (
+                          {(normalizedType === 'timeline' ||
+                            normalizedType === 'timeline_and_conflicts' ||
+                            normalizedType === 'victim-timeline') && (
                             <button
                               onClick={() => router.push(`/cases/${caseId}/board`)}
                               className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
@@ -797,6 +1175,8 @@ export default function AnalysisPage() {
                             <div className="mt-3">
                               {isTimelineAnalysisType(analysis.analysis_type)
                                 ? renderTimelineDetails(analysisData)
+                                : isVictimTimelineAnalysisType(analysis.analysis_type)
+                                ? renderVictimTimelineDetails(analysisData)
                                 : (
                                     <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
                                       <pre className="text-xs text-gray-700 overflow-x-auto max-h-40">
