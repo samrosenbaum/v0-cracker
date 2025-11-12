@@ -17,16 +17,6 @@ type PdfjsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 
 let pdfjsModulePromise: Promise<PdfjsModule | null> | null = null;
 
-// Polyfill DOMMatrix for Node.js environment
-if (typeof globalThis.DOMMatrix === 'undefined') {
-  // @ts-ignore - Polyfill for Node.js
-  globalThis.DOMMatrix = class DOMMatrix {
-    constructor() {
-      // Minimal DOMMatrix implementation for pdfjs-dist compatibility
-    }
-  };
-}
-
 async function loadPdfJsModule(): Promise<PdfjsModule | null> {
   // DISABLED: pdfjs-dist requires full DOMMatrix implementation which is not available in Node.js
   // The DOMMatrix polyfill is insufficient for pdfjs-dist's canvas operations
