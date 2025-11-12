@@ -11,7 +11,7 @@
 import { supabaseServer } from './supabase-server';
 import Tesseract from 'tesseract.js';
 import OpenAI from 'openai';
-import pdfParse from 'pdf-parse';
+import { parsePdf } from './pdf-parse-compat';
 
 type PdfjsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 
@@ -271,7 +271,7 @@ async function extractFromPDF(buffer: Buffer): Promise<ExtractionResult> {
 
 async function extractWithPdfParse(buffer: Buffer): Promise<ExtractionResult> {
   try {
-    const result = await pdfParse(buffer);
+    const result = await parsePdf(buffer);
     const text = result.text?.trim() || '';
     const hasMeaningfulText = text.length > 0;
     const pageCount = result.numpages || result.numrender || undefined;
