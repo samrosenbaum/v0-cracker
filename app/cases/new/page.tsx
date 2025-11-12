@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase-client';
 import { ArrowLeft, Save } from 'lucide-react';
 
+const FALLBACK_DEV_USER_ID = process.env.NEXT_PUBLIC_SUPABASE_DEV_USER_ID;
+const FALLBACK_DEV_AGENCY_ID =
+  process.env.NEXT_PUBLIC_SUPABASE_DEV_AGENCY_ID || '00000000-0000-0000-0000-000000000000';
+
 export default function NewCasePage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -21,29 +25,53 @@ export default function NewCasePage() {
     setIsSubmitting(true);
 
     try {
-      // Auth check disabled for testing
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
+      // Attempt to read the current user, but allow creation to proceed without an active session.
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-      // if (!user) {
-      //   alert('You must be logged in to create a case');
-      //   router.push('/login');
-      //   return;
-      // }
+      if (userError) {
+        throw userError;
+      }
 
-      // Use default user ID when not authenticated (for testing)
-      const userId = user?.id || '00000000-0000-0000-0000-000000000000';
+      const userId = user?.id ?? FALLBACK_DEV_USER_ID;
 
-      // Get user's agency membership
-      const { data: membership } = await supabase
-        .from('agency_members')
-        .select('agency_id')
-        .eq('user_id', userId)
-        .limit(1)
-        .single();
+      if (!userId) {
+        alert(
+          'No active user session and NEXT_PUBLIC_SUPABASE_DEV_USER_ID is not configured. Please set a fallback user ID to create cases without signing in.'
+        );
+        return;
+      }
 
-      // If no agency membership, use default agency
-      const agency_id = membership?.agency_id || '00000000-0000-0000-0000-000000000000';
+      let agency_id = FALLBACK_DEV_AGENCY_ID;
+
+      if (user) {
+        const {
+          data: membership,
+          error: membershipError,
+        } = await supabase
+          .from('agency_members')
+          .select('agency_id')
+          .eq('user_id', userId)
+          .limit(1)
+          .maybeSingle();
+
+        if (membershipError) {
+          throw membershipError;
+        }
+
+        if (membership?.agency_id) {
+          agency_id = membership.agency_id;
+        }
+      }
+
+      if (!agency_id) {
+        alert(
+          'No agency could be determined for this case. Please set NEXT_PUBLIC_SUPABASE_DEV_AGENCY_ID or add the user to an agency.'
+        );
+        return;
+      }
 
       // Insert case
       const { data: newCase, error } = await supabase
