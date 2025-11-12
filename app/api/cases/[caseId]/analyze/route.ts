@@ -50,18 +50,133 @@ export async function GET() {
   );
 }
 
-async function resolveDocumentContent(
+const PLACEHOLDER_PATTERNS = [
+  /^\[?no extracted text/i,
+  /^summary unavailable/i,
+  /^no text extracted/i,
+];
+
+function isPlaceholderContent(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return true;
+  }
+  return PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
+
+type TextCandidate = { path: string; text: string; score: number };
+
+const TEXT_PRIORITY: { pattern: RegExp; weight: number }[] = [
+  { pattern: /extracted[_-]?text/i, weight: 120 },
+  { pattern: /processed[_-]?text/i, weight: 115 },
+  { pattern: /full[_-]?text/i, weight: 110 },
+  { pattern: /ocr|transcrib|transcript|transcription/i, weight: 105 },
+  { pattern: /textract/i, weight: 100 },
+  { pattern: /content|body|summary/i, weight: 90 },
+  { pattern: /pages?\./i, weight: 85 },
+  { pattern: /paragraph|line|section/i, weight: 70 },
+];
+
+function scoreCandidate(path: string, text: string): number {
+  const base = TEXT_PRIORITY.find((entry) => entry.pattern.test(path))?.weight ?? 50;
+  const lengthBonus = Math.min(text.length / 500, 10);
+  return base + lengthBonus;
+}
+
+function normalizeCandidatePath(path: string): string {
+  return path.replace(/\.(\d+)(?=\.|$)/g, '.[]');
+}
+
+function collectTextCandidates(
+  value: unknown,
+  path: string[] = [],
+  accumulator: Map<string, { texts: string[]; score: number; originalPath: string }>
+) {
+  if (typeof value === 'string') {
+    if (isPlaceholderContent(value)) {
+      return;
+    }
+    const normalizedPath = normalizeCandidatePath(path.join('.')) || 'root';
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return;
+    }
+    const entry = accumulator.get(normalizedPath) || {
+      texts: [],
+      score: 0,
+      originalPath: path.join('.'),
+    };
+    entry.texts.push(trimmed);
+    entry.score = Math.max(entry.score, scoreCandidate(entry.originalPath, trimmed));
+    accumulator.set(normalizedPath, entry);
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    const stringValues = value
+      .map((item) => (typeof item === 'string' ? item.trim() : ''))
+      .filter((text) => text && !isPlaceholderContent(text));
+    if (stringValues.length) {
+      const normalizedPath = normalizeCandidatePath([...path, '[]'].join('.'));
+      const entry = accumulator.get(normalizedPath) || {
+        texts: [],
+        score: 0,
+        originalPath: [...path, '[]'].join('.'),
+      };
+      const combined = stringValues.join('\n');
+      entry.texts.push(combined);
+      entry.score = Math.max(entry.score, scoreCandidate(entry.originalPath, combined));
+      accumulator.set(normalizedPath, entry);
+    }
+
+    value.forEach((item, index) => {
+      collectTextCandidates(item, [...path, index.toString()], accumulator);
+    });
+    return;
+  }
+
+  if (value && typeof value === 'object') {
+    Object.entries(value as Record<string, unknown>).forEach(([key, nestedValue]) => {
+      collectTextCandidates(nestedValue, [...path, key], accumulator);
+    });
+  }
+}
+
+function extractTextFromMetadata(metadata?: Record<string, any>): string {
+  if (!metadata || typeof metadata !== 'object') {
+    return '';
+  }
+
+  const accumulator = new Map<string, { texts: string[]; score: number; originalPath: string }>();
+  collectTextCandidates(metadata, [], accumulator);
+
+  if (!accumulator.size) {
+    return '';
+  }
+
+  const candidates: TextCandidate[] = Array.from(accumulator.values()).map(({ texts, score, originalPath }) => ({
+    path: originalPath,
+    text: Array.from(new Set(texts)).join('\n').trim(),
+    score: score,
+  }));
+
+  candidates.sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    return b.text.length - a.text.length;
+  });
+
+  return candidates[0]?.text || '';
+}
+
+export async function resolveDocumentContent(
   storagePath?: string | null,
   metadata?: Record<string, any>
 ): Promise<string> {
-  if (metadata) {
-    const textLikeFields = ['extracted_text', 'text', 'content', 'body', 'summary'];
-    for (const field of textLikeFields) {
-      const value = metadata[field];
-      if (typeof value === 'string' && value.trim().length > 0) {
-        return value;
-      }
-    }
+  const metadataText = extractTextFromMetadata(metadata);
+  if (metadataText) {
+    return metadataText;
   }
 
   if (!storagePath) {
@@ -69,14 +184,12 @@ async function resolveDocumentContent(
   }
 
   try {
-    const { data, error } = await supabaseServer.storage
-      .from('case-files')
-      .download(storagePath);
+    const { data, error } = await supabaseServer.storage.from('case-files').download(storagePath);
 
     if (!error && data) {
       const buffer = Buffer.from(await data.arrayBuffer());
-      const text = buffer.toString('utf-8');
-      if (text.trim().length > 0) {
+      const text = buffer.toString('utf-8').trim();
+      if (text && !isPlaceholderContent(text)) {
         return text;
       }
     }
@@ -84,15 +197,15 @@ async function resolveDocumentContent(
     console.warn('[Timeline Analysis API] Failed to download from storage:', storageError);
   }
 
-  const fallbackObject = getStorageObject('case-files', storagePath);
-  if (fallbackObject?.content) {
-    return fallbackObject.content;
+  const fallbackObject = storagePath ? getStorageObject('case-files', storagePath) : null;
+  if (fallbackObject?.content && !isPlaceholderContent(fallbackObject.content)) {
+    return fallbackObject.content.trim();
   }
 
   return '';
 }
 
-async function gatherDocumentsForAnalysis(caseId: string, preferSupabase: boolean) {
+export async function gatherDocumentsForAnalysis(caseId: string, preferSupabase: boolean) {
   if (preferSupabase) {
     try {
       const { data: supabaseDocs, error: docError } = await supabaseServer
@@ -100,41 +213,60 @@ async function gatherDocumentsForAnalysis(caseId: string, preferSupabase: boolea
         .select('file_name, document_type, storage_path, metadata')
         .eq('case_id', caseId);
 
-      if (!docError && supabaseDocs && supabaseDocs.length > 0) {
+      if (docError) {
+        console.error('[Timeline Analysis API] Failed to gather documents from Supabase:', docError);
+        return [];
+      }
+
+      if (supabaseDocs && supabaseDocs.length > 0) {
         const documents: { content: string; filename: string; type: string }[] = [];
+        const skipped: string[] = [];
+
         for (const doc of supabaseDocs) {
-          const content = await resolveDocumentContent(doc.storage_path, doc.metadata);
+          const content = await resolveDocumentContent(doc.storage_path, doc.metadata as Record<string, any>);
+          if (!content) {
+            skipped.push(doc.file_name || doc.storage_path || 'unknown');
+            continue;
+          }
+
           documents.push({
-            content: content || `[No extracted text available for ${doc.file_name}]`,
+            content,
             filename: doc.file_name,
             type: doc.document_type || 'other',
           });
         }
+
+        if (skipped.length) {
+          console.warn('[Timeline Analysis API] Skipped documents with no extracted content:', skipped);
+        }
+
         if (documents.length > 0) {
           return documents;
         }
       }
+
+      return [];
     } catch (error) {
       console.error('[Timeline Analysis API] Failed to gather documents from Supabase:', error);
+      return [];
     }
   }
 
   const demoDocs = listCaseDocuments(caseId);
-  return demoDocs.map((doc) => {
-    const storage = doc.storage_path
-      ? getStorageObject('case-files', doc.storage_path)
-      : null;
-    const content =
-      (typeof doc.metadata?.extracted_text === 'string' && doc.metadata.extracted_text) ||
-      storage?.content ||
-      '';
+  return demoDocs
+    .map((doc) => {
+      const storage = doc.storage_path ? getStorageObject('case-files', doc.storage_path) : null;
+      const extracted =
+        (typeof doc.metadata?.extracted_text === 'string' ? doc.metadata.extracted_text : '')?.trim() || '';
+      const content = extracted || storage?.content || '';
 
-    return {
-      content: content || `Summary unavailable for ${doc.file_name}.`,
-      filename: doc.file_name,
-      type: doc.document_type || 'other',
-    };
-  });
+      return {
+        content: content || `Summary unavailable for ${doc.file_name}.`,
+        filename: doc.file_name,
+        type: doc.document_type || 'other',
+      };
+    })
+    .filter((doc) => !isPlaceholderContent(doc.content));
 }
 
 async function runFallbackAnalysis(
