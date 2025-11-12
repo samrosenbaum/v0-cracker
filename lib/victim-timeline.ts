@@ -75,6 +75,46 @@ function inferLocationFromDescription(description: string): string {
   return 'Unknown Location';
 }
 
+/**
+ * Check if a victim movement is meaningful (not a placeholder or fallback)
+ * Used to filter out useless timeline entries that don't provide real information
+ */
+function isMeaningfulMovement(movement: VictimMovement): boolean {
+  const activity = movement.activity.toLowerCase();
+
+  // Filter out placeholder activities
+  const placeholderPatterns = [
+    /no extracted text/i,
+    /no extractable text/i,
+    /could not extract/i,
+    /insufficient document detail/i,
+    /document analysis fallback/i,
+    /extraction not yet implemented/i,
+    /unsupported file type/i,
+  ];
+
+  if (placeholderPatterns.some(pattern => pattern.test(activity))) {
+    return false;
+  }
+
+  // Filter out movements with no real location and low confidence
+  if (movement.location === 'Unknown Location' &&
+      movement.locationConfidence === 'unknown' &&
+      movement.timestampConfidence === 'estimated') {
+    return false;
+  }
+
+  // Keep movements that have at least one verifiable element:
+  // - Specific location (not "Unknown Location")
+  // - Witnesses or companions
+  // - Non-fallback evidence
+  const hasSpecificLocation = movement.location !== 'Unknown Location';
+  const hasWitnesses = movement.witnessedBy.length > 0 || movement.accompaniedBy.length > 0;
+  const hasRealEvidence = movement.evidence.some(e => e !== 'fallback' && e !== 'document');
+
+  return hasSpecificLocation || hasWitnesses || hasRealEvidence;
+}
+
 // ============================================================================
 // VICTIM LAST MOVEMENTS RECONSTRUCTION
 // ============================================================================
@@ -297,7 +337,7 @@ function buildFallbackVictimTimeline(
 
   const fallbackDate = new Date(baseDate);
 
-  const movements: VictimMovement[] = analysis.timeline.map((event, index) => {
+  const allMovements: VictimMovement[] = analysis.timeline.map((event, index) => {
     const timestamp = safeIsoFromParts(event.date, event.time, fallbackDate, (analysis.timeline.length - index) * 1.25);
     const involved = event.involvedPersons?.filter(Boolean) || [];
     const companions = involved.filter(person => person !== victimInfo.name);
@@ -318,14 +358,28 @@ function buildFallbackVictimTimeline(
     };
   });
 
+  // Filter out placeholder/meaningless movements
+  const movements = allMovements.filter(isMeaningfulMovement);
+
+  // Log how many movements were filtered out
+  if (allMovements.length > movements.length) {
+    console.log(`[Timeline] Filtered out ${allMovements.length - movements.length} placeholder/meaningless movements (kept ${movements.length})`);
+  }
+
   if (!movements.length) {
+    // If we have no meaningful movements at all, provide a helpful default message
+    const hasDocuments = documents && documents.length > 0;
+    const activity = hasDocuments
+      ? 'No timeline data could be extracted from documents. Manual review or OCR may be required.'
+      : 'No documents available for timeline reconstruction.';
+
     movements.push({
       timestamp: safeIsoFromParts(undefined, undefined, fallbackDate, 1),
       timestampConfidence: 'estimated',
       location: victimInfo.incidentLocation || 'Unknown Location',
-      locationConfidence: 'unknown',
-      activity: 'Insufficient document detail. Defaulting to estimated movement near time of incident.',
-      source: documents[0]?.filename || 'Unknown Source',
+      locationConfidence: victimInfo.incidentLocation ? 'approximate' : 'unknown',
+      activity,
+      source: documents[0]?.filename || 'Case Analysis',
       witnessedBy: [],
       accompaniedBy: [],
       evidence: ['fallback'],
