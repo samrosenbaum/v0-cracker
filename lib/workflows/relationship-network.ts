@@ -9,13 +9,23 @@
 
 import { supabaseServer } from '@/lib/supabase-server';
 import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
-import { mapRelationshipNetwork } from '@/lib/cold-case-analyzer';
+import {
+  mapRelationshipNetwork,
+  RelationshipNetworkAnalysis,
+} from '@/lib/cold-case-analyzer';
 import { extractMultipleDocuments } from '@/lib/document-parser';
 
 interface RelationshipNetworkParams {
   jobId: string;
   caseId: string;
 }
+
+type RelationshipNetworkSummaryMetadata = {
+  totalRelationships: number;
+  hiddenConnections: number;
+  clusterCount: number;
+  primaryConnectors: string[];
+};
 
 async function updateProcessingJob(jobId: string, updates: Record<string, any>) {
   await updateProcessingJobRecord(jobId, updates, 'RelationshipNetworkWorkflow');
@@ -130,13 +140,19 @@ export async function processRelationshipNetwork(params: RelationshipNetworkPara
     async function analyzeNetwork() {
       console.log('[Relationship Network] Mapping relationship network...');
 
-      const network = await mapRelationshipNetwork(
-        suspects.map((s) => s.name),
-        witnesses.map((w) => w.name),
-        documentTexts
-      );
+      const suspectNames = suspects
+        .map((s) => s?.name)
+        .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
+      const witnessNames = witnesses
+        .map((w) => w?.name)
+        .filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
 
-      console.log(`[Relationship Network] Found ${network.relationships?.length || 0} relationships`);
+      const network: RelationshipNetworkAnalysis = await mapRelationshipNetwork(documentTexts, {
+        suspects: suspectNames,
+        witnesses: witnessNames,
+      });
+
+      console.log(`[Relationship Network] Found ${network.relationships.length} relationships`);
 
       await updateProcessingJob(jobId, {
         completed_units: 3,
@@ -149,12 +165,14 @@ export async function processRelationshipNetwork(params: RelationshipNetworkPara
 
     // Step 5: Save analysis results
     async function saveResults() {
+      const analysisData: RelationshipNetworkAnalysis = network;
+
       const { error: saveError } = await supabaseServer
         .from('case_analysis')
         .insert({
           case_id: caseId,
           analysis_type: 'relationship-network',
-          analysis_data: { network } as any,
+          analysis_data: analysisData,
           confidence_score: 0.87,
           used_prompt: 'Relationship network mapping to identify hidden connections between persons of interest',
         });
@@ -166,6 +184,13 @@ export async function processRelationshipNetwork(params: RelationshipNetworkPara
       }
 
       // Mark job as completed
+      const summary: RelationshipNetworkSummaryMetadata = {
+        totalRelationships: network.relationships.length,
+        hiddenConnections: network.hiddenConnections.length,
+        clusterCount: network.clusters.length,
+        primaryConnectors: network.insights.primaryConnectors,
+      };
+
       await updateProcessingJob(jobId, {
         status: 'completed',
         completed_units: totalUnits,
@@ -173,11 +198,7 @@ export async function processRelationshipNetwork(params: RelationshipNetworkPara
         completed_at: new Date().toISOString(),
         metadata: {
           ...initialMetadata,
-          summary: {
-            totalRelationships: network.relationships?.length || 0,
-            hiddenConnections: network.hiddenConnections?.length || 0,
-            suspectGroups: network.suspectGroups?.length || 0,
-          },
+          summary,
         },
       });
     }

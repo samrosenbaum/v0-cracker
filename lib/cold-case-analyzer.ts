@@ -487,12 +487,21 @@ Return JSON matching EvidenceGap[] interface.`;
 // 3. RELATIONSHIP NETWORK MAPPING
 // ============================================================================
 
+export type RelationshipConnectionType =
+  | 'family'
+  | 'romantic'
+  | 'friend'
+  | 'coworker'
+  | 'enemy'
+  | 'business'
+  | 'casual';
+
 export interface RelationshipNode {
   name: string;
   role: 'victim' | 'suspect' | 'witness' | 'family' | 'associate' | 'unknown';
   connections: {
     to: string;
-    type: 'family' | 'romantic' | 'friend' | 'coworker' | 'enemy' | 'business' | 'casual';
+    type: RelationshipConnectionType;
     strength: number; // 0-1
     notes: string;
     suspicious: boolean;
@@ -511,22 +520,138 @@ export interface HiddenConnection {
   discoveredFrom: string[]; // Which documents revealed it
 }
 
-function fallbackRelationshipNetwork(documents: string[]): {
+export interface RelationshipCluster {
+  label: string;
+  members: string[];
+  dominantRole: RelationshipNode['role'];
+  riskLevel: 'low' | 'medium' | 'high';
+  summary: string;
+}
+
+export interface RelationshipNetworkInsights {
+  primaryConnectors: string[];
+  potentialConflicts: string[];
+  recommendedFollowUp: string[];
+}
+
+export interface RelationshipEdge {
+  from: string;
+  to: string;
+  type: RelationshipConnectionType;
+  strength: number;
+  notes: string;
+  suspicious: boolean;
+}
+
+export interface RelationshipNetworkOptions {
+  suspects?: string[];
+  witnesses?: string[];
+}
+
+export interface RelationshipNetworkAnalysis {
   nodes: RelationshipNode[];
+  relationships: RelationshipEdge[];
   hiddenConnections: HiddenConnection[];
-} {
+  clusters: RelationshipCluster[];
+  insights: RelationshipNetworkInsights;
+}
+
+function ensureContextualRoles(
+  node: RelationshipNode,
+  context: RelationshipNetworkOptions,
+  normalise: (value: string) => string,
+) {
+  const suspects = new Set((context.suspects ?? []).map(normalise));
+  const witnesses = new Set((context.witnesses ?? []).map(normalise));
+  const nameKey = normalise(node.name);
+  if (suspects.has(nameKey)) {
+    node.role = node.role === 'victim' ? 'victim' : 'suspect';
+  } else if (witnesses.has(nameKey) && node.role === 'unknown') {
+    node.role = 'witness';
+  }
+}
+
+function normaliseName(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function enhanceWithContext(
+  analysis: RelationshipNetworkAnalysis,
+  options: RelationshipNetworkOptions,
+): RelationshipNetworkAnalysis {
+  const suspects = (options.suspects ?? []).filter(name => typeof name === 'string' && name.trim().length > 0);
+  const witnesses = (options.witnesses ?? []).filter(name => typeof name === 'string' && name.trim().length > 0);
+
+  const nodes = [...analysis.nodes];
+  const existing = new Map(nodes.map(node => [normaliseName(node.name), node] as const));
+
+  const ensureNode = (name: string, role: RelationshipNode['role']) => {
+    const key = normaliseName(name);
+    if (!existing.has(key)) {
+      const node: RelationshipNode = {
+        name,
+        role,
+        connections: [],
+      };
+      existing.set(key, node);
+      nodes.push(node);
+    } else {
+      const node = existing.get(key)!;
+      if (role === 'suspect' && node.role !== 'victim') {
+        node.role = 'suspect';
+      } else if (role === 'witness' && node.role === 'unknown') {
+        node.role = 'witness';
+      }
+    }
+  };
+
+  suspects.forEach(name => ensureNode(name, 'suspect'));
+  witnesses.forEach(name => ensureNode(name, 'witness'));
+
+  nodes.forEach(node => ensureContextualRoles(node, options, normaliseName));
+
+  return {
+    ...analysis,
+    nodes,
+  };
+}
+
+function fallbackRelationshipNetwork(
+  documents: string[],
+  options: RelationshipNetworkOptions = {},
+): RelationshipNetworkAnalysis {
   const nodeMap = new Map<string, RelationshipNode>();
   const connectionMap = new Map<string, Map<string, { count: number; contexts: string[]; suspicious: boolean }>>();
 
+  const suspects = new Set((options.suspects ?? []).map(normaliseName));
+  const witnesses = new Set((options.witnesses ?? []).map(normaliseName));
+
   const ensureNode = (name: string) => {
-    if (!nodeMap.has(name)) {
-      nodeMap.set(name, {
-        name,
-        role: 'unknown',
+    const trimmed = name?.trim();
+    if (!trimmed) {
+      return {
+        name: 'Unknown',
+        role: 'unknown' as const,
+        connections: [],
+      } satisfies RelationshipNode;
+    }
+
+    if (!nodeMap.has(trimmed)) {
+      let role: RelationshipNode['role'] = 'unknown';
+      const key = normaliseName(trimmed);
+      if (suspects.has(key)) {
+        role = 'suspect';
+      } else if (witnesses.has(key)) {
+        role = 'witness';
+      }
+
+      nodeMap.set(trimmed, {
+        name: trimmed,
+        role,
         connections: [],
       });
     }
-    return nodeMap.get(name)!;
+    return nodeMap.get(trimmed)!;
   };
 
   const addConnection = (a: string, b: string, context: string) => {
@@ -576,6 +701,33 @@ function fallbackRelationshipNetwork(documents: string[]): {
     });
   });
 
+  const nodes = Array.from(nodeMap.values()).map(node => ({
+    ...node,
+    connections: node.connections.filter(
+      (connection, index, arr) => arr.findIndex(existing => existing.to === connection.to) === index,
+    ),
+  }));
+
+  const hiddenConnections: HiddenConnection[] = [];
+  connectionMap.forEach((targets, person1) => {
+    targets.forEach((details, person2) => {
+      if (details.suspicious || details.count > 2) {
+        hiddenConnections.push({
+          person1,
+          person2,
+          connectionType: details.suspicious ? 'concealed_association' : 'frequent_contact',
+          whyItMatters: details.suspicious
+            ? 'Document text hints this relationship was downplayed or undisclosed during interviews.'
+            : 'Frequent mentions suggest coordination not reflected in official statements.',
+          hiddenHow: details.suspicious
+            ? 'References to secret or undisclosed meetings were found in source documents.'
+            : 'Multiple documents mention both individuals together without supporting interview acknowledgement.',
+          discoveredFrom: details.contexts.slice(0, 3),
+        });
+      }
+    });
+  });
+
   connectionMap.forEach((targets, source) => {
     const sourceNode = ensureNode(source);
     targets.forEach((details, target) => {
@@ -600,55 +752,162 @@ function fallbackRelationshipNetwork(documents: string[]): {
     });
   });
 
-  const hiddenConnections: HiddenConnection[] = [];
-  connectionMap.forEach((targets, person1) => {
-    targets.forEach((details, person2) => {
-      if (details.suspicious || details.count > 2) {
-        hiddenConnections.push({
-          person1,
-          person2,
-          connectionType: details.suspicious ? 'concealed_association' : 'frequent_contact',
-          whyItMatters: details.suspicious
-            ? 'Document text hints this relationship was downplayed or undisclosed during interviews.'
-            : 'Frequent mentions suggest coordination not reflected in official statements.',
-          hiddenHow: details.suspicious
-            ? 'References to secret or undisclosed meetings were found in source documents.'
-            : 'Multiple documents mention both individuals together without supporting interview acknowledgement.',
-          discoveredFrom: details.contexts.slice(0, 3),
-        });
+  const relationships: RelationshipEdge[] = [];
+  const seenPairs = new Set<string>();
+  nodes.forEach(node => {
+    node.connections.forEach(connection => {
+      const key = [node.name, connection.to].sort().join('::');
+      if (seenPairs.has(key)) {
+        return;
       }
+      seenPairs.add(key);
+      relationships.push({
+        from: node.name,
+        to: connection.to,
+        type: connection.type,
+        strength: connection.strength,
+        notes: connection.notes,
+        suspicious: connection.suspicious,
+      });
     });
   });
 
-  const nodes = Array.from(nodeMap.values()).map(node => ({
-    ...node,
-    connections: node.connections.filter(
-      (connection, index, arr) => arr.findIndex(existing => existing.to === connection.to) === index,
-    ),
-  }));
+  const adjacency = new Map<string, Set<string>>();
+  relationships.forEach(edge => {
+    if (!adjacency.has(edge.from)) adjacency.set(edge.from, new Set());
+    if (!adjacency.has(edge.to)) adjacency.set(edge.to, new Set());
+    adjacency.get(edge.from)!.add(edge.to);
+    adjacency.get(edge.to)!.add(edge.from);
+  });
 
-  return {
+  const clusters: RelationshipCluster[] = [];
+  const visited = new Set<string>();
+
+  nodes.forEach(node => {
+    if (visited.has(node.name)) return;
+    const queue = [node.name];
+    const component = new Set<string>();
+
+    while (queue.length) {
+      const current = queue.shift()!;
+      if (visited.has(current)) continue;
+      visited.add(current);
+      component.add(current);
+      const neighbours = adjacency.get(current);
+      if (neighbours) {
+        neighbours.forEach(neighbour => {
+          if (!visited.has(neighbour)) {
+            queue.push(neighbour);
+          }
+        });
+      }
+    }
+
+    if (!component.size) {
+      return;
+    }
+
+    const members = Array.from(component.values());
+    const clusterNodes = members
+      .map(name => nodes.find(n => n.name === name)!)
+      .filter(Boolean);
+
+    const roleCount = clusterNodes.reduce<Record<RelationshipNode['role'], number>>((acc, clusterNode) => {
+      acc[clusterNode.role] = (acc[clusterNode.role] || 0) + 1;
+      return acc;
+    }, {
+      victim: 0,
+      suspect: 0,
+      witness: 0,
+      family: 0,
+      associate: 0,
+      unknown: 0,
+    });
+
+    const dominantRole = (Object.entries(roleCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'unknown') as RelationshipNode['role'];
+    const suspiciousEdges = relationships.filter(
+      edge => component.has(edge.from) && component.has(edge.to) && edge.suspicious,
+    );
+
+    const riskLevel: RelationshipCluster['riskLevel'] = suspiciousEdges.length > 1
+      ? 'high'
+      : suspiciousEdges.length === 1
+        ? 'medium'
+        : 'low';
+
+    const summaryParts: string[] = [];
+    if (dominantRole === 'suspect') {
+      summaryParts.push('Cluster dominated by suspects; review coordination patterns.');
+    } else if (dominantRole === 'witness') {
+      summaryParts.push('Witness-heavy cluster—may contain corroborating testimony.');
+    }
+    if (suspiciousEdges.length) {
+      summaryParts.push(`${suspiciousEdges.length} suspicious link${suspiciousEdges.length > 1 ? 's' : ''} detected.`);
+    }
+
+    clusters.push({
+      label: `Cluster ${clusters.length + 1}`,
+      members,
+      dominantRole,
+      riskLevel,
+      summary: summaryParts.join(' ') || 'No major risk indicators detected.',
+    });
+  });
+
+  const sortedNodes = [...nodes].sort((a, b) => b.connections.length - a.connections.length);
+  const primaryConnectors = sortedNodes.slice(0, 3).map(node => node.name);
+  const potentialConflicts = hiddenConnections.map(
+    connection => `${connection.person1} ⇄ ${connection.person2}: ${connection.whyItMatters}`,
+  );
+  const recommendedFollowUp = hiddenConnections.length
+    ? hiddenConnections.map(connection => `Re-interview ${connection.person1} and ${connection.person2} about ${connection.connectionType}.`)
+    : sortedNodes.slice(0, 2).map(node => `Verify alibi and communications for ${node.name}.`);
+
+  const analysis: RelationshipNetworkAnalysis = {
     nodes,
+    relationships,
     hiddenConnections,
+    clusters,
+    insights: {
+      primaryConnectors,
+      potentialConflicts,
+      recommendedFollowUp,
+    },
   };
+
+  return enhanceWithContext(analysis, options);
 }
 
 export async function mapRelationshipNetwork(
-  documents: string[]
-): Promise<{ nodes: RelationshipNode[]; hiddenConnections: HiddenConnection[] }> {
+  documents: string[],
+  options: RelationshipNetworkOptions = {},
+): Promise<RelationshipNetworkAnalysis> {
 
   if (!documents.length) {
-    return { nodes: [], hiddenConnections: [] };
+    return fallbackRelationshipNetwork([], options);
   }
 
   if (!isAnthropicConfigured()) {
     console.warn('[ColdCaseAnalyzer] Anthropic key missing for relationship network analysis. Using heuristic fallback.');
-    return fallbackRelationshipNetwork(documents);
+    return fallbackRelationshipNetwork(documents, options);
+  }
+
+  const suspectList = (options.suspects ?? []).filter(name => typeof name === 'string' && name.trim().length > 0);
+  const witnessList = (options.witnesses ?? []).filter(name => typeof name === 'string' && name.trim().length > 0);
+
+  const contextSections: string[] = [];
+  if (suspectList.length) {
+    contextSections.push(`Known suspects: ${suspectList.join(', ')}`);
+  }
+  if (witnessList.length) {
+    contextSections.push(`Key witnesses: ${witnessList.join(', ')}`);
   }
 
   const prompt = `You are a detective specializing in uncovering hidden relationships. Analyze these documents to map ALL relationships between people involved in this case.
 
-FOCUS ON:
+${contextSections.length ? `${contextSections.join('\n')}
+
+` : ''}FOCUS ON:
 1. **Obvious relationships**: Family, friends, coworkers
 2. **HIDDEN relationships**:
    - Secret affairs
@@ -668,14 +927,31 @@ FOCUS ON:
 DOCUMENTS:
 ${documents.join('\n\n---\n\n')}
 
-Create a network map showing:
-- All people involved
-- Their relationships to each other
-- Relationship strength/frequency
-- Hidden or concealed connections
-- Suspicious omissions
-
-Return JSON with nodes (RelationshipNode[]) and hiddenConnections (HiddenConnection[]).`;
+Return JSON using this exact schema:
+{
+  "nodes": RelationshipNode[],
+  "relationships": {
+    "from": string,
+    "to": string,
+    "type": "family" | "romantic" | "friend" | "coworker" | "enemy" | "business" | "casual",
+    "strength": number,
+    "notes": string,
+    "suspicious": boolean
+  }[],
+  "hiddenConnections": HiddenConnection[],
+  "clusters": {
+    "label": string,
+    "members": string[],
+    "dominantRole": "victim" | "suspect" | "witness" | "family" | "associate" | "unknown",
+    "riskLevel": "low" | "medium" | "high",
+    "summary": string
+  }[],
+  "insights": {
+    "primaryConnectors": string[],
+    "potentialConflicts": string[],
+    "recommendedFollowUp": string[]
+  }
+}`;
 
   const anthropic = getAnthropicClient();
 
@@ -689,10 +965,23 @@ Return JSON with nodes (RelationshipNode[]) and hiddenConnections (HiddenConnect
     const content = message.content[0];
     if (content.type !== 'text') throw new Error('Unexpected response type');
 
-    return safeJsonExtract(content.text, /\{[\s\S]*\}/);
+    const parsed = safeJsonExtract(content.text, /\{[\s\S]*\}/);
+    const analysis: RelationshipNetworkAnalysis = {
+      nodes: Array.isArray(parsed.nodes) ? parsed.nodes : [],
+      relationships: Array.isArray(parsed.relationships) ? parsed.relationships : [],
+      hiddenConnections: Array.isArray(parsed.hiddenConnections) ? parsed.hiddenConnections : [],
+      clusters: Array.isArray(parsed.clusters) ? parsed.clusters : [],
+      insights: {
+        primaryConnectors: parsed?.insights?.primaryConnectors ?? [],
+        potentialConflicts: parsed?.insights?.potentialConflicts ?? [],
+        recommendedFollowUp: parsed?.insights?.recommendedFollowUp ?? [],
+      },
+    };
+
+    return enhanceWithContext(analysis, options);
   } catch (error) {
     console.error('[ColdCaseAnalyzer] Relationship network analysis failed. Falling back to heuristics.', error);
-    return fallbackRelationshipNetwork(documents);
+    return fallbackRelationshipNetwork(documents, options);
   }
 }
 
@@ -1407,7 +1696,10 @@ export async function performComprehensiveAnalysis(
   ] = await Promise.all([
     analyzeBehavioralPatterns(caseData.interviews || []),
     identifyEvidenceGaps(caseData),
-    mapRelationshipNetwork(caseData.documents || []),
+    mapRelationshipNetwork(caseData.documents || [], {
+      suspects: Array.isArray(caseData?.suspects) ? caseData.suspects : undefined,
+      witnesses: Array.isArray(caseData?.witnesses) ? caseData.witnesses : undefined,
+    }),
     findOverlookedDetails(caseData.documents || []),
   ]);
 
