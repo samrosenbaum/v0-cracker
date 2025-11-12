@@ -39,6 +39,14 @@ export const processRelationshipNetworkJob = inngest.createFunction(
       requestedAt: new Date().toISOString(),
     };
 
+    const countConnections = (network: { nodes?: { connections?: { to: string }[] }[] }) => {
+      if (!network?.nodes?.length) {
+        return 0;
+      }
+      const total = network.nodes.reduce((sum, node) => sum + (node.connections?.length || 0), 0);
+      return Math.round(total / 2);
+    };
+
     try {
       // Step 1: Initialize job
       await step.run('initialize-job', async () => {
@@ -100,32 +108,43 @@ export const processRelationshipNetworkJob = inngest.createFunction(
       });
 
       // Step 3: Extract document content
-      const { documentTexts } = await step.run('extract-content', async () => {
+      const { documentEntries } = await step.run('extract-content', async () => {
         console.log(`[Relationship Network] Extracting content from ${documents.length} documents...`);
 
         const storagePaths = documents.map((d) => d.storage_path).filter(Boolean) as string[];
         const extractionResults = await extractMultipleDocuments(storagePaths, 5);
 
-        const documentTexts = documents.map((doc) => {
-          const extraction = extractionResults.get(doc.storage_path);
-          return extraction?.text || '';
-        }).filter((text) => text.length > 0);
+        const documentEntries = documents
+          .map((doc, index) => {
+            const extraction = extractionResults.get(doc.storage_path);
+            const text = extraction?.text?.trim();
+            if (!text) {
+              return null;
+            }
+            return {
+              filename: doc.file_name || doc.title || `Document ${index + 1}`,
+              content: text,
+            };
+          })
+          .filter((entry): entry is { filename: string; content: string } => Boolean(entry));
 
         await updateProcessingJob(jobId, {
           completed_units: 2,
         });
 
-        return { documentTexts };
+        return { documentEntries };
       });
 
       // Step 4: Run relationship network analysis
       const network = await step.run('analyze-network', async () => {
         console.log('[Relationship Network] Mapping relationship network...');
         const network = await mapRelationshipNetwork(
-          suspects.map((s) => s.name),
-          witnesses.map((w) => w.name),
-          documentTexts
+          suspects.map((s) => s.name).filter(Boolean),
+          witnesses.map((w) => w.name).filter(Boolean),
+          documentEntries
         );
+
+        console.log(`[Relationship Network] Found ${countConnections(network)} relationships`);
 
         await updateProcessingJob(jobId, {
           completed_units: 3,
@@ -160,7 +179,7 @@ export const processRelationshipNetworkJob = inngest.createFunction(
           metadata: {
             ...initialMetadata,
             summary: {
-              totalRelationships: network.relationships?.length || 0,
+              totalRelationships: countConnections(network),
               hiddenConnections: network.hiddenConnections?.length || 0,
               suspectGroups: network.suspectGroups?.length || 0,
             },

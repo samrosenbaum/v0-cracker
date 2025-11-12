@@ -40,6 +40,14 @@ export async function processRelationshipNetwork(params: RelationshipNetworkPara
     requestedAt: new Date().toISOString(),
   };
 
+  const countConnections = (network: { nodes?: { connections?: { to: string }[] }[] }) => {
+    if (!network?.nodes?.length) {
+      return 0;
+    }
+    const total = network.nodes.reduce((sum, node) => sum + (node.connections?.length || 0), 0);
+    return Math.round(total / 2);
+  };
+
   try {
     // Step 1: Initialize job
     async function initializeJob() {
@@ -110,33 +118,42 @@ export async function processRelationshipNetwork(params: RelationshipNetworkPara
       const storagePaths = documents.map((d) => d.storage_path).filter(Boolean) as string[];
       const extractionResults = await extractMultipleDocuments(storagePaths, 5);
 
-      const documentTexts = documents.map((doc) => {
-        const extraction = extractionResults.get(doc.storage_path);
-        return extraction?.text || '';
-      }).filter((text) => text.length > 0);
+      const documentEntries = documents
+        .map((doc, index) => {
+          const extraction = extractionResults.get(doc.storage_path);
+          const text = extraction?.text?.trim();
+          if (!text) {
+            return null;
+          }
+          return {
+            filename: doc.file_name || doc.title || `Document ${index + 1}`,
+            content: text,
+          };
+        })
+        .filter((entry): entry is { filename: string; content: string } => Boolean(entry));
 
-      console.log(`[Relationship Network] Extracted ${documentTexts.length} documents successfully`);
+      console.log(`[Relationship Network] Extracted ${documentEntries.length} documents successfully`);
 
       await updateProcessingJob(jobId, {
         completed_units: 2,
         // progress_percentage auto-calculates from completed_units/total_units
       });
 
-      return { documentTexts };
+      return { documentEntries };
     }
-    const { documentTexts } = await extractContent();
+    const { documentEntries } = await extractContent();
 
     // Step 4: Run relationship network analysis
     async function analyzeNetwork() {
       console.log('[Relationship Network] Mapping relationship network...');
 
       const network = await mapRelationshipNetwork(
-        suspects.map((s) => s.name),
-        witnesses.map((w) => w.name),
-        documentTexts
+        suspects.map((s) => s.name).filter(Boolean),
+        witnesses.map((w) => w.name).filter(Boolean),
+        documentEntries
       );
 
-      console.log(`[Relationship Network] Found ${network.relationships?.length || 0} relationships`);
+      console.log(`[Relationship Network] Found ${countConnections(network)} relationships`);
 
       await updateProcessingJob(jobId, {
         completed_units: 3,
@@ -149,6 +166,8 @@ export async function processRelationshipNetwork(params: RelationshipNetworkPara
 
     // Step 5: Save analysis results
     async function saveResults() {
+      const relationshipCount = countConnections(network);
+      const hiddenCount = network.hiddenConnections?.length || 0;
       const { error: saveError } = await supabaseServer
         .from('case_analysis')
         .insert({
@@ -174,8 +193,8 @@ export async function processRelationshipNetwork(params: RelationshipNetworkPara
         metadata: {
           ...initialMetadata,
           summary: {
-            totalRelationships: network.relationships?.length || 0,
-            hiddenConnections: network.hiddenConnections?.length || 0,
+            totalRelationships: relationshipCount,
+            hiddenConnections: hiddenCount,
             suspectGroups: network.suspectGroups?.length || 0,
           },
         },
