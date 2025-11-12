@@ -589,7 +589,7 @@ export interface Database {
           content_embedding: string | null
           content_length: number | null
           extraction_confidence: number | null
-          extraction_method: "pdf-parse" | "ocr-tesseract" | "ocr-google" | "whisper-transcription" | "direct-read" | "cached" | null
+          extraction_method: "pdf-parse" | "pdfjs-dist" | "ocr-tesseract" | "ocr-google" | "whisper-transcription" | "direct-read" | "cached" | null
           metadata: Json
           processing_status: "pending" | "processing" | "completed" | "failed" | "skipped"
           processing_attempts: number

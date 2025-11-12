@@ -245,15 +245,7 @@ export const processChunkJob = inngest.createFunction(
       }
     });
 
-    if (plan.status === 'failed') {
-      return {
-        chunkId,
-        failed: true,
-        error: plan.error,
-      };
-    }
-
-    // Step 6: Update processing job progress
+    // Step 6: Update processing job progress (for both success and failure)
     await step.run('update-job-progress', async () => {
       if (!chunk.processing_job_id) return;
 
@@ -295,6 +287,15 @@ export const processChunkJob = inngest.createFunction(
         });
       }
     });
+
+    // Return appropriate result based on status
+    if (plan.status === 'failed') {
+      return {
+        chunkId,
+        failed: true,
+        error: plan.error,
+      };
+    }
 
     return {
       chunkId,

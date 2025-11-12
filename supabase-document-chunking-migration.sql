@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS public.document_chunks (
     content_embedding VECTOR(1536), -- OpenAI text-embedding-3-small dimension
     content_length INTEGER GENERATED ALWAYS AS (LENGTH(content)) STORED,
     extraction_confidence DECIMAL(5,2) CHECK (extraction_confidence >= 0 AND extraction_confidence <= 1),
-    extraction_method TEXT CHECK (extraction_method IN ('pdf-parse', 'ocr-tesseract', 'ocr-google', 'whisper-transcription', 'direct-read', 'cached')),
+    extraction_method TEXT CHECK (extraction_method IN ('pdf-parse', 'pdfjs-dist', 'ocr-tesseract', 'ocr-google', 'whisper-transcription', 'direct-read', 'cached')),
     metadata JSONB DEFAULT '{}'::JSONB, -- {pageNumber, startChar, endChar, bbox, language, etc}
     processing_status TEXT NOT NULL DEFAULT 'pending' CHECK (processing_status IN ('pending', 'processing', 'completed', 'failed', 'skipped')),
     processing_attempts INTEGER NOT NULL DEFAULT 0,
