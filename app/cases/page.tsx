@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase-client';
-import { FileText, Calendar, Plus, ArrowLeft } from 'lucide-react';
+import { FileText, Calendar, Plus } from 'lucide-react';
 
 interface Case {
   id: string;
@@ -87,16 +87,7 @@ function CasesContent({ initialFilter }: { initialFilter: string | null }) {
       {/* Header */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => router.push('/')}
-                className="flex items-center text-gray-600 hover:text-gray-900"
-              >
-                <ArrowLeft className="w-5 h-5 mr-2" />
-                Back to Dashboard
-              </button>
-            </div>
+          <div className="flex items-center justify-end h-16">
             <button
               onClick={() => router.push('/cases/new')}
               className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"

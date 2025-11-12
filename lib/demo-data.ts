@@ -248,6 +248,11 @@ export function addCaseAnalysis(entry: TableRecord) {
   return insertIntoTable('case_analysis', entry);
 }
 
+export function deleteCaseAnalysis(analysisId: string): boolean {
+  const removed = deleteFromTable('case_analysis', (row) => row.id === analysisId);
+  return removed.length > 0;
+}
+
 export function addProcessingJob(entry: TableRecord) {
   return insertIntoTable('processing_jobs', entry)[0];
 }

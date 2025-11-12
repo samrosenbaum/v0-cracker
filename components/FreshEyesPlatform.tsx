@@ -451,52 +451,26 @@ const FreshEyesPlatform = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+      {/* Utility Bar */}
+      <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-3">
-                <Image
-                  src="/fresh-eyes-logo.png"
-                  alt="FreshEyes Logo"
-                  width={32}
-                  height={32}
-                  className="rounded-lg"
-                />
-                <h1 className="text-xl font-bold text-gray-900">FreshEyes</h1>
-              </div>
-
-              <nav className="hidden md:flex space-x-8">
-                <button
-                  onClick={() => {setActiveTab('dashboard'); setSelectedCase(null);}}
-                  className={`px-3 py-2 text-sm font-medium transition-colors ${
-                    activeTab === 'dashboard' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  Dashboard
-                </button>
-              </nav>
+          <div className="flex items-center justify-end h-12 space-x-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                placeholder="Search cases..."
+                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              />
             </div>
-
-            <div className="flex items-center space-x-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <input
-                  type="text"
-                  placeholder="Search cases..."
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Logout"
-              >
-                <LogOut className="w-4 h-4" />
-                <span className="hidden md:inline">Logout</span>
-              </button>
-            </div>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Logout"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="hidden md:inline">Logout</span>
+            </button>
           </div>
         </div>
       </div>
