@@ -1557,9 +1557,9 @@ const FORENSIC_TECH_SUGGESTIONS: Array<{
 function fallbackRecommendForensicRetesting(
   evidenceInventory: {
     item: string;
-    dateCollected: string;
-    testingPerformed: string;
-    results: string;
+    dateCollected?: string;
+    testingPerformed?: string;
+    results?: string;
   }[],
 ): ForensicReExamination[] {
   return evidenceInventory.map((evidence, index) => {
@@ -1588,10 +1588,10 @@ function fallbackRecommendForensicRetesting(
 export async function recommendForensicRetesting(
   evidenceInventory: {
     item: string;
-    dateCollected: string;
-    testingPerformed: string;
-    results: string;
-  }[]
+    dateCollected?: string;
+    testingPerformed?: string;
+    results?: string;
+  }[],
 ): Promise<ForensicReExamination[]> {
 
   if (!evidenceInventory.length) {
