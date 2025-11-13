@@ -10,22 +10,23 @@
 import { supabaseServer } from '@/lib/supabase-server';
 import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { identifyEvidenceGaps } from '@/lib/cold-case-analyzer';
+import { resolveAnalysisEngineMetadata } from '@/lib/analysis-engine-metadata';
 
 interface EvidenceGapsParams {
   jobId: string;
   caseId: string;
+  requestedAt?: string;
 }
 
 export async function processEvidenceGaps(params: EvidenceGapsParams) {
   'use workflow';
 
-  const { jobId, caseId } = params;
+  const { jobId, caseId, requestedAt } = params;
 
   const totalUnits = 4; // Fetch, Prepare, Analyze, Save
-  const initialMetadata = {
-    analysisType: 'evidence_gaps',
-    requestedAt: new Date().toISOString(),
-  };
+  const { metadata: initialMetadata } = resolveAnalysisEngineMetadata('evidence_gaps', {
+    requestedAt,
+  });
 
   try {
     async function initializeJob() {

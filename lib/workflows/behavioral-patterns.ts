@@ -11,22 +11,23 @@ import { supabaseServer } from '@/lib/supabase-server';
 import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { analyzeBehavioralPatterns } from '@/lib/cold-case-analyzer';
 import { extractMultipleDocuments } from '@/lib/document-parser';
+import { resolveAnalysisEngineMetadata } from '@/lib/analysis-engine-metadata';
 
 interface BehavioralPatternsParams {
   jobId: string;
   caseId: string;
+  requestedAt?: string;
 }
 
 export async function processBehavioralPatterns(params: BehavioralPatternsParams) {
   'use workflow';
 
-  const { jobId, caseId } = params;
+  const { jobId, caseId, requestedAt } = params;
 
   const totalUnits = 4; // Fetch, Extract, Analyze, Save
-  const initialMetadata = {
-    analysisType: 'behavioral_patterns',
-    requestedAt: new Date().toISOString(),
-  };
+  const { metadata: initialMetadata } = resolveAnalysisEngineMetadata('behavioral_patterns', {
+    requestedAt,
+  });
 
   try {
     async function initializeJob() {

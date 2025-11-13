@@ -13,10 +13,12 @@ import { supabaseServer } from '@/lib/supabase-server';
 import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { findSimilarCases } from '@/lib/cold-case-analyzer';
 import type { CaseSimilarity } from '@/lib/cold-case-analyzer';
+import { resolveAnalysisEngineMetadata } from '@/lib/analysis-engine-metadata';
 
 interface SimilarCasesParams {
   jobId: string;
   caseId: string;
+  requestedAt?: string;
 }
 
 type CaseRecord = {
@@ -485,13 +487,12 @@ export function calculateSimilarCaseSummary(similarCases: CaseSimilarity[]) {
 export async function processSimilarCases(params: SimilarCasesParams) {
   'use workflow';
 
-  const { jobId, caseId } = params;
+  const { jobId, caseId, requestedAt } = params;
 
   const totalUnits = 4; // Fetch Current, Fetch Others, Analyze, Save
-  const initialMetadata = {
-    analysisType: 'similar_cases',
-    requestedAt: new Date().toISOString(),
-  };
+  const { metadata: initialMetadata } = resolveAnalysisEngineMetadata('similar_cases', {
+    requestedAt,
+  });
 
   try {
     // Step 1: Initialize job
