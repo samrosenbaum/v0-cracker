@@ -20,6 +20,15 @@ import {
   Trash2
 } from 'lucide-react';
 import ComprehensiveColdCaseAnalysisView from '@/components/ComprehensiveColdCaseAnalysisView';
+import BehavioralPatternsView from '@/components/analysis/BehavioralPatternsView';
+import EvidenceGapsView from '@/components/analysis/EvidenceGapsView';
+import RelationshipNetworkView from '@/components/analysis/RelationshipNetworkView';
+import type {
+  BehaviorPattern,
+  EvidenceGap,
+  RelationshipNetworkAnalysis,
+} from '@/lib/cold-case-analyzer';
+import { cleanText, displayText } from '@/lib/display-utils';
 
 interface AnalysisResult {
   id: string;
@@ -99,13 +108,87 @@ export default function AnalysisPage() {
     return classes[severity] || 'bg-gray-100 text-gray-800';
   };
 
+  const extractBehavioralPatterns = (data: any): BehaviorPattern[] => {
+    if (Array.isArray(data)) return data as BehaviorPattern[];
+    if (Array.isArray(data?.behavioralPatterns)) return data.behavioralPatterns as BehaviorPattern[];
+    return [];
+  };
+
+  const extractEvidenceGaps = (data: any): EvidenceGap[] => {
+    if (Array.isArray(data)) return data as EvidenceGap[];
+    if (Array.isArray(data?.gaps)) return data.gaps as EvidenceGap[];
+    if (Array.isArray(data?.evidenceGaps)) return data.evidenceGaps as EvidenceGap[];
+    return [];
+  };
+
+  const extractRelationshipNetwork = (data: any): RelationshipNetworkAnalysis | null => {
+    if (!data || typeof data !== 'object') return null;
+    return {
+      nodes: Array.isArray(data.nodes) ? data.nodes : [],
+      relationships: Array.isArray(data.relationships) ? data.relationships : [],
+      hiddenConnections: Array.isArray(data.hiddenConnections) ? data.hiddenConnections : [],
+      clusters: Array.isArray(data.clusters) ? data.clusters : [],
+      insights: data.insights || {
+        primaryConnectors: [],
+        potentialConflicts: [],
+        recommendedFollowUp: [],
+      },
+    } as RelationshipNetworkAnalysis;
+  };
+
+  const renderAnalysisContent = (analysisType: string, data: any) => {
+    if (isTimelineAnalysisType(analysisType)) {
+      return renderTimelineDetails(data);
+    }
+    if (isVictimTimelineAnalysisType(analysisType)) {
+      return renderVictimTimelineDetails(data);
+    }
+    if (isComprehensiveColdCaseAnalysis(analysisType)) {
+      return (
+        <ComprehensiveColdCaseAnalysisView
+          analysis={data}
+          caseName={caseInfo?.name}
+        />
+      );
+    }
+
+    const normalizedType = normalizeAnalysisType(analysisType);
+
+    if (normalizedType === 'behavioral-patterns') {
+      const patterns = extractBehavioralPatterns(data);
+      return <BehavioralPatternsView patterns={patterns} />;
+    }
+    if (normalizedType === 'evidence-gaps') {
+      const gaps = extractEvidenceGaps(data);
+      return <EvidenceGapsView gaps={gaps} />;
+    }
+    if (normalizedType === 'relationship-network') {
+      const analysis = extractRelationshipNetwork(data);
+      return analysis ? <RelationshipNetworkView analysis={analysis} /> : null;
+    }
+
+    return (
+      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+        <p className="text-sm text-gray-700 font-medium">Structured view not available yet.</p>
+        <pre className="mt-2 max-h-40 overflow-x-auto text-xs text-gray-600">
+          {JSON.stringify(data, null, 2)}
+        </pre>
+      </div>
+    );
+  };
+
   const renderTimelineDetails = (data: any) => {
     if (!data || typeof data !== 'object') return null;
 
-    const summaryText = typeof data.conflictSummary === 'string' ? data.conflictSummary : null;
+    const sanitizeStringList = (items: unknown[]) =>
+      items
+        .map(item => (typeof item === 'string' ? cleanText(item) : null))
+        .filter((value): value is string => Boolean(value));
+
+    const summaryText = typeof data.conflictSummary === 'string' ? cleanText(data.conflictSummary) : null;
     const timeline = Array.isArray(data.timeline) ? data.timeline : [];
     const conflicts = Array.isArray(data.conflicts) ? data.conflicts : [];
-    const keyInsights = Array.isArray(data.keyInsights) ? data.keyInsights : [];
+    const keyInsights = Array.isArray(data.keyInsights) ? sanitizeStringList(data.keyInsights) : [];
     const overlookedSuspects = Array.isArray(data.overlookedSuspects) ? data.overlookedSuspects : [];
     const totalEvents = timeline.length;
     const totalConflicts = conflicts.length;
@@ -157,14 +240,22 @@ export default function AnalysisPage() {
               Timeline Events
             </h4>
             <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-              {timeline.map((event: any, index: number) => (
+              {timeline.map((event: any, index: number) => {
+                const locationLabel = cleanText(event.location);
+                const sourceTypeLabel = cleanText(event.sourceType)?.replace(/_/g, ' ');
+                const people = Array.isArray(event.involvedPersons)
+                  ? event.involvedPersons
+                      .map((person: string) => cleanText(person))
+                      .filter((person): person is string => Boolean(person))
+                  : [];
+                return (
                 <div
                   key={event.id || index}
                   className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm font-medium text-gray-900">
-                      {event.description || 'Event details unavailable'}
+                      {displayText(event.description, 'Event details unavailable')}
                     </p>
                     {typeof event.confidence === 'number' && (
                       <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
@@ -174,20 +265,21 @@ export default function AnalysisPage() {
                   </div>
                   <p className="mt-2 text-xs text-gray-500">
                     {formatEventDateTime(event)}
-                    {event.location ? ` • ${event.location}` : ''}
+                    {locationLabel ? ` • ${locationLabel}` : ''}
                   </p>
-                  {Array.isArray(event.involvedPersons) && event.involvedPersons.length > 0 && (
+                  {people.length > 0 && (
                     <p className="mt-2 text-xs text-gray-600">
                       <span className="font-medium text-gray-700">Persons involved:</span>{' '}
-                      {event.involvedPersons.join(', ')}
+                      {people.join(', ')}
                     </p>
                   )}
                   <p className="mt-2 text-xs text-gray-500">
-                    Source: {event.source || 'Unknown'}
-                    {event.sourceType ? ` (${event.sourceType.replace(/_/g, ' ')})` : ''}
+                    Source: {displayText(event.source, 'Not recorded')}
+                    {sourceTypeLabel ? ` (${sourceTypeLabel})` : ''}
                   </p>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -213,7 +305,9 @@ export default function AnalysisPage() {
                       </span>
                     )}
                   </div>
-                  <p className="mt-2 text-xs text-gray-600">Type: {conflict.type?.replace(/_/g, ' ') || 'Unknown'}</p>
+                  <p className="mt-2 text-xs text-gray-600">
+                    Type: {displayText(conflict.type ? conflict.type.replace(/_/g, ' ') : null, 'Not specified')}
+                  </p>
                   {conflict.details && (
                     <p className="mt-2 text-xs text-gray-600">{conflict.details}</p>
                   )}
@@ -224,7 +318,11 @@ export default function AnalysisPage() {
                   )}
                   {Array.isArray(conflict.affectedPersons) && conflict.affectedPersons.length > 0 && (
                     <p className="mt-2 text-xs text-gray-600">
-                      <span className="font-medium">Affected:</span> {conflict.affectedPersons.join(', ')}
+                      <span className="font-medium">Affected:</span>{' '}
+                      {conflict.affectedPersons
+                        .map((person: string) => cleanText(person))
+                        .filter((person): person is string => Boolean(person))
+                        .join(', ')}
                     </p>
                   )}
                 </div>
@@ -259,7 +357,7 @@ export default function AnalysisPage() {
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-sm font-semibold text-gray-900">
-                      {suspect?.name || 'Unknown suspect'}
+                      {displayText(suspect?.name, 'Suspect not identified')}
                     </span>
                     {typeof suspect?.suspicionScore === 'number' && (
                       <span className="rounded-full bg-red-50 px-2 py-1 text-xs font-medium text-red-700">
@@ -269,11 +367,21 @@ export default function AnalysisPage() {
                   </div>
                   {Array.isArray(suspect?.mentionedBy) && suspect.mentionedBy.length > 0 && (
                     <p className="mt-2 text-xs text-gray-600">
-                      Mentioned by: {suspect.mentionedBy.join(', ')}
+                      Mentioned by:{' '}
+                      {suspect.mentionedBy
+                        .map((mention: string) => cleanText(mention))
+                        .filter((mention): mention is string => Boolean(mention))
+                        .join(', ')}
                     </p>
                   )}
                   {Array.isArray(suspect?.aliases) && suspect.aliases.length > 0 && (
-                    <p className="mt-2 text-xs text-gray-500">Aliases: {suspect.aliases.join(', ')}</p>
+                    <p className="mt-2 text-xs text-gray-500">
+                      Aliases:{' '}
+                      {suspect.aliases
+                        .map((alias: string) => cleanText(alias))
+                        .filter((alias): alias is string => Boolean(alias))
+                        .join(', ')}
+                    </p>
                   )}
                   {Array.isArray(suspect?.contexts) && suspect.contexts.length > 0 && (
                     <div className="mt-2">
@@ -281,11 +389,15 @@ export default function AnalysisPage() {
                         Context Snippets
                       </p>
                       <ul className="mt-1 space-y-1 text-xs text-gray-600">
-                        {suspect.contexts.slice(0, 3).map((context: string, contextIndex: number) => (
-                          <li key={contextIndex} className="leading-relaxed">
-                            • {context}
-                          </li>
-                        ))}
+                        {suspect.contexts
+                          .map((context: string) => cleanText(context))
+                          .filter((context): context is string => Boolean(context))
+                          .slice(0, 3)
+                          .map((context: string, contextIndex: number) => (
+                            <li key={contextIndex} className="leading-relaxed">
+                              • {context}
+                            </li>
+                          ))}
                       </ul>
                     </div>
                   )}
@@ -317,10 +429,11 @@ export default function AnalysisPage() {
     const lastConfirmedAlive = timelineData.lastConfirmedAlive || data.lastConfirmedAlive;
 
     const formatTimestamp = (value?: string) => {
-      if (!value) return 'Unknown time';
-      const date = new Date(value);
+      const cleaned = cleanText(value);
+      if (!cleaned) return 'Time not recorded';
+      const date = new Date(cleaned);
       if (Number.isNaN(date.getTime())) {
-        return value;
+        return cleaned;
       }
       return date.toLocaleString('en-US', {
         month: 'short',
@@ -332,7 +445,7 @@ export default function AnalysisPage() {
     };
 
     const formatDuration = (minutes?: number) => {
-      if (typeof minutes !== 'number' || Number.isNaN(minutes)) return 'Unknown duration';
+      if (typeof minutes !== 'number' || Number.isNaN(minutes)) return 'Duration not recorded';
       const hours = Math.floor(minutes / 60);
       const remainingMinutes = Math.round(minutes % 60);
       const parts: string[] = [];
@@ -403,9 +516,13 @@ export default function AnalysisPage() {
               {(executiveSummary.criticalGapStart || executiveSummary.criticalGapEnd) && (
                 <p>
                   <span className="font-medium text-gray-900">Critical gap:</span>{' '}
-                  {executiveSummary.criticalGapStart ? formatTimestamp(executiveSummary.criticalGapStart) : 'Unknown'}
+                  {executiveSummary.criticalGapStart
+                    ? formatTimestamp(executiveSummary.criticalGapStart)
+                    : 'Not recorded'}
                   {' — '}
-                  {executiveSummary.criticalGapEnd ? formatTimestamp(executiveSummary.criticalGapEnd) : 'Unknown'}
+                  {executiveSummary.criticalGapEnd
+                    ? formatTimestamp(executiveSummary.criticalGapEnd)
+                    : 'Not recorded'}
                 </p>
               )}
             </div>
@@ -429,16 +546,31 @@ export default function AnalysisPage() {
           <div>
             <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">Victim Movements</h4>
             <div className="space-y-3">
-              {movements.map((movement: any, index: number) => (
-                <div key={movement.timestamp || index} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+              {movements.map((movement: any, index: number) => {
+                const locationLabel = cleanText(movement.location);
+                const evidence = Array.isArray(movement.evidence)
+                  ? movement.evidence
+                      .map((item: string) => cleanText(item))
+                      .filter((item): item is string => Boolean(item))
+                  : [];
+                const witnesses = Array.isArray(movement.witnessedBy)
+                  ? movement.witnessedBy
+                      .map((item: string) => cleanText(item))
+                      .filter((item): item is string => Boolean(item))
+                  : [];
+                return (
+                  <div
+                    key={movement.timestamp || index}
+                    className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
+                  >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <p className="text-sm font-semibold text-gray-900">
-                        {movement.activity || 'Activity unknown'}
+                        {displayText(movement.activity, 'Activity pending review')}
                       </p>
                       <p className="mt-1 text-xs text-gray-500">
                         {formatTimestamp(movement.timestamp)}
-                        {movement.location ? ` • ${movement.location}` : ''}
+                        {locationLabel ? ` • ${locationLabel}` : ''}
                       </p>
                     </div>
                     {movement.significance && (
@@ -453,12 +585,12 @@ export default function AnalysisPage() {
                   </div>
                   {movement.source && (
                     <p className="mt-2 text-xs text-gray-600">
-                      <span className="font-medium text-gray-700">Source:</span> {movement.source}
+                      <span className="font-medium text-gray-700">Source:</span> {displayText(movement.source, 'Not recorded')}
                     </p>
                   )}
-                  {movement.evidence && Array.isArray(movement.evidence) && movement.evidence.length > 0 && (
+                  {evidence.length > 0 && (
                     <p className="mt-2 text-xs text-gray-600">
-                      <span className="font-medium text-gray-700">Evidence:</span> {movement.evidence.join(', ')}
+                      <span className="font-medium text-gray-700">Evidence:</span> {evidence.join(', ')}
                     </p>
                   )}
                   {movement.investigatorNotes && (
@@ -468,18 +600,19 @@ export default function AnalysisPage() {
                   )}
                   {(movement.timestampConfidence || movement.locationConfidence) && (
                     <p className="mt-2 text-xs text-gray-500">
-                      Confidence — Time: {movement.timestampConfidence || 'unknown'}, Location:{' '}
-                      {movement.locationConfidence || 'unknown'}
+                      Confidence — Time: {displayText(movement.timestampConfidence, 'Not rated')}, Location{' '}
+                      {displayText(movement.locationConfidence, 'Not rated')}
                     </p>
                   )}
-                  {movement.witnessedBy && movement.witnessedBy.length > 0 && (
+                  {witnesses.length > 0 && (
                     <p className="mt-2 text-xs text-gray-600">
                       <span className="font-medium text-gray-700">Witnessed by:</span>{' '}
-                      {movement.witnessedBy.join(', ')}
+                      {witnesses.join(', ')}
                     </p>
                   )}
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -502,21 +635,26 @@ export default function AnalysisPage() {
                   </div>
                   {gap.lastKnownLocation && (
                     <p className="mt-2 text-xs text-gray-600">
-                      <span className="font-medium text-gray-700">Last known location:</span> {gap.lastKnownLocation}
+                      <span className="font-medium text-gray-700">Last known location:</span>{' '}
+                      {displayText(gap.lastKnownLocation, 'Not recorded')}
                     </p>
                   )}
                   {gap.nextKnownLocation && (
                     <p className="mt-1 text-xs text-gray-600">
-                      <span className="font-medium text-gray-700">Next known location:</span> {gap.nextKnownLocation}
+                      <span className="font-medium text-gray-700">Next known location:</span>{' '}
+                      {displayText(gap.nextKnownLocation, 'Not recorded')}
                     </p>
                   )}
                   {gap.potentialEvidence && gap.potentialEvidence.length > 0 && (
                     <div className="mt-2">
                       <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Potential Evidence</p>
                       <ul className="mt-1 space-y-1 text-xs text-gray-600">
-                        {gap.potentialEvidence.map((item: string, itemIndex: number) => (
-                          <li key={itemIndex}>• {item}</li>
-                        ))}
+                        {gap.potentialEvidence
+                          .map((item: string) => cleanText(item))
+                          .filter((item): item is string => Boolean(item))
+                          .map((item: string, itemIndex: number) => (
+                            <li key={itemIndex}>• {item}</li>
+                          ))}
                       </ul>
                     </div>
                   )}
@@ -524,9 +662,12 @@ export default function AnalysisPage() {
                     <div className="mt-2">
                       <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Questions to Answer</p>
                       <ul className="mt-1 space-y-1 text-xs text-gray-600">
-                        {gap.questionsToAnswer.map((question: string, questionIndex: number) => (
-                          <li key={questionIndex}>• {question}</li>
-                        ))}
+                        {gap.questionsToAnswer
+                          .map((question: string) => cleanText(question))
+                          .filter((question): question is string => Boolean(question))
+                          .map((question: string, questionIndex: number) => (
+                            <li key={questionIndex}>• {question}</li>
+                          ))}
                       </ul>
                     </div>
                   )}
@@ -542,7 +683,9 @@ export default function AnalysisPage() {
             <div className="space-y-3">
               {criticalAreas.map((area: any, index: number) => (
                 <div key={area.location || index} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-                  <p className="text-sm font-semibold text-gray-900">{area.location || 'Unknown location'}</p>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {displayText(area.location, 'Location not recorded')}
+                  </p>
                   {area.timeRange && (
                     <p className="mt-1 text-xs text-gray-500">
                       {formatTimestamp(area.timeRange.start)} — {formatTimestamp(area.timeRange.end)}
@@ -637,16 +780,18 @@ export default function AnalysisPage() {
                 <p>
                   <span className="font-medium text-gray-900">Last confirmed alive:</span>{' '}
                   {formatTimestamp(lastConfirmedAlive.time || lastConfirmedAlive)}
-                  {lastConfirmedAlive.location ? ` • ${lastConfirmedAlive.location}` : ''}
-                  {lastConfirmedAlive.confidence ? ` (${lastConfirmedAlive.confidence})` : ''}
+                  {cleanText(lastConfirmedAlive.location) ? ` • ${cleanText(lastConfirmedAlive.location)}` : ''}
+                  {cleanText(lastConfirmedAlive.confidence) ? ` (${cleanText(lastConfirmedAlive.confidence)})` : ''}
                 </p>
               )}
               {lastKnownCommunication && (
                 <p>
                   <span className="font-medium text-gray-900">Last communication:</span>{' '}
                   {formatTimestamp(lastKnownCommunication.time)}
-                  {lastKnownCommunication.type ? ` • ${lastKnownCommunication.type}` : ''}
-                  {lastKnownCommunication.withWhom ? ` with ${lastKnownCommunication.withWhom}` : ''}
+                  {cleanText(lastKnownCommunication.type) ? ` • ${cleanText(lastKnownCommunication.type)}` : ''}
+                  {cleanText(lastKnownCommunication.withWhom)
+                    ? ` with ${cleanText(lastKnownCommunication.withWhom)}`
+                    : ''}
                 </p>
               )}
               {lastKnownCommunication?.content && (
@@ -702,7 +847,7 @@ export default function AnalysisPage() {
       if (analysisType === 'victim-timeline') {
         endpoint = `/api/cases/${caseId}/victim-timeline`;
         body = {
-          victimName: caseInfo?.victim_name || 'Unknown',
+          victimName: displayText(caseInfo?.victim_name, 'Not recorded'),
           incidentTime: caseInfo?.incident_date || new Date().toISOString(),
         };
       } else if (analysisType === 'timeline') {
@@ -727,7 +872,7 @@ export default function AnalysisPage() {
 
       // Check response status before parsing JSON
       if (!response.ok) {
-        let errorMessage = 'Unknown error';
+        let errorMessage = 'Unexpected error';
         try {
           const errorData = await response.json();
           errorMessage = errorData.error || errorMessage;
@@ -1205,22 +1350,7 @@ export default function AnalysisPage() {
                           )}
                           {analysisData && (
                             <div className="mt-3">
-                              {isTimelineAnalysisType(analysis.analysis_type)
-                                ? renderTimelineDetails(analysisData)
-                                : isVictimTimelineAnalysisType(analysis.analysis_type)
-                                ? renderVictimTimelineDetails(analysisData)
-                                : isComprehensiveColdCaseAnalysis(analysis.analysis_type)
-                                ? <ComprehensiveColdCaseAnalysisView
-                                    analysis={analysisData}
-                                    caseName={caseInfo?.name}
-                                  />
-                                : (
-                                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                                      <pre className="text-xs text-gray-700 overflow-x-auto max-h-40">
-                                        {JSON.stringify(analysisData, null, 2)}
-                                      </pre>
-                                    </div>
-                                  )}
+                              {renderAnalysisContent(analysis.analysis_type, analysisData)}
                             </div>
                           )}
                         </div>

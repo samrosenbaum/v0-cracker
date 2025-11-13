@@ -4,4 +4,4 @@ require('./analyze-route.integration.test.ts');
 require('./timeline-analysis-route.test.ts');
 require('./ai-fallback.test.ts');
 require('./similar-cases-workflow.test.ts');
-require('./advanced-analysis-fallbacks.test.ts');
+require('./analysis-components.test.tsx');
