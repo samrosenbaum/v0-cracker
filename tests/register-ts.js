@@ -46,7 +46,7 @@ const compilerOptions = {
   moduleResolution: ts.ModuleResolutionKind.NodeNext,
 };
 
-require.extensions['.ts'] = function registerTsExtension(module, filename) {
+const registerTsExtension = function(module, filename) {
   const source = fs.readFileSync(filename, 'utf8');
   const transformed = ts.transpileModule(source, {
     compilerOptions,
@@ -55,3 +55,6 @@ require.extensions['.ts'] = function registerTsExtension(module, filename) {
   });
   return module._compile(transformed.outputText, filename);
 };
+
+require.extensions['.ts'] = registerTsExtension;
+require.extensions['.tsx'] = registerTsExtension;
