@@ -15,10 +15,12 @@ import {
   sanitizeForensicRecommendations,
   summarizeForensicRecommendations,
 } from '@/lib/forensic-retesting-utils';
+import { resolveAnalysisEngineMetadata } from '@/lib/analysis-engine-metadata';
 
 interface ForensicRetestingParams {
   jobId: string;
   caseId: string;
+  requestedAt?: string;
 }
 
 /**
@@ -32,13 +34,12 @@ interface ForensicRetestingParams {
 export async function processForensicRetesting(params: ForensicRetestingParams) {
   'use workflow';
 
-  const { jobId, caseId } = params;
+  const { jobId, caseId, requestedAt } = params;
 
   const totalUnits = 4; // Fetch Case, Fetch Evidence, Analyze, Save
-  const initialMetadata = {
-    analysisType: 'forensic_retesting',
-    requestedAt: new Date().toISOString(),
-  };
+  const { metadata: initialMetadata } = resolveAnalysisEngineMetadata('forensic_retesting', {
+    requestedAt,
+  });
 
   try {
     // Step 1: Initialize job

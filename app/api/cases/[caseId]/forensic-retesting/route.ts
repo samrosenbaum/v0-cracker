@@ -2,6 +2,7 @@ import { NextRequest, NextResponse, after } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { processForensicRetesting } from '@/lib/workflows/forensic-retesting';
 import { runBackgroundTask } from '@/lib/background-tasks';
+import { resolveAnalysisEngineMetadata } from '@/lib/analysis-engine-metadata';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -44,26 +45,16 @@ export async function POST(
 
     console.log('[Forensic Retesting API] Analysis requested for case:', caseId);
 
-    const anthropicKey =
-      process.env.ANTHROPIC_API_KEY || process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY;
+    const { metadata: initialMetadata, usingFallback } = resolveAnalysisEngineMetadata(
+      'forensic_retesting',
+      { requestedAt: new Date().toISOString() }
+    );
 
-    if (!anthropicKey) {
-      return withCors(
-        NextResponse.json(
-          {
-            error:
-              'Anthropic API key is not configured. Please set ANTHROPIC_API_KEY before running forensic retesting analysis.',
-          },
-          { status: 503 }
-        )
+    if (usingFallback) {
+      console.warn(
+        '[Forensic Retesting API] Anthropic API key missing. Scheduling heuristic fallback engine.'
       );
     }
-
-    const now = new Date().toISOString();
-    const initialMetadata = {
-      analysisType: 'forensic_retesting',
-      requestedAt: now,
-    };
 
     const { data: job, error: jobError } = await supabaseServer
       .from('processing_jobs')
@@ -95,6 +86,7 @@ export async function POST(
         await processForensicRetesting({
           jobId: job.id,
           caseId,
+          requestedAt: initialMetadata.requestedAt,
         });
       },
       {
@@ -115,6 +107,7 @@ export async function POST(
           status: 'pending',
           message:
             'Forensic retesting analysis workflow has been triggered. Check processing job status for progress.',
+          metadata: initialMetadata,
         },
         { status: 202 }
       )

@@ -14,10 +14,12 @@ import {
   RelationshipNetworkAnalysis,
 } from '@/lib/cold-case-analyzer';
 import { extractMultipleDocuments } from '@/lib/document-parser';
+import { resolveAnalysisEngineMetadata } from '@/lib/analysis-engine-metadata';
 
 interface RelationshipNetworkParams {
   jobId: string;
   caseId: string;
+  requestedAt?: string;
 }
 
 type RelationshipNetworkSummaryMetadata = {
@@ -42,13 +44,12 @@ async function updateProcessingJob(jobId: string, updates: Record<string, any>) 
 export async function processRelationshipNetwork(params: RelationshipNetworkParams) {
   'use workflow';
 
-  const { jobId, caseId } = params;
+  const { jobId, caseId, requestedAt } = params;
 
   const totalUnits = 4; // Fetch, Extract, Analyze, Save
-  const initialMetadata = {
-    analysisType: 'relationship_network',
-    requestedAt: new Date().toISOString(),
-  };
+  const { metadata: initialMetadata } = resolveAnalysisEngineMetadata('relationship_network', {
+    requestedAt,
+  });
 
   try {
     // Step 1: Initialize job

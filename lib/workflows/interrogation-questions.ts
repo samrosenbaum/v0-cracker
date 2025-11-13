@@ -15,6 +15,7 @@ import {
 } from '@/lib/cold-case-analyzer';
 import { extractMultipleDocuments } from '@/lib/document-parser';
 import type { Json } from '@/app/types/database';
+import { resolveAnalysisEngineMetadata } from '@/lib/analysis-engine-metadata';
 
 type PersonStatus = 'person_of_interest' | 'suspect' | 'witness' | 'victim';
 
@@ -245,6 +246,7 @@ function buildInterrogationPayload(
 interface InterrogationQuestionsParams {
   jobId: string;
   caseId: string;
+  requestedAt?: string;
 }
 
 /**
@@ -258,13 +260,12 @@ interface InterrogationQuestionsParams {
 export async function processInterrogationQuestions(params: InterrogationQuestionsParams) {
   'use workflow';
 
-  const { jobId, caseId } = params;
+  const { jobId, caseId, requestedAt } = params;
 
   const totalUnits = 4; // Fetch, Extract, Analyze, Save
-  const initialMetadata = {
-    analysisType: 'interrogation_questions',
-    requestedAt: new Date().toISOString(),
-  };
+  const { metadata: initialMetadata } = resolveAnalysisEngineMetadata('interrogation_questions', {
+    requestedAt,
+  });
 
   try {
     // Step 1: Initialize job

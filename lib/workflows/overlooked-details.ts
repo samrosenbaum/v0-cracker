@@ -11,10 +11,12 @@ import { supabaseServer } from '@/lib/supabase-server';
 import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { findOverlookedDetails } from '@/lib/cold-case-analyzer';
 import { extractMultipleDocuments } from '@/lib/document-parser';
+import { resolveAnalysisEngineMetadata } from '@/lib/analysis-engine-metadata';
 
 interface OverlookedDetailsParams {
   jobId: string;
   caseId: string;
+  requestedAt?: string;
 }
 
 async function updateProcessingJob(jobId: string, updates: Record<string, any>) {
@@ -32,13 +34,12 @@ async function updateProcessingJob(jobId: string, updates: Record<string, any>) 
 export async function processOverlookedDetails(params: OverlookedDetailsParams) {
   'use workflow';
 
-  const { jobId, caseId } = params;
+  const { jobId, caseId, requestedAt } = params;
 
   const totalUnits = 4; // Fetch, Extract, Analyze, Save
-  const initialMetadata = {
-    analysisType: 'overlooked_details',
-    requestedAt: new Date().toISOString(),
-  };
+  const { metadata: initialMetadata } = resolveAnalysisEngineMetadata('overlooked_details', {
+    requestedAt,
+  });
 
   try {
     // Step 1: Initialize job
