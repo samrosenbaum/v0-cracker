@@ -9,8 +9,238 @@
 
 import { supabaseServer } from '@/lib/supabase-server';
 import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
-import { generateInterrogationQuestions } from '@/lib/cold-case-analyzer';
+import {
+  generateInterrogationQuestions,
+  type InterrogationStrategy,
+} from '@/lib/cold-case-analyzer';
 import { extractMultipleDocuments } from '@/lib/document-parser';
+import type { Json } from '@/app/types/database';
+
+type PersonStatus = 'person_of_interest' | 'suspect' | 'witness' | 'victim';
+
+interface PersonOfInterestRecord {
+  id: string;
+  case_id: string;
+  name: string | null;
+  aliases: string[] | null;
+  description: string | null;
+  known_associates: string[] | null;
+  last_known_location: string | null;
+  status: PersonStatus;
+  metadata: Record<string, unknown> | null;
+}
+
+interface CaseDocumentRecord {
+  id: string;
+  case_id: string;
+  file_name: string;
+  storage_path: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+interface InterviewSummary {
+  speaker: string;
+  content: string;
+  documentId: string;
+  storagePath: string | null;
+}
+
+type InterrogationRole = Extract<PersonStatus, 'suspect' | 'witness'>;
+
+interface InterrogationPayload {
+  name: string;
+  statements: string[];
+  knownFacts: string[];
+  inconsistencies: string[];
+  relationships: string[];
+}
+
+interface InterrogationCandidate {
+  person: PersonOfInterestRecord;
+  role: InterrogationRole;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isPersonOfInterestRecord(value: unknown): value is PersonOfInterestRecord {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const { id, case_id, status } = value;
+  const validStatus: PersonStatus[] = [
+    'person_of_interest',
+    'suspect',
+    'witness',
+    'victim',
+  ];
+
+  return (
+    typeof id === 'string' &&
+    typeof case_id === 'string' &&
+    typeof status === 'string' &&
+    validStatus.includes(status as PersonStatus)
+  );
+}
+
+function isCaseDocumentRecord(value: unknown): value is CaseDocumentRecord {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const { id, case_id, file_name } = value;
+  return typeof id === 'string' && typeof case_id === 'string' && typeof file_name === 'string';
+}
+
+function toStringArray(value: unknown): string[] {
+  if (typeof value === 'string') {
+    return value
+      .split(/\r?\n/)
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+      .filter((entry): entry is string => entry.length > 0);
+  }
+
+  return [];
+}
+
+function collectMetadataValues(
+  metadata: Record<string, unknown> | null,
+  keys: string[],
+): string[] {
+  if (!metadata) {
+    return [];
+  }
+
+  const collected = keys.flatMap((key) => toStringArray(metadata[key]));
+  return Array.from(new Set(collected));
+}
+
+function gatherInterviewStatements(
+  candidateName: string,
+  interviews: InterviewSummary[],
+): string[] {
+  const normalizedCandidate = candidateName.trim().toLowerCase();
+  if (!normalizedCandidate) {
+    return [];
+  }
+
+  return interviews
+    .filter((interview) => {
+      const speaker = interview.speaker.trim().toLowerCase();
+      if (!speaker) {
+        return false;
+      }
+
+      return (
+        speaker === normalizedCandidate ||
+        speaker.includes(normalizedCandidate) ||
+        normalizedCandidate.includes(speaker)
+      );
+    })
+    .map((interview) => interview.content.trim())
+    .filter((content) => content.length > 0);
+}
+
+function normalizeNullableStringArray(value: unknown): string[] | null {
+  const normalized = toStringArray(value);
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizePersonRecord(raw: PersonOfInterestRecord | Record<string, unknown>): PersonOfInterestRecord {
+  const base = raw as Record<string, unknown>;
+
+  return {
+    id: String(base.id),
+    case_id: String(base.case_id),
+    name: typeof base.name === 'string' ? base.name : null,
+    aliases: normalizeNullableStringArray(base.aliases) ?? null,
+    description: typeof base.description === 'string' ? base.description : null,
+    known_associates: normalizeNullableStringArray(base.known_associates) ?? null,
+    last_known_location:
+      typeof base.last_known_location === 'string' ? base.last_known_location : null,
+    status: (base.status as PersonStatus) || 'person_of_interest',
+    metadata: isRecord(base.metadata) ? base.metadata : null,
+  };
+}
+
+function normalizeDocumentRecord(raw: CaseDocumentRecord | Record<string, unknown>): CaseDocumentRecord {
+  const base = raw as Record<string, unknown>;
+
+  return {
+    id: String(base.id),
+    case_id: String(base.case_id),
+    file_name: typeof base.file_name === 'string' ? base.file_name : 'Unknown Document',
+    storage_path: typeof base.storage_path === 'string' ? base.storage_path : null,
+    metadata: isRecord(base.metadata) ? base.metadata : null,
+  };
+}
+
+function buildInterrogationPayload(
+  candidate: InterrogationCandidate,
+  interviews: InterviewSummary[],
+  investigationFocus: string[] = [],
+): InterrogationPayload {
+  const { person, role } = candidate;
+  const metadata = isRecord(person.metadata) ? person.metadata : null;
+  const displayName = person.name?.trim() || `Unknown ${role} (${person.id.slice(0, 8)})`;
+
+  const statements = [
+    ...collectMetadataValues(metadata, [
+      'statements',
+      'statementHighlights',
+      'recentStatements',
+      'interviewNotes',
+    ]),
+    ...gatherInterviewStatements(displayName, interviews),
+  ];
+
+  const focusHighlights = investigationFocus
+    .slice(0, 3)
+    .map((item) => `Investigation focus: ${item}`);
+
+  const knownFacts = [
+    ...collectMetadataValues(metadata, ['knownFacts', 'facts', 'confirmedDetails']),
+    person.description ? `Summary: ${person.description}` : '',
+    person.last_known_location ? `Last known location: ${person.last_known_location}` : '',
+    `Role in investigation: ${role}`,
+    ...focusHighlights,
+  ].filter((entry): entry is string => entry.length > 0);
+
+  const inconsistencies = [
+    ...collectMetadataValues(metadata, ['inconsistencies', 'contradictions', 'discrepancies']),
+  ];
+
+  const relationships = [
+    ...collectMetadataValues(metadata, ['relationships', 'associates']),
+    ...toStringArray(person.aliases),
+    ...toStringArray(person.known_associates),
+  ];
+
+  const ensureNonEmpty = (values: string[], fallback: string) =>
+    values.length > 0 ? Array.from(new Set(values)) : [fallback];
+
+  return {
+    name: displayName,
+    statements: ensureNonEmpty(statements, 'No recorded statements available.'),
+    knownFacts: ensureNonEmpty(knownFacts, 'No confirmed facts documented.'),
+    inconsistencies: ensureNonEmpty(
+      inconsistencies,
+      'Inconsistencies not yet documented.',
+    ),
+    relationships: ensureNonEmpty(
+      relationships,
+      'Relationships currently unknown.',
+    ),
+  };
+}
 
 interface InterrogationQuestionsParams {
   jobId: string;
@@ -57,8 +287,16 @@ export async function processInterrogationQuestions(params: InterrogationQuestio
         { data: witnesses, error: witnessesError },
         { data: documents, error: docsError },
       ] = await Promise.all([
-        supabaseServer.from('persons_of_interest').select('*').eq('case_id', caseId).eq('status', 'suspect'),
-        supabaseServer.from('persons_of_interest').select('*').eq('case_id', caseId).eq('status', 'witness'),
+        supabaseServer
+          .from('persons_of_interest')
+          .select('*')
+          .eq('case_id', caseId)
+          .eq('status', 'suspect'),
+        supabaseServer
+          .from('persons_of_interest')
+          .select('*')
+          .eq('case_id', caseId)
+          .eq('status', 'witness'),
         supabaseServer.from('case_documents').select('*').eq('case_id', caseId),
       ]);
 
@@ -88,14 +326,28 @@ export async function processInterrogationQuestions(params: InterrogationQuestio
         }
       }
 
-      console.log(`[Interrogation Questions] Found: ${suspects?.length || 0} suspects, ${witnesses?.length || 0} witnesses, ${documents?.length || 0} documents`);
+      const suspectRecords = Array.isArray(suspects)
+        ? suspects.filter(isPersonOfInterestRecord).map((record) => normalizePersonRecord(record))
+        : [];
+
+      const witnessRecords = Array.isArray(witnesses)
+        ? witnesses.filter(isPersonOfInterestRecord).map((record) => normalizePersonRecord(record))
+        : [];
+
+      const documentRecords = Array.isArray(documents)
+        ? documents.filter(isCaseDocumentRecord).map((record) => normalizeDocumentRecord(record))
+        : [];
+
+      console.log(
+        `[Interrogation Questions] Found: ${suspectRecords.length} suspects, ${witnessRecords.length} witnesses, ${documentRecords.length} documents`,
+      );
 
       await updateProcessingJobRecord(jobId, {
         completed_units: 1,
         // progress_percentage auto-calculates from completed_units/total_units
       }, 'InterrogationQuestionsWorkflow');
 
-      return { suspects: suspects || [], witnesses: witnesses || [], documents: documents || [] };
+      return { suspects: suspectRecords, witnesses: witnessRecords, documents: documentRecords };
     }
     const { suspects, witnesses, documents } = await fetchCaseData();
 
@@ -103,17 +355,25 @@ export async function processInterrogationQuestions(params: InterrogationQuestio
     async function extractContent() {
       console.log(`[Interrogation Questions] Extracting content from ${documents.length} documents...`);
 
-      const storagePaths = documents.map((d) => d.storage_path).filter(Boolean) as string[];
+      const storagePaths = documents
+        .map((doc) => doc.storage_path)
+        .filter((path): path is string => typeof path === 'string' && path.length > 0);
+
       const extractionResults = await extractMultipleDocuments(storagePaths, 5);
 
       // Extract existing interview content
-      const interviews = documents.map((doc) => {
-        const extraction = extractionResults.get(doc.storage_path);
-        return {
-          speaker: doc.file_name.replace(/\.(pdf|txt|docx?)$/i, ''),
-          content: extraction?.text || '',
-        };
-      }).filter((interview) => interview.content.length > 50);
+      const interviews: InterviewSummary[] = documents
+        .map((doc) => {
+          const extraction = doc.storage_path ? extractionResults.get(doc.storage_path) : undefined;
+          const content = extraction?.text ?? '';
+          return {
+            speaker: doc.file_name.replace(/\.(pdf|txt|docx?)$/i, ''),
+            content,
+            documentId: doc.id,
+            storagePath: doc.storage_path,
+          };
+        })
+        .filter((interview) => interview.content.trim().length > 50);
 
       // Identify evidence gaps (simplified version)
       const evidenceGaps = [
@@ -137,37 +397,53 @@ export async function processInterrogationQuestions(params: InterrogationQuestio
     async function generateQuestions() {
       console.log('[Interrogation Questions] Generating interrogation questions...');
 
-      const personsList = [
-        ...suspects.map((s) => ({ name: s.name, role: 'suspect' as const })),
-        ...witnesses.map((w) => ({ name: w.name, role: 'witness' as const })),
+      const candidates: InterrogationCandidate[] = [
+        ...suspects.map((person) => ({ person, role: 'suspect' as const })),
+        ...witnesses.map((person) => ({ person, role: 'witness' as const })),
       ];
 
-      const questionSets = await generateInterrogationQuestions(
-        personsList,
-        evidenceGaps,
-        interviews
+      const interrogationPayloads = candidates.map((candidate) =>
+        buildInterrogationPayload(candidate, interviews, evidenceGaps),
       );
 
-      const totalQuestions = questionSets.reduce((sum, qs) => sum + qs.questions.length, 0);
-      console.log(`[Interrogation Questions] Generated ${totalQuestions} questions for ${questionSets.length} persons`);
+      const strategies: InterrogationStrategy[] = await Promise.all(
+        interrogationPayloads.map((payload) => generateInterrogationQuestions(payload)),
+      );
+
+      const totalQuestions = strategies.reduce(
+        (sum, strategy) => sum + strategy.questions.length,
+        0,
+      );
+
+      console.log(
+        `[Interrogation Questions] Generated ${totalQuestions} questions across ${strategies.length} strategies`,
+      );
 
       await updateProcessingJobRecord(jobId, {
         completed_units: 3,
         // progress_percentage auto-calculates from completed_units/total_units
       }, 'InterrogationQuestionsWorkflow');
 
-      return { questionSets, personsList };
+      const participants = candidates.map((candidate) => ({
+        id: candidate.person.id,
+        name: candidate.person.name ?? `Unknown ${candidate.role}`,
+        role: candidate.role,
+      }));
+
+      return { strategies, participants, totalQuestions };
     }
-    const { questionSets, personsList } = await generateQuestions();
+    const { strategies, participants, totalQuestions } = await generateQuestions();
 
     // Step 5: Save analysis results
     async function saveResults() {
+      const analysisPayload: { strategies: InterrogationStrategy[] } = { strategies };
+
       const { error: saveError } = await supabaseServer
         .from('case_analysis')
         .insert({
           case_id: caseId,
           analysis_type: 'interrogation-questions',
-          analysis_data: { questionSets } as any,
+          analysis_data: analysisPayload as unknown as Json,
           confidence_score: 0.86,
           used_prompt: 'Interrogation question generator for targeted re-interviews',
         });
@@ -187,9 +463,13 @@ export async function processInterrogationQuestions(params: InterrogationQuestio
         metadata: {
           ...initialMetadata,
           summary: {
-            totalQuestionSets: questionSets.length,
-            totalQuestions: questionSets.reduce((sum, qs) => sum + qs.questions.length, 0),
-            personsToReInterview: personsList.length,
+            totalStrategies: strategies.length,
+            totalQuestions,
+            participants: participants.map((participant) => ({
+              id: participant.id,
+              name: participant.name,
+              role: participant.role,
+            })),
           },
         },
       }, 'InterrogationQuestionsWorkflow');
