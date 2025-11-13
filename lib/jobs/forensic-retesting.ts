@@ -9,6 +9,11 @@ import { inngest } from '@/lib/inngest-client';
 import { supabaseServer } from '@/lib/supabase-server';
 import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { recommendForensicRetesting } from '@/lib/cold-case-analyzer';
+import {
+  mapEvidenceRowsToAnalyzerInput,
+  sanitizeForensicRecommendations,
+  summarizeForensicRecommendations,
+} from '@/lib/forensic-retesting-utils';
 
 interface ForensicRetestingEventData {
   jobId: string;
@@ -79,14 +84,7 @@ export const processForensicRetestingJob = inngest.createFunction(
 
         if (evidenceError) throw new Error(`Failed to fetch evidence: ${evidenceError.message}`);
 
-        const evidenceItems = (evidence || []).map((e) => ({
-          id: e.id,
-          description: e.file_name || e.evidence_type || 'Unknown',
-          dateCollected: e.created_at,
-          previousTesting: e.notes || 'Unknown',
-          currentStorage: 'Evidence locker', // Would come from actual storage info
-          condition: 'Good', // Would come from inspection records
-        }));
+        const evidenceItems = mapEvidenceRowsToAnalyzerInput(evidence || []);
 
         console.log(`[Forensic Retesting] Found ${evidenceItems.length} evidence items`);
 
@@ -98,27 +96,38 @@ export const processForensicRetestingJob = inngest.createFunction(
       });
 
       // Step 4: Generate retesting recommendations
-      const recommendations = await step.run('generate-recommendations', async () => {
+      const recommendationsResult = await step.run('generate-recommendations', async () => {
         console.log('[Forensic Retesting] Generating retesting recommendations...');
 
-        const caseAge = new Date().getFullYear() - new Date(caseData.created_at).getFullYear();
-        const recommendations = await recommendForensicRetesting(evidenceItems, caseAge);
+        const caseAgeYears = caseData?.created_at
+          ? new Date().getFullYear() - new Date(caseData.created_at).getFullYear()
+          : undefined;
+
+        if (typeof caseAgeYears === 'number' && Number.isFinite(caseAgeYears)) {
+          console.log(`[Forensic Retesting] Case age approximately ${caseAgeYears} years`);
+        }
+
+        const recommendations = await recommendForensicRetesting(evidenceItems);
+        const sanitizedRecommendations = sanitizeForensicRecommendations(recommendations);
+        const summary = summarizeForensicRecommendations(sanitizedRecommendations);
 
         await updateProcessingJob(jobId, {
           completed_units: 3,
         });
 
-        return recommendations;
+        return { recommendations: sanitizedRecommendations, summary };
       });
 
       // Step 5: Save analysis results
       await step.run('save-results', async () => {
+        const { recommendations, summary } = recommendationsResult;
+
         const { error: saveError } = await supabaseServer
           .from('case_analysis')
           .insert({
             case_id: caseId,
             analysis_type: 'forensic-retesting',
-            analysis_data: { recommendations } as any,
+            analysis_data: { recommendations, summary } as any,
             confidence_score: 0.89,
             used_prompt: 'Forensic retesting recommendations for modern forensic techniques',
           });
@@ -136,11 +145,7 @@ export const processForensicRetestingJob = inngest.createFunction(
           completed_at: new Date().toISOString(),
           metadata: {
             ...initialMetadata,
-            summary: {
-              totalRecommendations: recommendations.length,
-              highPriority: recommendations.filter((r) => r.priority === 'high' || r.priority === 'critical').length,
-              modernTechniques: recommendations.map((r) => r.recommendedTest).filter((v, i, a) => a.indexOf(v) === i).length,
-            },
+            summary,
           },
         });
       });

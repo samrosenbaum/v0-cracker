@@ -10,6 +10,11 @@
 import { supabaseServer } from '@/lib/supabase-server';
 import { updateProcessingJob as updateProcessingJobRecord } from '@/lib/update-processing-job';
 import { recommendForensicRetesting } from '@/lib/cold-case-analyzer';
+import {
+  mapEvidenceRowsToAnalyzerInput,
+  sanitizeForensicRecommendations,
+  summarizeForensicRecommendations,
+} from '@/lib/forensic-retesting-utils';
 
 interface ForensicRetestingParams {
   jobId: string;
@@ -81,14 +86,7 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
 
       if (evidenceError) throw new Error(`Failed to fetch evidence: ${evidenceError.message}`);
 
-      const evidenceItems = (evidence || []).map((e) => ({
-        id: e.id,
-        description: e.file_name || e.evidence_type || 'Unknown',
-        dateCollected: e.created_at,
-        previousTesting: e.notes || 'Unknown',
-        currentStorage: 'Evidence locker', // Would come from actual storage info
-        condition: 'Good', // Would come from inspection records
-      }));
+      const evidenceItems = mapEvidenceRowsToAnalyzerInput(evidence || []);
 
       console.log(`[Forensic Retesting] Found ${evidenceItems.length} evidence items`);
 
@@ -105,20 +103,31 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
     async function generateRecommendations() {
       console.log('[Forensic Retesting] Generating retesting recommendations...');
 
-      const caseAge = new Date().getFullYear() - new Date(caseData.created_at).getFullYear();
-      const recommendations = await recommendForensicRetesting(evidenceItems, caseAge);
+      const caseAgeYears = caseData?.created_at
+        ? new Date().getFullYear() - new Date(caseData.created_at).getFullYear()
+        : undefined;
 
-      const highPriority = recommendations.filter((r) => r.priority === 'high' || r.priority === 'critical').length;
-      console.log(`[Forensic Retesting] Generated ${recommendations.length} recommendations (${highPriority} high priority)`);
+      if (typeof caseAgeYears === 'number' && Number.isFinite(caseAgeYears)) {
+        console.log(`[Forensic Retesting] Case age approximately ${caseAgeYears} years`);
+      }
+
+      const recommendations = await recommendForensicRetesting(evidenceItems);
+      const sanitizedRecommendations = sanitizeForensicRecommendations(recommendations);
+      const summary = summarizeForensicRecommendations(sanitizedRecommendations);
+
+      const highPriority = summary.highPriority;
+      console.log(
+        `[Forensic Retesting] Generated ${sanitizedRecommendations.length} recommendations (${highPriority} high priority)`,
+      );
 
       await updateProcessingJobRecord(jobId, {
         completed_units: 3,
         // progress_percentage auto-calculates from completed_units/total_units
       }, 'ForensicRetestingWorkflow');
 
-      return recommendations;
+      return { recommendations: sanitizedRecommendations, summary };
     }
-    const recommendations = await generateRecommendations();
+    const { recommendations, summary } = await generateRecommendations();
 
     // Step 5: Save analysis results
     async function saveResults() {
@@ -127,7 +136,7 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
         .insert({
           case_id: caseId,
           analysis_type: 'forensic-retesting',
-          analysis_data: { recommendations } as any,
+          analysis_data: { recommendations, summary } as any,
           confidence_score: 0.89,
           used_prompt: 'Forensic retesting recommendations for modern forensic techniques',
         });
@@ -139,22 +148,20 @@ export async function processForensicRetesting(params: ForensicRetestingParams) 
       }
 
       // Mark job as completed
-      await updateProcessingJobRecord(jobId, {
-        status: 'completed',
-        completed_units: totalUnits,
-        // progress_percentage auto-calculates from completed_units/total_units
-        completed_at: new Date().toISOString(),
-        metadata: {
-          ...initialMetadata,
-          summary: {
-            totalRecommendations: recommendations.length,
-            highPriority: recommendations.filter((r) => r.priority === 'high' || r.priority === 'critical').length,
-            modernTechniques: recommendations
-              .map((r) => r.recommendedTest)
-              .filter((v, i, a) => a.indexOf(v) === i).length,
+      await updateProcessingJobRecord(
+        jobId,
+        {
+          status: 'completed',
+          completed_units: totalUnits,
+          // progress_percentage auto-calculates from completed_units/total_units
+          completed_at: new Date().toISOString(),
+          metadata: {
+            ...initialMetadata,
+            summary,
           },
         },
-      }, 'ForensicRetestingWorkflow');
+        'ForensicRetestingWorkflow',
+      );
     }
     await saveResults();
 
