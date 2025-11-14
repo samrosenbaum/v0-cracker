@@ -13,6 +13,7 @@ import { supabaseServer } from '@/lib/supabase-server';
 import { analyzeCaseDocuments } from '@/lib/ai-analysis';
 import { extractDocumentContent, extractDocumentContentFromBuffer } from '@/lib/document-parser';
 import { isLikelyNonPersonEntity } from '@/lib/text-heuristics';
+import { toISODateTime } from '@/lib/datetime-utils';
 import OpenAI from 'openai';
 
 type StepRunner = {
@@ -1141,26 +1142,6 @@ function determineEventType(description: string, entityNames: string[]): Extract
   if (entityNames.some((name) => name.toLowerCase().includes('victim'))) return 'victim_action';
   if (lower.includes('alibi') || lower.includes('claimed')) return 'suspect_movement';
   return 'other';
-}
-
-function toISODateTime(dateInput?: string | null, timeInput?: string | null): string | null {
-  if (!dateInput) return null;
-  const date = new Date(dateInput);
-  if (Number.isNaN(date.getTime())) return null;
-
-  if (timeInput) {
-    const match = timeInput.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
-    if (match) {
-      let hours = parseInt(match[1], 10);
-      const minutes = match[2] ? parseInt(match[2], 10) : 0;
-      const meridiem = match[3]?.toLowerCase();
-      if (meridiem === 'pm' && hours < 12) hours += 12;
-      if (meridiem === 'am' && hours === 12) hours = 0;
-      date.setHours(hours, minutes, 0, 0);
-    }
-  }
-
-  return date.toISOString();
 }
 
 function createEventKey(title?: string | null, isoTime?: string | null, description?: string | null) {
