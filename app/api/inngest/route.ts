@@ -27,6 +27,15 @@ import { processInterrogationQuestionsJob } from '@/lib/jobs/interrogation-quest
 import { processForensicRetestingJob } from '@/lib/jobs/forensic-retesting';
 import { populateInvestigationBoardJob } from '@/lib/jobs/populate-investigation-board';
 
+// New comprehensive analysis jobs
+import { processBatchDocumentsJob } from '@/lib/jobs/batch-processing';
+import { processEntityResolutionJob } from '@/lib/jobs/entity-resolution-job';
+import { processStatementParsingJob } from '@/lib/jobs/statement-parsing-job';
+import { processInconsistencyDetectionJob } from '@/lib/jobs/inconsistency-detection-job';
+import { processTimelineGenerationJob } from '@/lib/jobs/timeline-generation-job';
+import { processDNAProcessingJob } from '@/lib/jobs/dna-processing-job';
+import { processFullPipelineJob } from '@/lib/jobs/full-pipeline-job';
+
 /**
  * Register all Inngest functions (jobs) here
  *
@@ -34,6 +43,7 @@ import { populateInvestigationBoardJob } from '@/lib/jobs/populate-investigation
  * These features have fallback implementations that run synchronously
  */
 const inngestFunctions = [
+  // Original analysis jobs
   processVictimTimelineJob,
   processTimelineAnalysisJob,
   processDeepAnalysisJob,
@@ -45,6 +55,15 @@ const inngestFunctions = [
   processInterrogationQuestionsJob,
   processForensicRetestingJob,
   populateInvestigationBoardJob,
+
+  // New comprehensive analysis jobs
+  processBatchDocumentsJob,
+  processEntityResolutionJob,
+  processStatementParsingJob,
+  processInconsistencyDetectionJob,
+  processTimelineGenerationJob,
+  processDNAProcessingJob,
+  processFullPipelineJob,
 ];
 
 console.log(`[Inngest] Registering ${inngestFunctions.length} functions:`, inngestFunctions.map(f => f?.id || 'unknown'));

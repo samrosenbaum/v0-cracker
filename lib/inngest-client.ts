@@ -139,21 +139,6 @@ type Events = {
     };
   };
 
-  // Triggered to run victim timeline reconstruction
-  'analysis/victim-timeline': {
-    data: {
-      jobId: string;
-      caseId: string;
-      victimName: string;
-      incidentTime: string;
-      incidentLocation?: string;
-      typicalRoutine?: string;
-      knownHabits?: string[];
-      regularContacts?: string[];
-      digitalRecords?: any;
-    };
-  };
-
   // Triggered to run behavioral pattern analysis
   'analysis/behavioral-patterns': {
     data: {
@@ -207,6 +192,107 @@ type Events = {
     data: {
       jobId: string;
       caseId: string;
+    };
+  };
+
+  // ============================================================================
+  // COMPREHENSIVE ANALYSIS JOBS
+  // New jobs for entity resolution, inconsistency detection, and timelines
+  // ============================================================================
+
+  // Triggered to process documents in batch with checkpointing
+  'batch/process-documents': {
+    data: {
+      sessionId: string;
+      caseId: string;
+      documentIds: string[];
+      options?: {
+        extractEntities?: boolean;
+        parseStatements?: boolean;
+        generateTimelines?: boolean;
+        detectInconsistencies?: boolean;
+      };
+    };
+  };
+
+  // Triggered to resolve entities across all documents
+  'analysis/entity-resolution': {
+    data: {
+      jobId: string;
+      caseId: string;
+      documentId?: string; // Optional: process single document
+      options?: {
+        fuzzyThreshold?: number;
+        usePhonemicMatching?: boolean;
+        useAIDisambiguation?: boolean;
+      };
+    };
+  };
+
+  // Triggered to parse statements and extract claims
+  'analysis/parse-statements': {
+    data: {
+      jobId: string;
+      caseId: string;
+      statementIds?: string[]; // Optional: parse specific statements
+      options?: {
+        extractClaims?: boolean;
+        identifySpeaker?: boolean;
+        extractTimeReferences?: boolean;
+      };
+    };
+  };
+
+  // Triggered to detect inconsistencies across statements
+  'analysis/detect-inconsistencies': {
+    data: {
+      jobId: string;
+      caseId: string;
+      entityIds?: string[]; // Optional: check specific entities
+      options?: {
+        detectSelfContradictions?: boolean;
+        detectCrossWitness?: boolean;
+        detectAlibiIssues?: boolean;
+        trackClaimEvolution?: boolean;
+      };
+    };
+  };
+
+  // Triggered to generate person timelines
+  'analysis/generate-timelines': {
+    data: {
+      jobId: string;
+      caseId: string;
+      entityId?: string; // Optional: generate for specific person
+      options?: {
+        detectGaps?: boolean;
+        minGapDurationMinutes?: number;
+        includeInconsistencies?: boolean;
+        assessCredibility?: boolean;
+      };
+    };
+  };
+
+  // Triggered to process DNA evidence
+  'analysis/process-dna': {
+    data: {
+      jobId: string;
+      caseId: string;
+      sampleIds?: string[]; // Optional: process specific samples
+      options?: {
+        compareProfiles?: boolean;
+        findMatches?: boolean;
+        generateReport?: boolean;
+      };
+    };
+  };
+
+  // Triggered for comprehensive case analysis pipeline
+  'analysis/full-pipeline': {
+    data: {
+      jobId: string;
+      caseId: string;
+      phases?: ('documents' | 'entities' | 'statements' | 'inconsistencies' | 'timelines' | 'dna')[];
     };
   };
 };
