@@ -607,7 +607,7 @@ export interface Database {
           content?: string | null
           content_embedding?: string | null
           extraction_confidence?: number | null
-          extraction_method?: "pdf-parse" | "ocr-tesseract" | "ocr-google" | "whisper-transcription" | "direct-read" | "cached" | null
+          extraction_method?: "pdf-parse" | "pdfjs-dist" | "ocr-tesseract" | "ocr-google" | "whisper-transcription" | "direct-read" | "cached" | "mammoth-docx" | "xlsx-parse" | "csv-parse" | null
           metadata?: Json
           processing_status?: "pending" | "processing" | "completed" | "failed" | "skipped"
           processing_attempts?: number
@@ -625,7 +625,7 @@ export interface Database {
           content?: string | null
           content_embedding?: string | null
           extraction_confidence?: number | null
-          extraction_method?: "pdf-parse" | "ocr-tesseract" | "ocr-google" | "whisper-transcription" | "direct-read" | "cached" | null
+          extraction_method?: "pdf-parse" | "pdfjs-dist" | "ocr-tesseract" | "ocr-google" | "whisper-transcription" | "direct-read" | "cached" | "mammoth-docx" | "xlsx-parse" | "csv-parse" | null
           metadata?: Json
           processing_status?: "pending" | "processing" | "completed" | "failed" | "skipped"
           processing_attempts?: number

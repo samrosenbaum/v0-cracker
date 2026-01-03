@@ -494,7 +494,8 @@ export type RelationshipConnectionType =
   | 'coworker'
   | 'enemy'
   | 'business'
-  | 'casual';
+  | 'casual'
+  | 'associate';
 
 export interface RelationshipNode {
   name: string;
