@@ -12,6 +12,8 @@ import { supabaseServer } from './supabase-server';
 import Tesseract from 'tesseract.js';
 import OpenAI from 'openai';
 import { parsePdf } from './pdf-parse-compat';
+import mammoth from 'mammoth';
+import * as XLSX from 'xlsx';
 
 type PdfjsModule = typeof import('pdfjs-dist/legacy/build/pdf.mjs');
 
@@ -114,11 +116,49 @@ export interface ExtractionResult {
   text: string;
   pageCount?: number;
   confidence?: number; // 0-1 score for OCR
-  method: 'pdf-parse' | 'pdfjs-dist' | 'ocr-tesseract' | 'ocr-google' | 'whisper-transcription' | 'cached';
+  method: 'pdf-parse' | 'pdfjs-dist' | 'ocr-tesseract' | 'ocr-google' | 'whisper-transcription' | 'cached' | 'mammoth-docx' | 'xlsx-parse' | 'csv-parse';
   metadata?: any;
   error?: string;
   uncertainSegments?: UncertainSegment[]; // Segments that need human review
   needsReview?: boolean; // Quick flag if human review is recommended
+  structuredData?: ExtractedStructuredData; // For spreadsheets, databases, structured content
+}
+
+export interface ExtractedStructuredData {
+  tables?: ExtractedTable[];
+  entities?: ExtractedEntity[];
+  dates?: ExtractedDate[];
+  locations?: ExtractedLocation[];
+  phoneNumbers?: string[];
+  emails?: string[];
+  addresses?: string[];
+}
+
+export interface ExtractedTable {
+  name?: string;
+  headers: string[];
+  rows: string[][];
+  sheetIndex?: number;
+}
+
+export interface ExtractedEntity {
+  name: string;
+  type: 'person' | 'organization' | 'vehicle' | 'weapon' | 'evidence' | 'unknown';
+  mentions: number;
+  context: string[];
+}
+
+export interface ExtractedDate {
+  original: string;
+  normalized?: string;
+  context: string;
+  lineNumber?: number;
+}
+
+export interface ExtractedLocation {
+  name: string;
+  type?: 'address' | 'landmark' | 'city' | 'state' | 'country' | 'coordinates';
+  context: string;
 }
 
 /**
@@ -209,15 +249,30 @@ async function extractByFileType(
     };
   }
 
-  // Word documents (would need additional library)
-  if (lowerPath.match(/\.(doc|docx)$/)) {
-    // TODO: Add mammoth.js for Word doc parsing
+  // Word documents (.docx)
+  if (lowerPath.endsWith('.docx')) {
+    return await extractFromDocx(buffer);
+  }
+
+  // Legacy Word documents (.doc) - limited support
+  if (lowerPath.endsWith('.doc')) {
     return {
-      text: '[Word document - extraction not yet implemented]',
-      method: 'pdf-parse',
+      text: '[Legacy .doc format detected - please convert to .docx for better extraction]',
+      method: 'mammoth-docx',
       confidence: 0,
-      error: 'Word document parsing requires mammoth.js library',
+      error: 'Legacy .doc format not fully supported. Please convert to .docx format.',
+      needsReview: true,
     };
+  }
+
+  // Excel spreadsheets
+  if (lowerPath.match(/\.(xlsx|xls)$/)) {
+    return await extractFromExcel(buffer, storagePath);
+  }
+
+  // CSV files (structured parsing)
+  if (lowerPath.endsWith('.csv')) {
+    return await extractFromCSV(buffer);
   }
 
   // Unsupported file type
@@ -234,6 +289,214 @@ export async function extractDocumentContentFromBuffer(
   buffer: Buffer
 ): Promise<ExtractionResult> {
   return extractByFileType(storagePath, buffer);
+}
+
+/**
+ * Extract a specific page from a PDF document
+ * This is used by the chunking system for parallel page-level processing
+ */
+export async function extractPdfPage(
+  storagePath: string,
+  pageNumber: number
+): Promise<ExtractionResult> {
+  console.log(`[Document Parser] Extracting page ${pageNumber} from: ${storagePath}`);
+
+  try {
+    // Download file from Supabase Storage
+    const { data: fileData, error: downloadError } = await supabaseServer.storage
+      .from('case-files')
+      .download(storagePath);
+
+    if (downloadError) {
+      throw new Error(`Failed to download file: ${downloadError.message}`);
+    }
+
+    const buffer = Buffer.from(await fileData.arrayBuffer());
+    return await extractPdfPageFromBuffer(buffer, pageNumber);
+
+  } catch (error: any) {
+    console.error(`[Document Parser] Error extracting page ${pageNumber}:`, error);
+    return {
+      text: '',
+      method: 'pdfjs-dist',
+      error: error.message,
+      confidence: 0,
+      pageCount: 1,
+    };
+  }
+}
+
+/**
+ * Extract a specific page from a PDF buffer
+ */
+export async function extractPdfPageFromBuffer(
+  buffer: Buffer,
+  pageNumber: number
+): Promise<ExtractionResult> {
+  const pdfjs = await loadPdfJsModule();
+
+  if (!pdfjs) {
+    console.warn('[Document Parser] pdfjs module unavailable, falling back to pdf-parse for page extraction.');
+    // Fallback: extract entire document with pdf-parse
+    const result = await extractWithPdfParse(buffer);
+    return {
+      ...result,
+      metadata: { ...result.metadata, requestedPage: pageNumber, note: 'Full document extracted - page-level not available' },
+    };
+  }
+
+  let loadingTask: ReturnType<PdfjsModule['getDocument']>;
+
+  try {
+    loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer) });
+  } catch (initError) {
+    console.warn('[Document Parser] pdfjs failed to initialize for page extraction.', initError);
+    const result = await extractWithPdfParse(buffer);
+    return { ...result, metadata: { ...result.metadata, requestedPage: pageNumber } };
+  }
+
+  try {
+    const pdfDocument = await loadingTask.promise;
+    const totalPages = pdfDocument.numPages;
+
+    if (pageNumber < 1 || pageNumber > totalPages) {
+      return {
+        text: '',
+        method: 'pdfjs-dist',
+        confidence: 0,
+        pageCount: 1,
+        error: `Invalid page number ${pageNumber}. Document has ${totalPages} pages.`,
+      };
+    }
+
+    const page = await pdfDocument.getPage(pageNumber);
+    const textContent = await page.getTextContent();
+
+    const pageText = textContent.items
+      .map(item => {
+        const anyItem = item as any;
+        if (typeof anyItem.str === 'string') return anyItem.str;
+        if (typeof anyItem.text === 'string') return anyItem.text;
+        if (typeof anyItem.unicode === 'string') return anyItem.unicode;
+        return '';
+      })
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    try {
+      page.cleanup();
+    } catch (cleanupError) {
+      console.warn('[Document Parser] Failed to cleanup PDF page', cleanupError);
+    }
+
+    const hasMeaningfulText = pageText.trim().length > 0;
+    const confidence = hasMeaningfulText
+      ? Math.min(0.95, Math.max(0.4, pageText.length / 1500))
+      : 0.1;
+
+    // Extract structured data from the page
+    const structuredData = extractStructuredDataFromText(pageText);
+
+    return {
+      text: hasMeaningfulText ? pageText : '[No extractable text found on this page]',
+      pageCount: 1,
+      method: 'pdfjs-dist',
+      confidence,
+      metadata: {
+        pageNumber,
+        totalPages,
+        characterCount: pageText.length,
+      },
+      structuredData,
+      needsReview: !hasMeaningfulText,
+    };
+  } catch (error: any) {
+    console.error(`[Document Parser] PDF page ${pageNumber} extraction failed:`, error);
+
+    if (isNonRecoverablePdfError(error)) {
+      return {
+        text: '',
+        pageCount: 1,
+        method: 'pdfjs-dist',
+        confidence: 0,
+        error: error?.message || 'PDF extraction failed.',
+        needsReview: true,
+      };
+    }
+
+    // Fallback to full document extraction
+    const result = await extractWithPdfParse(buffer);
+    return { ...result, metadata: { ...result.metadata, requestedPage: pageNumber, fallback: true } };
+  } finally {
+    try {
+      if (typeof loadingTask.destroy === 'function') {
+        await loadingTask.destroy();
+      }
+    } catch (destroyError) {
+      console.warn('[Document Parser] Failed to destroy PDF loading task', destroyError);
+    }
+  }
+}
+
+/**
+ * Get PDF page count without full extraction
+ * Useful for determining how to chunk a PDF
+ */
+export async function getPdfPageCount(storagePath: string): Promise<number> {
+  try {
+    const { data: fileData, error: downloadError } = await supabaseServer.storage
+      .from('case-files')
+      .download(storagePath);
+
+    if (downloadError) {
+      console.error('[Document Parser] Failed to download for page count:', downloadError);
+      return 1;
+    }
+
+    const buffer = Buffer.from(await fileData.arrayBuffer());
+    return await getPdfPageCountFromBuffer(buffer);
+  } catch (error) {
+    console.error('[Document Parser] Failed to get page count:', error);
+    return 1;
+  }
+}
+
+/**
+ * Get PDF page count from buffer
+ */
+export async function getPdfPageCountFromBuffer(buffer: Buffer): Promise<number> {
+  const pdfjs = await loadPdfJsModule();
+
+  if (!pdfjs) {
+    // Fallback to pdf-parse
+    try {
+      const result = await parsePdf(buffer);
+      return result.numpages || 1;
+    } catch {
+      return 1;
+    }
+  }
+
+  try {
+    const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer) });
+    const pdfDocument = await loadingTask.promise;
+    const pageCount = pdfDocument.numPages;
+
+    try {
+      await loadingTask.destroy();
+    } catch { /* ignore */ }
+
+    return pageCount;
+  } catch {
+    // Fallback to pdf-parse
+    try {
+      const result = await parsePdf(buffer);
+      return result.numpages || 1;
+    } catch {
+      return 1;
+    }
+  }
 }
 
 /**
@@ -518,16 +781,391 @@ async function transcribeAudio(
 }
 
 /**
+ * Extract text from Word documents (.docx) using mammoth
+ * Good for: Typed reports, transcripts, formal documents
+ */
+async function extractFromDocx(buffer: Buffer): Promise<ExtractionResult> {
+  console.log('[Document Parser] Extracting from Word document...');
+
+  try {
+    const result = await mammoth.extractRawText({ buffer });
+    const text = result.value.trim();
+
+    // Check for any messages/warnings from mammoth
+    const warnings = result.messages.filter(m => m.type === 'warning');
+
+    if (!text || text.length === 0) {
+      return {
+        text: '[No text content found in Word document]',
+        method: 'mammoth-docx',
+        confidence: 0.1,
+        needsReview: true,
+        error: 'Document appears to be empty or contains only images',
+      };
+    }
+
+    // Extract structured data from the document
+    const structuredData = extractStructuredDataFromText(text);
+
+    console.log(`[Document Parser] Extracted ${text.length} characters from Word document`);
+    if (warnings.length > 0) {
+      console.log(`[Document Parser] Word extraction warnings: ${warnings.length}`);
+    }
+
+    return {
+      text,
+      method: 'mammoth-docx',
+      confidence: warnings.length > 0 ? 0.85 : 0.95,
+      metadata: {
+        warnings: warnings.map(w => w.message),
+        characterCount: text.length,
+        wordCount: text.split(/\s+/).length,
+      },
+      structuredData,
+      needsReview: warnings.length > 5,
+    };
+
+  } catch (error: any) {
+    console.error('[Document Parser] Word document extraction failed:', error);
+    return {
+      text: '',
+      method: 'mammoth-docx',
+      confidence: 0,
+      error: `Word document extraction failed: ${error.message}`,
+      needsReview: true,
+    };
+  }
+}
+
+/**
+ * Extract data from Excel files (.xlsx, .xls)
+ * Parses all sheets and converts to structured format
+ * Good for: Phone records, financial records, evidence logs
+ */
+async function extractFromExcel(buffer: Buffer, fileName: string): Promise<ExtractionResult> {
+  console.log('[Document Parser] Extracting from Excel spreadsheet...');
+
+  try {
+    const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    const tables: ExtractedTable[] = [];
+    const textParts: string[] = [];
+
+    workbook.SheetNames.forEach((sheetName, index) => {
+      const sheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
+
+      if (jsonData.length === 0) return;
+
+      const headers = (jsonData[0] || []).map(h => String(h || '').trim());
+      const rows = jsonData.slice(1).map(row =>
+        (row || []).map(cell => String(cell || '').trim())
+      );
+
+      tables.push({
+        name: sheetName,
+        headers,
+        rows,
+        sheetIndex: index,
+      });
+
+      // Convert to text format for analysis
+      textParts.push(`\n=== Sheet: ${sheetName} ===\n`);
+      textParts.push(`Columns: ${headers.join(' | ')}\n`);
+      textParts.push('-'.repeat(80) + '\n');
+
+      rows.forEach((row, rowIndex) => {
+        const rowText = headers.map((h, i) => `${h}: ${row[i] || 'N/A'}`).join(' | ');
+        textParts.push(`Row ${rowIndex + 1}: ${rowText}\n`);
+      });
+    });
+
+    const fullText = textParts.join('');
+
+    // Extract entities from the spreadsheet data
+    const structuredData: ExtractedStructuredData = {
+      tables,
+      ...extractStructuredDataFromText(fullText),
+    };
+
+    console.log(`[Document Parser] Extracted ${tables.length} sheets, ${fullText.length} characters`);
+
+    return {
+      text: fullText,
+      method: 'xlsx-parse',
+      confidence: 0.98,
+      metadata: {
+        sheetCount: workbook.SheetNames.length,
+        sheetNames: workbook.SheetNames,
+        totalRows: tables.reduce((sum, t) => sum + t.rows.length, 0),
+        totalColumns: tables.reduce((max, t) => Math.max(max, t.headers.length), 0),
+      },
+      structuredData,
+    };
+
+  } catch (error: any) {
+    console.error('[Document Parser] Excel extraction failed:', error);
+    return {
+      text: '',
+      method: 'xlsx-parse',
+      confidence: 0,
+      error: `Excel extraction failed: ${error.message}`,
+      needsReview: true,
+    };
+  }
+}
+
+/**
+ * Extract data from CSV files with structure detection
+ * Good for: Call logs, transaction records, witness lists
+ */
+async function extractFromCSV(buffer: Buffer): Promise<ExtractionResult> {
+  console.log('[Document Parser] Extracting from CSV file...');
+
+  try {
+    const content = buffer.toString('utf-8');
+    const workbook = XLSX.read(content, { type: 'string' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const jsonData = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
+
+    if (jsonData.length === 0) {
+      return {
+        text: '[Empty CSV file]',
+        method: 'csv-parse',
+        confidence: 0.5,
+        needsReview: true,
+      };
+    }
+
+    const headers = (jsonData[0] || []).map(h => String(h || '').trim());
+    const rows = jsonData.slice(1).map(row =>
+      (row || []).map(cell => String(cell || '').trim())
+    );
+
+    const table: ExtractedTable = { headers, rows };
+
+    // Convert to readable text
+    const textParts: string[] = [`Columns: ${headers.join(' | ')}\n`, '-'.repeat(80) + '\n'];
+    rows.forEach((row, index) => {
+      const rowText = headers.map((h, i) => `${h}: ${row[i] || 'N/A'}`).join(' | ');
+      textParts.push(`Row ${index + 1}: ${rowText}\n`);
+    });
+
+    const fullText = textParts.join('');
+    const structuredData: ExtractedStructuredData = {
+      tables: [table],
+      ...extractStructuredDataFromText(fullText),
+    };
+
+    console.log(`[Document Parser] Extracted ${rows.length} rows from CSV`);
+
+    return {
+      text: fullText,
+      method: 'csv-parse',
+      confidence: 0.95,
+      metadata: {
+        rowCount: rows.length,
+        columnCount: headers.length,
+        headers,
+      },
+      structuredData,
+    };
+
+  } catch (error: any) {
+    console.error('[Document Parser] CSV extraction failed:', error);
+    return {
+      text: '',
+      method: 'csv-parse',
+      confidence: 0,
+      error: `CSV extraction failed: ${error.message}`,
+      needsReview: true,
+    };
+  }
+}
+
+/**
+ * Extract structured data (entities, dates, locations, phone numbers) from text
+ * This runs on any extracted text to find investigatively relevant information
+ */
+function extractStructuredDataFromText(text: string): ExtractedStructuredData {
+  const result: ExtractedStructuredData = {
+    entities: [],
+    dates: [],
+    locations: [],
+    phoneNumbers: [],
+    emails: [],
+    addresses: [],
+  };
+
+  if (!text || text.length === 0) return result;
+
+  // Extract phone numbers (various formats)
+  const phonePatterns = [
+    /\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/g,  // 555-123-4567
+    /\(\d{3}\)\s?\d{3}[-.\s]?\d{4}/g,       // (555) 123-4567
+    /\b\d{10}\b/g,                           // 5551234567
+    /\+1[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}/g, // +1-555-123-4567
+  ];
+  phonePatterns.forEach(pattern => {
+    const matches = text.match(pattern);
+    if (matches) {
+      result.phoneNumbers!.push(...matches.filter(m => !result.phoneNumbers!.includes(m)));
+    }
+  });
+
+  // Extract email addresses
+  const emailPattern = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
+  const emails = text.match(emailPattern);
+  if (emails) {
+    result.emails = [...new Set(emails)];
+  }
+
+  // Extract dates (various formats)
+  const datePatterns = [
+    /\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g,           // MM/DD/YYYY or M/D/YY
+    /\b\d{1,2}-\d{1,2}-\d{2,4}\b/g,             // MM-DD-YYYY
+    /\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}\b/gi,
+    /\b\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}\b/gi,
+    /\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?\s+\d{1,2},?\s+\d{4}\b/gi,
+  ];
+  datePatterns.forEach(pattern => {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const lineStart = Math.max(0, match.index - 50);
+      const lineEnd = Math.min(text.length, match.index + match[0].length + 50);
+      const context = text.slice(lineStart, lineEnd).replace(/\s+/g, ' ').trim();
+
+      result.dates!.push({
+        original: match[0],
+        context,
+      });
+    }
+  });
+
+  // Extract proper names (potential persons of interest)
+  const namePattern = /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}\b/g;
+  const nameMap = new Map<string, { count: number; contexts: string[] }>();
+  let nameMatch;
+  while ((nameMatch = namePattern.exec(text)) !== null) {
+    const name = nameMatch[0];
+    // Filter out common non-name patterns
+    if (!/^(?:The |A |An |In |On |At |By |For |With |From )/.test(name)) {
+      const existing = nameMap.get(name) || { count: 0, contexts: [] };
+      existing.count++;
+      if (existing.contexts.length < 3) {
+        const contextStart = Math.max(0, nameMatch.index - 30);
+        const contextEnd = Math.min(text.length, nameMatch.index + name.length + 30);
+        existing.contexts.push(text.slice(contextStart, contextEnd).replace(/\s+/g, ' ').trim());
+      }
+      nameMap.set(name, existing);
+    }
+  }
+  nameMap.forEach((data, name) => {
+    if (data.count >= 1) { // Only include names mentioned at least once
+      result.entities!.push({
+        name,
+        type: 'person',
+        mentions: data.count,
+        context: data.contexts,
+      });
+    }
+  });
+
+  // Extract addresses (basic patterns)
+  const addressPattern = /\b\d+\s+[A-Za-z]+(?:\s+[A-Za-z]+)*\s+(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Boulevard|Blvd|Way|Court|Ct|Place|Pl)\.?(?:\s*,?\s*(?:Apt|Suite|Unit|#)\.?\s*\d+)?/gi;
+  const addresses = text.match(addressPattern);
+  if (addresses) {
+    result.addresses = [...new Set(addresses)];
+    addresses.forEach(addr => {
+      result.locations!.push({
+        name: addr,
+        type: 'address',
+        context: addr,
+      });
+    });
+  }
+
+  // Extract vehicle information (license plates, makes/models)
+  const vehiclePattern = /\b(?:\d{4}\s+)?(?:Ford|Chevrolet|Chevy|Toyota|Honda|Nissan|BMW|Mercedes|Dodge|Jeep|GMC|Volkswagen|VW|Hyundai|Kia|Subaru|Mazda|Lexus|Acura|Infiniti|Cadillac|Buick|Lincoln|Chrysler)\s+[A-Za-z0-9]+\b/gi;
+  const vehicles = text.match(vehiclePattern);
+  if (vehicles) {
+    vehicles.forEach(v => {
+      result.entities!.push({
+        name: v,
+        type: 'vehicle',
+        mentions: 1,
+        context: [v],
+      });
+    });
+  }
+
+  // Remove duplicates from entities
+  const uniqueEntities = new Map<string, ExtractedEntity>();
+  result.entities!.forEach(entity => {
+    const existing = uniqueEntities.get(entity.name.toLowerCase());
+    if (existing) {
+      existing.mentions += entity.mentions;
+      existing.context.push(...entity.context.slice(0, 2));
+    } else {
+      uniqueEntities.set(entity.name.toLowerCase(), entity);
+    }
+  });
+  result.entities = Array.from(uniqueEntities.values());
+
+  // Sort entities by mention count
+  result.entities.sort((a, b) => b.mentions - a.mentions);
+
+  // Limit results to most relevant
+  result.entities = result.entities.slice(0, 50);
+  result.dates = result.dates!.slice(0, 50);
+  result.phoneNumbers = result.phoneNumbers!.slice(0, 30);
+
+  return result;
+}
+
+/**
  * Check if document has already been extracted (cached)
  */
 async function getCachedExtraction(storagePath: string): Promise<ExtractionResult | null> {
-
   try {
-    // NOTE: Caching is currently disabled because the required columns
-    // (ai_extracted_text, ai_transcription) don't exist in case_files table
-    // Always return null to trigger fresh extraction
-    return null;
+    // First try case_documents table
+    const { data: docRecord, error: docError } = await supabaseServer
+      .from('case_documents')
+      .select('extracted_text, extraction_method, extraction_confidence, structured_data, extraction_status, page_count')
+      .eq('storage_path', storagePath)
+      .eq('extraction_status', 'completed')
+      .single();
 
+    if (!docError && docRecord?.extracted_text) {
+      console.log('[Document Parser] Using cached extraction from case_documents');
+      return {
+        text: docRecord.extracted_text,
+        method: (docRecord.extraction_method as any) || 'cached',
+        confidence: docRecord.extraction_confidence || 0.9,
+        pageCount: docRecord.page_count,
+        structuredData: docRecord.structured_data as ExtractedStructuredData,
+        metadata: { cached: true, cacheSource: 'case_documents' },
+      };
+    }
+
+    // Fallback to case_files table
+    const { data: fileRecord, error: fileError } = await supabaseServer
+      .from('case_files')
+      .select('ai_extracted_text, ai_transcription, ai_analyzed, ai_analysis_confidence')
+      .eq('storage_path', storagePath)
+      .eq('ai_analyzed', true)
+      .single();
+
+    if (!fileError && fileRecord && (fileRecord.ai_extracted_text || fileRecord.ai_transcription)) {
+      console.log('[Document Parser] Using cached extraction from case_files');
+      return {
+        text: fileRecord.ai_extracted_text || fileRecord.ai_transcription || '',
+        method: 'cached',
+        confidence: fileRecord.ai_analysis_confidence || 0.9,
+        metadata: { cached: true, cacheSource: 'case_files' },
+      };
+    }
+
+    return null;
   } catch (error) {
     console.error('[Document Parser] Error checking cache:', error);
     return null;
@@ -541,21 +1179,55 @@ async function cacheExtraction(
   storagePath: string,
   result: ExtractionResult
 ): Promise<void> {
-
   try {
-    // NOTE: Caching extraction results requires the following columns to be added to case_files:
-    // - ai_analyzed (boolean)
-    // - ai_analysis_confidence (numeric)
-    // - ai_extracted_text (text)
-    // - ai_transcription (text)
-    //
-    // Since these columns don't exist in the current schema, we'll skip caching
-    // and just log the extraction completion. This doesn't affect functionality,
-    // as extraction will work, it just won't be cached in the database.
+    // Calculate word count
+    const wordCount = result.text ? result.text.split(/\s+/).filter(w => w.length > 0).length : 0;
 
-    console.log('[Document Parser] Extraction completed (caching skipped - schema columns not available)');
-    console.log(`[Document Parser] Extracted ${result.text.length} characters using ${result.method}`);
+    // Try to update case_documents first
+    const { error: docError } = await supabaseServer
+      .from('case_documents')
+      .update({
+        extracted_text: result.text,
+        extraction_method: result.method,
+        extraction_confidence: result.confidence,
+        extraction_status: result.error ? 'failed' : (result.needsReview ? 'needs_review' : 'completed'),
+        structured_data: result.structuredData || {},
+        page_count: result.pageCount || 1,
+        word_count: wordCount,
+        extracted_at: new Date().toISOString(),
+      })
+      .eq('storage_path', storagePath);
 
+    if (docError) {
+      console.warn('[Document Parser] Could not cache to case_documents:', docError.message);
+
+      // Fallback to case_files table
+      const { error: fileError } = await supabaseServer
+        .from('case_files')
+        .update({
+          ai_extracted_text: result.text,
+          ai_analyzed: true,
+          ai_analysis_confidence: result.confidence,
+          metadata: {
+            extraction_method: result.method,
+            page_count: result.pageCount,
+            word_count: wordCount,
+            structured_data: result.structuredData,
+            extracted_at: new Date().toISOString(),
+          },
+        })
+        .eq('storage_path', storagePath);
+
+      if (fileError) {
+        console.warn('[Document Parser] Could not cache to case_files:', fileError.message);
+      } else {
+        console.log('[Document Parser] Cached extraction to case_files');
+      }
+    } else {
+      console.log('[Document Parser] Cached extraction to case_documents');
+    }
+
+    console.log(`[Document Parser] Extracted ${result.text.length} characters, ${wordCount} words using ${result.method}`);
   } catch (error) {
     console.error('[Document Parser] Error in cacheExtraction:', error);
   }
