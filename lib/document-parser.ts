@@ -659,8 +659,11 @@ async function extractFromImage(buffer: Buffer): Promise<ExtractionResult> {
     const uncertainSegments: UncertainSegment[] = [];
     const CONFIDENCE_THRESHOLD = 60; // Words below 60% confidence need review
 
-    if (data.words && data.words.length > 0) {
-      data.words.forEach((word: any, idx: number) => {
+    // Use type assertion for Tesseract result which includes words array
+    const ocrData = data as Tesseract.RecognizeResult['data'] & { words?: any[]; lines?: any[] };
+
+    if (ocrData.words && ocrData.words.length > 0) {
+      ocrData.words.forEach((word: any, idx: number) => {
         // Flag low-confidence words that are potentially important
         const isLowConfidence = word.confidence < CONFIDENCE_THRESHOLD;
         const isImportant =
@@ -702,8 +705,8 @@ async function extractFromImage(buffer: Buffer): Promise<ExtractionResult> {
       method: 'ocr-tesseract',
       metadata: {
         language: 'eng',
-        words: data.words?.length || 0,
-        lines: data.lines?.length || 0,
+        words: ocrData.words?.length || 0,
+        lines: ocrData.lines?.length || 0,
         uncertainCount: uncertainSegments.length,
       },
       uncertainSegments,
@@ -744,8 +747,8 @@ async function transcribeAudio(
   }
 
   try {
-    // Create a File object from buffer
-    const file = new File([buffer], filename, {
+    // Create a File object from buffer - convert Buffer to Uint8Array for browser compatibility
+    const file = new File([new Uint8Array(buffer)], filename, {
       type: 'audio/mpeg', // Whisper supports many formats
     });
 
