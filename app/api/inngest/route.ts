@@ -36,6 +36,9 @@ import { processTimelineGenerationJob } from '@/lib/jobs/timeline-generation-job
 import { processDNAProcessingJob } from '@/lib/jobs/dna-processing-job';
 import { processFullPipelineJob } from '@/lib/jobs/full-pipeline-job';
 
+// Handwriting digitization jobs
+import { batchHandwritingExtract, singleHandwritingExtract } from '@/lib/jobs/handwriting-batch-extract';
+
 /**
  * Register all Inngest functions (jobs) here
  *
@@ -64,6 +67,10 @@ const inngestFunctions = [
   processTimelineGenerationJob,
   processDNAProcessingJob,
   processFullPipelineJob,
+
+  // Handwriting digitization jobs
+  batchHandwritingExtract,
+  singleHandwritingExtract,
 ];
 
 console.log(`[Inngest] Registering ${inngestFunctions.length} functions:`, inngestFunctions.map(f => f?.id || 'unknown'));
