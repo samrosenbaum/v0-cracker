@@ -22,7 +22,8 @@ import {
   MessageSquare,
   User,
   MapPin,
-  Package
+  Package,
+  Gauge
 } from 'lucide-react';
 
 import type {
@@ -48,6 +49,11 @@ const DetectiveCaseChart = dynamic(
   { ssr: false, loading: () => <div className="h-96 flex items-center justify-center bg-gray-50 rounded-lg">Loading case chart...</div> }
 );
 
+const SolvabilityMatrixView = dynamic(
+  () => import('@/components/analysis/SolvabilityMatrixView'),
+  { ssr: false, loading: () => <div className="h-96 flex items-center justify-center bg-gray-50 rounded-lg">Loading solvability matrix...</div> }
+);
+
 import {
   riversideDisappearanceCase,
   type TestCaseData
@@ -68,7 +74,7 @@ import {
 // Type Definitions
 // =============================================================================
 
-type TabType = 'overview' | 'victimology' | 'caseboard' | 'suspects' | 'analysis' | 'tests';
+type TabType = 'overview' | 'victimology' | 'caseboard' | 'suspects' | 'solvability' | 'analysis' | 'tests';
 
 // =============================================================================
 // Helper Functions
@@ -436,6 +442,7 @@ export default function InternalTestPage() {
               { id: 'victimology', label: 'Victimology Graph', icon: Users },
               { id: 'caseboard', label: 'Case Board', icon: Network },
               { id: 'suspects', label: 'Suspect Analysis', icon: Target },
+              { id: 'solvability', label: 'Solvability Matrix', icon: Gauge },
               { id: 'analysis', label: 'Analysis Results', icon: Lightbulb },
               { id: 'tests', label: 'Test Results', icon: CheckCircle }
             ].map(tab => (
@@ -679,6 +686,14 @@ export default function InternalTestPage() {
                   );
                 })}
               </div>
+            )}
+
+            {/* Solvability Matrix Tab */}
+            {activeTab === 'solvability' && testOutput.solvabilityAssessment && (
+              <SolvabilityMatrixView
+                assessment={testOutput.solvabilityAssessment}
+                caseName={testOutput.caseData.caseName}
+              />
             )}
 
             {/* Analysis Results Tab */}

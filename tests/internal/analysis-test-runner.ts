@@ -34,8 +34,17 @@ import {
   getSuspiciousConnections,
   getTimelineForPerson,
   getVictimRelationships,
-  getAlibiGaps
+  getAlibiGaps,
+  getSolvabilityInputForCase
 } from './test-case-data';
+
+import {
+  assessCaseSolvability,
+  generateSolvabilityReport,
+  quickTriage,
+  type SolvabilityAssessment,
+  type SolvabilityInput
+} from '../../lib/solvability-matrix';
 
 // =============================================================================
 // Test Result Types
@@ -68,6 +77,8 @@ export interface AnalysisTestOutput {
   forensicRecommendations: ForensicReExamination[];
   suspectScores: SuspectScore[];
   inconsistencies: InconsistencyResult[];
+  solvabilityAssessment: SolvabilityAssessment;
+  solvabilityInput: SolvabilityInput;
   testResults: TestSuiteResult[];
 }
 
@@ -909,6 +920,150 @@ export async function runAnalysisTests(): Promise<AnalysisTestOutput> {
   });
 
   // ==========================================================================
+  // Test Suite 11: Solvability Matrix
+  // ==========================================================================
+  const solvabilitySuite: TestResult[] = [];
+
+  const solvabilityInput = getSolvabilityInputForCase(caseData);
+  const solvabilityAssessment = assessCaseSolvability(solvabilityInput);
+
+  solvabilitySuite.push(runTest('Solvability assessment generated', () => {
+    if (!solvabilityAssessment) throw new Error('No solvability assessment generated');
+    if (solvabilityAssessment.overallScore < 0 || solvabilityAssessment.overallScore > 100) {
+      throw new Error('Invalid overall score');
+    }
+    return {
+      overallScore: solvabilityAssessment.overallScore,
+      category: solvabilityAssessment.category,
+      componentScores: solvabilityAssessment.scores
+    };
+  }));
+
+  solvabilitySuite.push(runTest('Evidence viability scored correctly', () => {
+    const evidenceScore = solvabilityAssessment.scores.evidenceViability;
+    // Should be medium-high since we have untested DNA
+    if (evidenceScore < 40) throw new Error('Evidence viability score too low for case with untested DNA');
+    return {
+      evidenceViability: evidenceScore,
+      reason: 'Untested DNA samples should boost score'
+    };
+  }));
+
+  solvabilitySuite.push(runTest('Technology opportunity detected for 2019 case', () => {
+    const techScore = solvabilityAssessment.scores.technologyOpportunity;
+    // 2019 case should have genetic genealogy opportunity (available since 2018)
+    if (techScore < 30) throw new Error('Technology opportunity score too low for case with IGG potential');
+    return {
+      technologyOpportunity: techScore,
+      reason: 'Case predates widespread use of modern forensic techniques'
+    };
+  }));
+
+  solvabilitySuite.push(runTest('Retesting opportunities identified', () => {
+    if (solvabilityAssessment.retestingOpportunities.length === 0) {
+      throw new Error('No retesting opportunities identified for case with untested evidence');
+    }
+    return {
+      count: solvabilityAssessment.retestingOpportunities.length,
+      topOpportunities: solvabilityAssessment.retestingOpportunities.slice(0, 3).map(o => ({
+        evidence: o.evidenceDescription,
+        technology: o.recommendedTechnology,
+        likelihood: o.successLikelihood
+      }))
+    };
+  }));
+
+  solvabilitySuite.push(runTest('Investigative gaps identified', () => {
+    if (solvabilityAssessment.investigativeGaps.length === 0) {
+      throw new Error('No investigative gaps identified');
+    }
+    return {
+      count: solvabilityAssessment.investigativeGaps.length,
+      gaps: solvabilityAssessment.investigativeGaps.slice(0, 3).map(g => ({
+        type: g.type,
+        priority: g.priority,
+        description: g.description
+      }))
+    };
+  }));
+
+  solvabilitySuite.push(runTest('Weak clearance flagged for David Park', () => {
+    const davidSuspect = solvabilityInput.suspects.find(s => s.name === 'David Park');
+    if (!davidSuspect) throw new Error('David Park not found in suspects');
+    if (davidSuspect.clearanceStrength !== 'weak') {
+      throw new Error('David Park should be flagged with weak clearance');
+    }
+    return {
+      suspect: davidSuspect.name,
+      clearanceStrength: davidSuspect.clearanceStrength,
+      clearanceMethod: davidSuspect.clearanceMethod
+    };
+  }));
+
+  solvabilitySuite.push(runTest('Immediate actions recommended', () => {
+    if (solvabilityAssessment.immediateActions.length === 0) {
+      throw new Error('No immediate actions recommended');
+    }
+    return {
+      count: solvabilityAssessment.immediateActions.length,
+      actions: solvabilityAssessment.immediateActions.map(a => ({
+        action: a.action,
+        impact: a.potentialImpact,
+        cost: a.estimatedCost
+      }))
+    };
+  }));
+
+  solvabilitySuite.push(runTest('Witness opportunities identified', () => {
+    return {
+      count: solvabilityAssessment.witnessOpportunities.length,
+      opportunities: solvabilityAssessment.witnessOpportunities.slice(0, 3).map(o => ({
+        witness: o.witnessName,
+        type: o.opportunityType,
+        rationale: o.rationale
+      }))
+    };
+  }));
+
+  solvabilitySuite.push(runTest('Quick triage generates summary', () => {
+    const triage = quickTriage(solvabilityInput);
+    if (!triage.topOpportunity || !triage.recommendedAction) {
+      throw new Error('Quick triage missing required fields');
+    }
+    return {
+      score: triage.overallScore,
+      category: triage.category,
+      topOpportunity: triage.topOpportunity,
+      biggestObstacle: triage.biggestObstacle,
+      recommendedAction: triage.recommendedAction
+    };
+  }));
+
+  solvabilitySuite.push(runTest('Solvability report generates text output', () => {
+    const report = generateSolvabilityReport(solvabilityAssessment);
+    if (!report || report.length < 100) {
+      throw new Error('Report too short or empty');
+    }
+    if (!report.includes('SOLVABILITY')) {
+      throw new Error('Report missing expected header');
+    }
+    return {
+      reportLength: report.length,
+      containsScore: report.includes(String(solvabilityAssessment.overallScore)),
+      containsCategory: report.includes(solvabilityAssessment.category.replace(/_/g, ' ').toUpperCase())
+    };
+  }));
+
+  testResults.push({
+    suiteName: 'Solvability Matrix',
+    totalTests: solvabilitySuite.length,
+    passed: solvabilitySuite.filter(t => t.passed).length,
+    failed: solvabilitySuite.filter(t => !t.passed).length,
+    duration: solvabilitySuite.reduce((sum, t) => sum + t.duration, 0),
+    results: solvabilitySuite
+  });
+
+  // ==========================================================================
   // Summary
   // ==========================================================================
   console.log('\n' + '='.repeat(60));
@@ -951,6 +1106,8 @@ export async function runAnalysisTests(): Promise<AnalysisTestOutput> {
     forensicRecommendations,
     suspectScores,
     inconsistencies,
+    solvabilityAssessment,
+    solvabilityInput,
     testResults
   };
 }
