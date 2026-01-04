@@ -17,7 +17,11 @@ export default function NewCasePage() {
     name: '',
     title: '',
     description: '',
-    status: 'active',
+    case_number: '',
+    victim_name: '',
+    incident_date: '',
+    location: '',
+    status: 'cold',
     priority: 'medium',
   });
 
@@ -98,14 +102,26 @@ export default function NewCasePage() {
         return;
       }
 
-      // Insert case
+      // Insert case with proper handling for optional fields
+      const caseData: Record<string, any> = {
+        name: formData.name,
+        title: formData.title,
+        description: formData.description || null,
+        status: formData.status,
+        priority: formData.priority,
+        user_id: userId,
+        agency_id: agency_id,
+      };
+
+      // Only include optional fields if they have values
+      if (formData.case_number) caseData.case_number = formData.case_number;
+      if (formData.victim_name) caseData.victim_name = formData.victim_name;
+      if (formData.incident_date) caseData.incident_date = formData.incident_date;
+      if (formData.location) caseData.location = formData.location;
+
       const { data: newCase, error } = await supabase
         .from('cases')
-        .insert({
-          ...formData,
-          user_id: userId,
-          agency_id: agency_id,
-        })
+        .insert(caseData)
         .select()
         .single();
 
@@ -196,6 +212,69 @@ export default function NewCasePage() {
               />
             </div>
 
+            {/* Case Number */}
+            <div>
+              <label htmlFor="case_number" className="block text-sm font-medium text-gray-700 mb-2">
+                Case Number
+              </label>
+              <input
+                type="text"
+                id="case_number"
+                name="case_number"
+                value={formData.case_number}
+                onChange={handleChange}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="e.g., 2019-CC-1234"
+              />
+            </div>
+
+            {/* Victim Name */}
+            <div>
+              <label htmlFor="victim_name" className="block text-sm font-medium text-gray-700 mb-2">
+                Victim Name
+              </label>
+              <input
+                type="text"
+                id="victim_name"
+                name="victim_name"
+                value={formData.victim_name}
+                onChange={handleChange}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="e.g., Jane Doe"
+              />
+            </div>
+
+            {/* Incident Date */}
+            <div>
+              <label htmlFor="incident_date" className="block text-sm font-medium text-gray-700 mb-2">
+                Incident Date
+              </label>
+              <input
+                type="date"
+                id="incident_date"
+                name="incident_date"
+                value={formData.incident_date}
+                onChange={handleChange}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            {/* Location */}
+            <div>
+              <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-2">
+                Location
+              </label>
+              <input
+                type="text"
+                id="location"
+                name="location"
+                value={formData.location}
+                onChange={handleChange}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="e.g., 123 Main St, Springfield, IL"
+              />
+            </div>
+
             {/* Description */}
             <div>
               <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
@@ -208,7 +287,7 @@ export default function NewCasePage() {
                 value={formData.description}
                 onChange={handleChange}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Brief description of the case..."
+                placeholder="Brief description of the case, including key facts and circumstances..."
               />
             </div>
 

@@ -376,6 +376,17 @@ export default function CaseDetailPage() {
                 <p className="text-sm text-gray-600">Timeline, connections, and alibi tracking visualizations</p>
               </div>
             </button>
+
+            <button
+              onClick={() => router.push(`/internal-test?caseId=${caseId}`)}
+              className="flex items-center gap-3 p-4 border-2 border-gray-200 rounded-lg hover:border-emerald-500 hover:bg-emerald-50 transition-colors text-left"
+            >
+              <AlertCircle className="w-6 h-6 text-emerald-600" />
+              <div>
+                <p className="font-semibold text-gray-900">Advanced Analysis Lab</p>
+                <p className="text-sm text-gray-600">Statement analysis, solvability scoring, clearance tracking & more</p>
+              </div>
+            </button>
           </div>
         </div>
       </div>
