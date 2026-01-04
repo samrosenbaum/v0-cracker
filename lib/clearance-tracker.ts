@@ -509,7 +509,7 @@ export function evaluateAllClearances(records: ClearanceRecord[]): {
   else overallConcern = 'low';
 
   return {
-    evaluations: evaluations.sort((a, b) => b.strengthScore - a.strengthScore * -1), // Sort worst first
+    evaluations: evaluations.sort((a, b) => a.strengthScore - b.strengthScore), // Sort worst (lowest score) first
     caseWideAssessment: {
       totalSuspects: records.length,
       needReexamination: reexamineCount,

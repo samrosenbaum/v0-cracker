@@ -775,9 +775,11 @@ export async function compareStatements(
   // Calculate consistency score
   const totalClaims = version1.claims.length + version2.claims.length;
   const matchingWeight = matching.length * 2;
-  const consistencyScore = totalClaims > 0
-    ? Math.min(1, matchingWeight / totalClaims - (changed.length * 0.1) - (timeChanges.filter(t => t.driftMinutes > 30).length * 0.15))
+  const timeDriftCount = timeChanges.filter(t => t.driftMinutes > 30).length;
+  const rawConsistencyScore = totalClaims > 0
+    ? matchingWeight / totalClaims - (changed.length * 0.1) - (timeDriftCount * 0.15)
     : 1;
+  const consistencyScore = Math.max(0, Math.min(1, rawConsistencyScore));
 
   // Determine credibility impact
   let credibilityImpact: 'positive' | 'negative' | 'neutral' = 'neutral';
