@@ -36,7 +36,9 @@ import {
   getVictimRelationships,
   getAlibiGaps,
   getSolvabilityInputForCase,
-  getClearanceRecordsForCase
+  getClearanceRecordsForCase,
+  getInterviewDataForInsightExtraction,
+  getCaseKnowledgeForInsightExtraction
 } from './test-case-data';
 
 import {
@@ -54,6 +56,11 @@ import {
   type ClearanceEvaluation,
   type CaseWideAssessment
 } from '../../lib/clearance-tracker';
+
+import {
+  analyzeInterviewInsights,
+  type InsightAnalysisResult
+} from '../../lib/insight-extraction';
 
 // =============================================================================
 // Test Result Types
@@ -90,6 +97,7 @@ export interface AnalysisTestOutput {
   solvabilityInput: SolvabilityInput;
   clearanceEvaluations: ClearanceEvaluation[];
   clearanceCaseAssessment: CaseWideAssessment;
+  insightAnalysis: InsightAnalysisResult;
   testResults: TestSuiteResult[];
 }
 
@@ -1217,6 +1225,82 @@ export async function runAnalysisTests(): Promise<AnalysisTestOutput> {
   });
 
   // ==========================================================================
+  // Test Suite 13: Insight Extraction
+  // ==========================================================================
+  const insightSuite: TestResult[] = [];
+
+  const interviewData = getInterviewDataForInsightExtraction(caseData);
+  const caseKnowledge = getCaseKnowledgeForInsightExtraction(caseData);
+  const insightAnalysis = analyzeInterviewInsights(interviewData, caseKnowledge);
+
+  insightSuite.push(runTest('Interview data converted', () => {
+    if (interviewData.length === 0) throw new Error('No interview data');
+    return {
+      count: interviewData.length,
+      speakers: interviewData.map(i => i.speakerName)
+    };
+  }));
+
+  insightSuite.push(runTest('Insights extracted from interviews', () => {
+    if (insightAnalysis.totalInsightsExtracted === 0) {
+      throw new Error('No insights extracted');
+    }
+    return {
+      totalInsights: insightAnalysis.totalInsightsExtracted,
+      crossReferences: insightAnalysis.crossReferences.length
+    };
+  }));
+
+  insightSuite.push(runTest('Suspect knowledge profiles generated', () => {
+    if (insightAnalysis.suspectKnowledgeProfiles.length === 0) {
+      throw new Error('No suspect profiles generated');
+    }
+    return {
+      profiles: insightAnalysis.suspectKnowledgeProfiles.map(p => ({
+        name: p.name,
+        role: p.role,
+        suspicionScore: p.suspicionScore,
+        guiltyKnowledgeFlags: p.guiltyKnowledgeFlags
+      }))
+    };
+  }));
+
+  insightSuite.push(runTest('Suspicion scores calculated', () => {
+    const highSuspicion = insightAnalysis.suspectKnowledgeProfiles.filter(p => p.suspicionScore >= 40);
+    return {
+      highSuspicionCount: highSuspicion.length,
+      topScorer: insightAnalysis.suspectKnowledgeProfiles[0]?.name,
+      topScore: insightAnalysis.suspectKnowledgeProfiles[0]?.suspicionScore
+    };
+  }));
+
+  insightSuite.push(runTest('Cross-references analyzed', () => {
+    return {
+      totalCrossRefs: insightAnalysis.crossReferences.length,
+      withIndicators: insightAnalysis.crossReferences.filter(cr => cr.guiltyKnowledgeIndicators.length > 0).length
+    };
+  }));
+
+  insightSuite.push(runTest('Recommendations generated', () => {
+    return {
+      count: insightAnalysis.recommendations.length,
+      recommendations: insightAnalysis.recommendations.slice(0, 3).map(r => ({
+        priority: r.priority,
+        action: r.action.slice(0, 50)
+      }))
+    };
+  }));
+
+  testResults.push({
+    suiteName: 'Insight Extraction',
+    totalTests: insightSuite.length,
+    passed: insightSuite.filter(t => t.passed).length,
+    failed: insightSuite.filter(t => !t.passed).length,
+    duration: insightSuite.reduce((sum, t) => sum + t.duration, 0),
+    results: insightSuite
+  });
+
+  // ==========================================================================
   // Summary
   // ==========================================================================
   console.log('\n' + '='.repeat(60));
@@ -1263,6 +1347,7 @@ export async function runAnalysisTests(): Promise<AnalysisTestOutput> {
     solvabilityInput,
     clearanceEvaluations,
     clearanceCaseAssessment,
+    insightAnalysis,
     testResults
   };
 }

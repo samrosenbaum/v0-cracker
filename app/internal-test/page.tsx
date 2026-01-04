@@ -24,7 +24,8 @@ import {
   MapPin,
   Package,
   Gauge,
-  ShieldAlert
+  ShieldAlert,
+  Brain
 } from 'lucide-react';
 
 import type {
@@ -60,6 +61,11 @@ const ClearanceTrackerView = dynamic(
   { ssr: false, loading: () => <div className="h-96 flex items-center justify-center bg-gray-50 rounded-lg">Loading clearance tracker...</div> }
 );
 
+const InsightExtractionView = dynamic(
+  () => import('@/components/analysis/InsightExtractionView'),
+  { ssr: false, loading: () => <div className="h-96 flex items-center justify-center bg-gray-50 rounded-lg">Loading insight extraction...</div> }
+);
+
 import {
   riversideDisappearanceCase,
   type TestCaseData
@@ -80,7 +86,7 @@ import {
 // Type Definitions
 // =============================================================================
 
-type TabType = 'overview' | 'victimology' | 'caseboard' | 'suspects' | 'solvability' | 'clearance' | 'analysis' | 'tests';
+type TabType = 'overview' | 'victimology' | 'caseboard' | 'suspects' | 'solvability' | 'clearance' | 'insights' | 'analysis' | 'tests';
 
 // =============================================================================
 // Helper Functions
@@ -450,6 +456,7 @@ export default function InternalTestPage() {
               { id: 'suspects', label: 'Suspect Analysis', icon: Target },
               { id: 'solvability', label: 'Solvability Matrix', icon: Gauge },
               { id: 'clearance', label: 'Clearance Review', icon: ShieldAlert },
+              { id: 'insights', label: 'Guilty Knowledge', icon: Brain },
               { id: 'analysis', label: 'Analysis Results', icon: Lightbulb },
               { id: 'tests', label: 'Test Results', icon: CheckCircle }
             ].map(tab => (
@@ -708,6 +715,14 @@ export default function InternalTestPage() {
               <ClearanceTrackerView
                 evaluations={testOutput.clearanceEvaluations}
                 caseAssessment={testOutput.clearanceCaseAssessment}
+                caseName={testOutput.caseData.caseName}
+              />
+            )}
+
+            {/* Insight Extraction Tab */}
+            {activeTab === 'insights' && testOutput.insightAnalysis && (
+              <InsightExtractionView
+                analysis={testOutput.insightAnalysis}
                 caseName={testOutput.caseData.caseName}
               />
             )}

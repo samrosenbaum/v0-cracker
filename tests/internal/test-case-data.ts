@@ -985,6 +985,64 @@ import type {
 /**
  * Get clearance records for test case suspects
  */
+// =============================================================================
+// INSIGHT EXTRACTION TEST DATA
+// =============================================================================
+
+import type {
+  InterviewData,
+  CaseKnowledge,
+} from '@/lib/insight-extraction';
+
+/**
+ * Convert test case interviews to insight extraction format
+ */
+export function getInterviewDataForInsightExtraction(caseData: TestCaseData): InterviewData[] {
+  return caseData.interviews.map((interview, index) => {
+    // Match by speaker name since interviews don't have entity IDs
+    const speakerName = interview.speaker;
+
+    let role: InterviewData['speakerRole'] = 'other';
+    if (caseData.suspects.some(s => s.name === speakerName)) {
+      role = 'suspect';
+    } else if (caseData.witnesses.some(w => w.name === speakerName)) {
+      role = 'witness';
+    }
+
+    return {
+      id: `interview-${index}-${speakerName.toLowerCase().replace(/\s+/g, '-')}`,
+      speakerName: speakerName,
+      speakerRole: role,
+      interviewDate: new Date(interview.date),
+      fullText: interview.content, // Use 'content' not 'fullTranscript'
+    };
+  });
+}
+
+/**
+ * Get case knowledge for guilty knowledge detection
+ */
+export function getCaseKnowledgeForInsightExtraction(caseData: TestCaseData): CaseKnowledge {
+  return {
+    publiclyKnownFacts: [
+      { fact: 'victim was last seen at the museum', disclosureDate: new Date('2019-10-16'), source: 'News report' },
+      { fact: 'victim worked at the Natural History Museum', disclosureDate: new Date('2019-10-16'), source: 'News report' },
+      { fact: 'vehicle was found at overlook', disclosureDate: new Date('2019-10-17'), source: 'Police statement' },
+    ],
+    criminallyKnownOnly: [
+      'burned',
+      'buried near the river',
+      'specific injuries',
+      'what the victim said before',
+    ],
+    evidenceDiscoveryDates: [
+      { evidence: 'jacket fragment', discoveryDate: new Date('2019-10-16') },
+      { evidence: 'hair samples', discoveryDate: new Date('2019-10-18') },
+      { evidence: 'burner phone texts', discoveryDate: new Date('2019-10-20') },
+    ],
+  };
+}
+
 export function getClearanceRecordsForCase(caseData: TestCaseData): ClearanceRecord[] {
   return [
     // Marcus Cole - Partial alibi, no DNA, not formally cleared
