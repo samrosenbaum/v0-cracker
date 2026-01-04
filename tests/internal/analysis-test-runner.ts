@@ -35,7 +35,8 @@ import {
   getTimelineForPerson,
   getVictimRelationships,
   getAlibiGaps,
-  getSolvabilityInputForCase
+  getSolvabilityInputForCase,
+  getClearanceRecordsForCase
 } from './test-case-data';
 
 import {
@@ -45,6 +46,14 @@ import {
   type SolvabilityAssessment,
   type SolvabilityInput
 } from '../../lib/solvability-matrix';
+
+import {
+  evaluateClearance,
+  evaluateAllClearances,
+  type ClearanceRecord,
+  type ClearanceEvaluation,
+  type CaseWideAssessment
+} from '../../lib/clearance-tracker';
 
 // =============================================================================
 // Test Result Types
@@ -79,6 +88,8 @@ export interface AnalysisTestOutput {
   inconsistencies: InconsistencyResult[];
   solvabilityAssessment: SolvabilityAssessment;
   solvabilityInput: SolvabilityInput;
+  clearanceEvaluations: ClearanceEvaluation[];
+  clearanceCaseAssessment: CaseWideAssessment;
   testResults: TestSuiteResult[];
 }
 
@@ -1064,6 +1075,148 @@ export async function runAnalysisTests(): Promise<AnalysisTestOutput> {
   });
 
   // ==========================================================================
+  // Test Suite 12: Clearance Tracker
+  // ==========================================================================
+  const clearanceSuite: TestResult[] = [];
+
+  const clearanceRecords = getClearanceRecordsForCase(caseData);
+  const { evaluations: clearanceEvaluations, caseWideAssessment: clearanceCaseAssessment } =
+    evaluateAllClearances(clearanceRecords);
+
+  clearanceSuite.push(runTest('Clearance records loaded', () => {
+    if (clearanceRecords.length === 0) throw new Error('No clearance records');
+    return {
+      count: clearanceRecords.length,
+      suspects: clearanceRecords.map(r => r.suspectName)
+    };
+  }));
+
+  clearanceSuite.push(runTest('All suspects evaluated', () => {
+    if (clearanceEvaluations.length !== clearanceRecords.length) {
+      throw new Error('Not all suspects evaluated');
+    }
+    return {
+      evaluations: clearanceEvaluations.map(e => ({
+        name: e.suspectName,
+        strength: e.overallStrength,
+        score: e.strengthScore
+      }))
+    };
+  }));
+
+  clearanceSuite.push(runTest('Polygraph-only clearance flagged as unreliable', () => {
+    const davidEval = clearanceEvaluations.find(e => e.suspectName === 'David Park');
+    if (!davidEval) throw new Error('David Park evaluation not found');
+
+    const hasPolygraphFlag = davidEval.redFlags.some(f => f.type === 'polygraph_only');
+    if (!hasPolygraphFlag) throw new Error('Polygraph clearance should be flagged');
+
+    // Should not be strong or moderate
+    if (davidEval.overallStrength === 'strong' || davidEval.overallStrength === 'moderate') {
+      throw new Error('Polygraph-based clearance should not be rated strong or moderate');
+    }
+
+    return {
+      suspectName: davidEval.suspectName,
+      overallStrength: davidEval.overallStrength,
+      hasPolygraphFlag,
+      redFlags: davidEval.redFlags.map(f => ({ type: f.type, severity: f.severity }))
+    };
+  }));
+
+  clearanceSuite.push(runTest('Cooperative behavior flagged as weak', () => {
+    const jenniferEval = clearanceEvaluations.find(e => e.suspectName === 'Jennifer Walsh');
+    if (!jenniferEval) throw new Error('Jennifer Walsh evaluation not found');
+
+    const hasBehaviorFlag = jenniferEval.redFlags.some(f => f.type === 'behavior_based');
+    if (!hasBehaviorFlag) throw new Error('Cooperative behavior should be flagged');
+
+    return {
+      suspectName: jenniferEval.suspectName,
+      overallStrength: jenniferEval.overallStrength,
+      hasBehaviorFlag,
+      shouldBeReexamined: jenniferEval.shouldBeReexamined
+    };
+  }));
+
+  clearanceSuite.push(runTest('Alibi contradictions detected', () => {
+    const marcusEval = clearanceEvaluations.find(e => e.suspectName === 'Marcus Cole');
+    if (!marcusEval) throw new Error('Marcus Cole evaluation not found');
+
+    const hasConflictingFlag = marcusEval.redFlags.some(f => f.type === 'conflicting_evidence');
+    if (!hasConflictingFlag) throw new Error('Alibi contradictions should be flagged');
+
+    return {
+      suspectName: marcusEval.suspectName,
+      hasConflictingFlag,
+      redFlagCount: marcusEval.redFlags.length
+    };
+  }));
+
+  clearanceSuite.push(runTest('Re-examination recommendations generated', () => {
+    const needReexam = clearanceEvaluations.filter(e => e.shouldBeReexamined);
+    if (needReexam.length === 0) throw new Error('At least one suspect should need re-examination');
+
+    // Each should have recommendations
+    for (const eval_ of needReexam) {
+      if (eval_.recommendations.length === 0) {
+        throw new Error(`${eval_.suspectName} needs re-exam but has no recommendations`);
+      }
+    }
+
+    return {
+      needReexamination: needReexam.map(e => e.suspectName),
+      totalRecommendations: needReexam.reduce((sum, e) => sum + e.recommendations.length, 0)
+    };
+  }));
+
+  clearanceSuite.push(runTest('Case-wide assessment generated', () => {
+    if (!clearanceCaseAssessment) throw new Error('No case assessment');
+    if (!clearanceCaseAssessment.primaryRecommendation) {
+      throw new Error('No primary recommendation');
+    }
+
+    return {
+      totalSuspects: clearanceCaseAssessment.totalSuspects,
+      needReexamination: clearanceCaseAssessment.needReexamination,
+      criticalConcerns: clearanceCaseAssessment.criticalConcerns,
+      overallConcern: clearanceCaseAssessment.overallConcern,
+      recommendation: clearanceCaseAssessment.primaryRecommendation.slice(0, 100)
+    };
+  }));
+
+  clearanceSuite.push(runTest('Method reliability correctly assessed', () => {
+    // DNA exclusion should be high reliability
+    // Polygraph should be none reliability
+    const davidEval = clearanceEvaluations.find(e => e.suspectName === 'David Park');
+    if (!davidEval) throw new Error('David Park not found');
+
+    const polygraphMethod = davidEval.methodAnalysis.find(m => m.method === 'polygraph_passed');
+    if (!polygraphMethod) throw new Error('Polygraph method not found');
+    if (polygraphMethod.reliability !== 'none') {
+      throw new Error('Polygraph should have none reliability');
+    }
+    if (polygraphMethod.scientificBasis !== 'debunked') {
+      throw new Error('Polygraph should be marked as debunked');
+    }
+
+    return {
+      method: 'polygraph_passed',
+      reliability: polygraphMethod.reliability,
+      scientificBasis: polygraphMethod.scientificBasis
+    };
+  }));
+
+  testResults.push({
+    suiteName: 'Clearance Tracker',
+    totalTests: clearanceSuite.length,
+    passed: clearanceSuite.filter(t => t.passed).length,
+    failed: clearanceSuite.filter(t => !t.passed).length,
+    duration: clearanceSuite.reduce((sum, t) => sum + t.duration, 0),
+    results: clearanceSuite
+  });
+
+  // ==========================================================================
   // Summary
   // ==========================================================================
   console.log('\n' + '='.repeat(60));
@@ -1108,6 +1261,8 @@ export async function runAnalysisTests(): Promise<AnalysisTestOutput> {
     inconsistencies,
     solvabilityAssessment,
     solvabilityInput,
+    clearanceEvaluations,
+    clearanceCaseAssessment,
     testResults
   };
 }

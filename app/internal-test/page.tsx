@@ -23,7 +23,8 @@ import {
   User,
   MapPin,
   Package,
-  Gauge
+  Gauge,
+  ShieldAlert
 } from 'lucide-react';
 
 import type {
@@ -54,6 +55,11 @@ const SolvabilityMatrixView = dynamic(
   { ssr: false, loading: () => <div className="h-96 flex items-center justify-center bg-gray-50 rounded-lg">Loading solvability matrix...</div> }
 );
 
+const ClearanceTrackerView = dynamic(
+  () => import('@/components/analysis/ClearanceTrackerView'),
+  { ssr: false, loading: () => <div className="h-96 flex items-center justify-center bg-gray-50 rounded-lg">Loading clearance tracker...</div> }
+);
+
 import {
   riversideDisappearanceCase,
   type TestCaseData
@@ -74,7 +80,7 @@ import {
 // Type Definitions
 // =============================================================================
 
-type TabType = 'overview' | 'victimology' | 'caseboard' | 'suspects' | 'solvability' | 'analysis' | 'tests';
+type TabType = 'overview' | 'victimology' | 'caseboard' | 'suspects' | 'solvability' | 'clearance' | 'analysis' | 'tests';
 
 // =============================================================================
 // Helper Functions
@@ -443,6 +449,7 @@ export default function InternalTestPage() {
               { id: 'caseboard', label: 'Case Board', icon: Network },
               { id: 'suspects', label: 'Suspect Analysis', icon: Target },
               { id: 'solvability', label: 'Solvability Matrix', icon: Gauge },
+              { id: 'clearance', label: 'Clearance Review', icon: ShieldAlert },
               { id: 'analysis', label: 'Analysis Results', icon: Lightbulb },
               { id: 'tests', label: 'Test Results', icon: CheckCircle }
             ].map(tab => (
@@ -692,6 +699,15 @@ export default function InternalTestPage() {
             {activeTab === 'solvability' && testOutput.solvabilityAssessment && (
               <SolvabilityMatrixView
                 assessment={testOutput.solvabilityAssessment}
+                caseName={testOutput.caseData.caseName}
+              />
+            )}
+
+            {/* Clearance Review Tab */}
+            {activeTab === 'clearance' && testOutput.clearanceEvaluations && (
+              <ClearanceTrackerView
+                evaluations={testOutput.clearanceEvaluations}
+                caseAssessment={testOutput.clearanceCaseAssessment}
                 caseName={testOutput.caseData.caseName}
               />
             )}

@@ -972,3 +972,150 @@ export function getSolvabilityInputForCase(caseData: TestCaseData): SolvabilityI
     investigativeActions,
   };
 }
+
+// =============================================================================
+// CLEARANCE TRACKER TEST DATA
+// =============================================================================
+
+import type {
+  ClearanceRecord,
+  AlibiDetails,
+} from '@/lib/clearance-tracker';
+
+/**
+ * Get clearance records for test case suspects
+ */
+export function getClearanceRecordsForCase(caseData: TestCaseData): ClearanceRecord[] {
+  return [
+    // Marcus Cole - Partial alibi, no DNA, not formally cleared
+    {
+      id: 'clearance-marcus',
+      suspectId: 'suspect-marcus',
+      suspectName: 'Marcus Cole',
+      clearanceDate: new Date('2019-10-25'),
+      clearedBy: 'Detective Williams',
+      methods: ['alibi_friend_family', 'passed_interview'],
+      alibiDetails: {
+        alibiClaim: 'At O\'Malley\'s Pub until 6:00 PM, then went home',
+        alibiTimeframe: '4:30 PM - 6:00 PM',
+        witnesses: [
+          {
+            name: 'James Rivera',
+            relationship: 'acquaintance',
+            statement: 'Marcus was at the bar from around 4:30 to 6 PM',
+            credibilityScore: 0.85,
+            wasInterviewed: true,
+            interviewDate: new Date('2019-10-17'),
+            changedStory: false,
+            notes: 'Bartender, has transaction records',
+          },
+        ],
+        documentaryEvidence: ['Credit card receipt at 5:58 PM'],
+        investigatorVerification: 'partial',
+        contradictions: [
+          'Alibi only covers until 6 PM; victim last seen at 6:30 PM',
+          'Changed story about what time he left the bar',
+        ],
+      },
+      interviewDetails: {
+        interviewCount: 2,
+        totalDuration: '3.5 hours',
+        techniques: ['rapport building', 'timeline questioning'],
+        demeanor: 'Initially defensive, became more cooperative',
+        cooperationLevel: 'partial',
+        storyConsistency: 'minor_changes',
+        suspiciousIndicators: [
+          'Changed leaving time between interviews',
+          'Admitted to driving by victim\'s apartment after bar',
+        ],
+      },
+      notes: 'Partial alibi with gap during critical window',
+      documentationAvailable: true,
+      wasEverReopened: false,
+    },
+
+    // Jennifer Walsh - No alibi after 5:30 PM, cooperative behavior used as clearance
+    {
+      id: 'clearance-jennifer',
+      suspectId: 'suspect-jennifer',
+      suspectName: 'Jennifer Walsh',
+      clearanceDate: new Date('2019-10-28'),
+      clearedBy: 'Detective Martinez',
+      methods: ['cooperative_behavior', 'no_apparent_motive', 'passed_interview'],
+      alibiDetails: {
+        alibiClaim: 'Went home after leaving work at 5:30 PM',
+        alibiTimeframe: '5:30 PM onwards',
+        witnesses: [],
+        documentaryEvidence: [],
+        investigatorVerification: 'none',
+        contradictions: [],
+      },
+      interviewDetails: {
+        interviewCount: 2,
+        totalDuration: '2 hours',
+        techniques: ['rapport building', 'behavioral analysis'],
+        demeanor: 'Calm and helpful',
+        cooperationLevel: 'full',
+        storyConsistency: 'minor_changes',
+        suspiciousIndicators: [
+          'Denied knowing about financial discrepancies, then admitted them',
+          'Introduced "mystery boyfriend" theory in second interview',
+        ],
+      },
+      notes: 'Cleared primarily based on cooperative demeanor and lack of obvious motive',
+      documentationAvailable: true,
+      wasEverReopened: false,
+    },
+
+    // David Park - Polygraph + biased alibi witness
+    {
+      id: 'clearance-david',
+      suspectId: 'suspect-david',
+      suspectName: 'David Park',
+      clearanceDate: new Date('2019-10-30'),
+      clearedBy: 'Detective Williams',
+      methods: ['polygraph_passed', 'alibi_coworker'],
+      alibiDetails: {
+        alibiClaim: 'Business dinner at Carmine\'s Italian from 6 PM to 9 PM',
+        alibiTimeframe: '6:00 PM - 9:00 PM',
+        witnesses: [
+          {
+            name: 'Robert Chen',
+            relationship: 'business_partner',
+            statement: 'We had dinner together starting at 6 PM',
+            credibilityScore: 0.5,
+            wasInterviewed: true,
+            interviewDate: new Date('2019-10-22'),
+            changedStory: false,
+            notes: 'Business partner - potential conflict of interest',
+          },
+        ],
+        documentaryEvidence: ['Restaurant receipt (time unclear)'],
+        investigatorVerification: 'partial',
+        contradictions: [
+          'Witness is business partner with financial ties',
+          'Restaurant receipt does not have timestamp',
+        ],
+      },
+      polygraphDetails: {
+        examiner: 'Certified Polygraph Services',
+        date: new Date('2019-10-28'),
+        result: 'passed',
+        questionsFocused: ['Were you at the overlook?', 'Did you harm Sarah Mitchell?'],
+        notes: 'Subject appeared calm during examination',
+      },
+      interviewDetails: {
+        interviewCount: 1,
+        totalDuration: '45 minutes',
+        techniques: ['direct questioning'],
+        demeanor: 'Defensive but controlled',
+        cooperationLevel: 'with_attorney',
+        storyConsistency: 'consistent',
+        suspiciousIndicators: [],
+      },
+      notes: 'Cleared after passing polygraph - alibi from biased witness',
+      documentationAvailable: true,
+      wasEverReopened: false,
+    },
+  ];
+}
