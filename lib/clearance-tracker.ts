@@ -248,6 +248,9 @@ const METHOD_RELIABILITY: Record<ClearanceMethod, {
   },
 };
 
+// Type alias for method reliability info
+export type MethodInfo = (typeof METHOD_RELIABILITY)[ClearanceMethod];
+
 // ============================================================================
 // Evaluation Functions
 // ============================================================================
@@ -613,14 +616,14 @@ export function getStrengthLabel(strength: ClearanceEvaluation['overallStrength'
 /**
  * Get method reliability info for display
  */
-export function getMethodInfo(method: ClearanceMethod): typeof METHOD_RELIABILITY[ClearanceMethod] {
+export function getMethodInfo(method: ClearanceMethod): MethodInfo {
   return METHOD_RELIABILITY[method];
 }
 
 /**
  * Get all available clearance methods
  */
-export function getAllClearanceMethods(): { method: ClearanceMethod; info: typeof METHOD_RELIABILITY[ClearanceMethod] }[] {
+export function getAllClearanceMethods(): { method: ClearanceMethod; info: MethodInfo }[] {
   return Object.entries(METHOD_RELIABILITY).map(([method, info]) => ({
     method: method as ClearanceMethod,
     info,

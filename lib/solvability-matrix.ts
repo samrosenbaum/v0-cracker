@@ -422,6 +422,9 @@ function scoreEvidenceViability(evidence: EvidenceItem[]): number {
     score += itemScore * itemWeight;
   }
 
+  // Guard against divide-by-zero when all evidence has zero weight
+  if (weight === 0) return 50;
+
   return Math.min(100, Math.round(score / weight));
 }
 
@@ -487,6 +490,9 @@ function scoreWitnessAvailability(witnesses: WitnessStatus[]): number {
 
     score += witnessScore * weight;
   }
+
+  // Guard against divide-by-zero when all witnesses have criticalityScore === 0
+  if (totalWeight === 0) return 50;
 
   return Math.min(100, Math.round(score / totalWeight));
 }
