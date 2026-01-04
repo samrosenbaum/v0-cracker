@@ -282,16 +282,6 @@ export default function StatementAnalysisView({
   onClaimClick
 }: StatementAnalysisViewProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'behavioral' | 'suspicious' | 'claims'>('overview');
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['summary']));
-
-  const toggleSection = (section: string) => {
-    setExpandedSections(prev => {
-      const next = new Set(prev);
-      if (next.has(section)) next.delete(section);
-      else next.add(section);
-      return next;
-    });
-  };
 
   // Combine behavioral flags and suspicious details for counts
   const allBehavioralFlags = [...diff.version1.behavioralFlags, ...diff.version2.behavioralFlags];

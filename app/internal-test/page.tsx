@@ -411,6 +411,8 @@ export default function InternalTestPage() {
                     a.href = url;
                     a.download = 'test-output.json';
                     a.click();
+                    // Revoke blob URL after download starts to prevent memory leak
+                    setTimeout(() => URL.revokeObjectURL(url), 100);
                   }}
                   className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg font-medium"
                 >
