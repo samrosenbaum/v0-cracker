@@ -295,6 +295,77 @@ type Events = {
       phases?: ('documents' | 'entities' | 'statements' | 'inconsistencies' | 'timelines' | 'dna')[];
     };
   };
+
+  // ============================================================================
+  // HANDWRITING DIGITIZATION JOBS
+  // AI-powered handwriting recognition for cold case documents
+  // ============================================================================
+
+  // Triggered to extract handwritten content from a single document
+  'handwriting/single.extract': {
+    data: {
+      documentId: string;
+      caseId: string;
+      storagePath: string;
+      options?: {
+        documentType?: 'police_report' | 'witness_statement' | 'notes' | 'form' | 'letter' | 'unknown';
+        eraHint?: string;
+        contextHint?: string;
+        writerProfileId?: string;
+        useClaudeVision?: boolean;
+        applyPreprocessing?: boolean;
+      };
+    };
+  };
+
+  // Triggered to process multiple handwritten documents in batch
+  'handwriting/batch.extract': {
+    data: {
+      jobId: string;
+      caseId: string;
+      documentIds: string[];
+      startTime?: number;
+      options?: {
+        documentType?: string;
+        eraHint?: string;
+        contextHint?: string;
+        writerProfileId?: string;
+        maxConcurrent?: number;
+      };
+    };
+  };
+
+  // Triggered to calibrate a writer profile with verified samples
+  'handwriting/calibrate.profile': {
+    data: {
+      profileId: string;
+      caseId: string;
+      samples: Array<{
+        storagePath: string;
+        verifiedText: string;
+        documentType?: string;
+      }>;
+    };
+  };
+
+  // Triggered to apply writer profile corrections to existing extractions
+  'handwriting/apply.corrections': {
+    data: {
+      jobId: string;
+      caseId: string;
+      profileId: string;
+      documentIds?: string[];
+    };
+  };
+
+  // Triggered to estimate document era from visual characteristics
+  'handwriting/estimate.era': {
+    data: {
+      documentId: string;
+      caseId: string;
+      storagePath: string;
+    };
+  };
 };
 
 /**
