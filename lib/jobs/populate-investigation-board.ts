@@ -184,6 +184,60 @@ export async function populateInvestigationBoardFromDocuments({
   };
 }
 
+/**
+ * Check if content looks like raw PDF data rather than extracted text
+ */
+function containsPdfArtifacts(content: string | null): boolean {
+  if (!content) return false;
+  const sample = content.slice(0, 1500);
+
+  // Quick checks for PDF syntax
+  const pdfPatterns = [
+    /<<\s*\/Type\s*\//,
+    /\/Filter\s*\/FlateDecode/,
+    /\/BaseFont\s*\/[A-Za-z]/,
+    /\d+\s+\d+\s+obj\b/,
+    /\/Parent\s*\d+\s*\d+\s*R/,
+  ];
+
+  let matches = 0;
+  for (const pattern of pdfPatterns) {
+    if (pattern.test(sample)) matches++;
+    if (matches >= 2) return true;
+  }
+
+  // Check for high concentration of PDF tokens
+  const pdfTokens = sample.match(/\/[A-Z][a-z]+/g) || [];
+  if (pdfTokens.length >= 8) return true;
+
+  return false;
+}
+
+/**
+ * Filter chunks to remove those containing PDF artifacts
+ */
+function filterValidChunks(
+  chunks: Array<{
+    id: string;
+    content: string | null;
+    case_file_id: string | null;
+    chunk_index: number;
+    metadata: Record<string, any> | null;
+  }>
+) {
+  const valid = chunks.filter(chunk => {
+    if (!chunk.content) return false;
+    if (containsPdfArtifacts(chunk.content)) {
+      console.warn(`[Board Population] Skipping chunk ${chunk.id} - contains PDF artifacts`);
+      return false;
+    }
+    return true;
+  });
+
+  console.log(`[Board Population] Filtered ${chunks.length - valid.length} chunks with PDF artifacts, ${valid.length} remaining`);
+  return valid;
+}
+
 async function runLLMExtraction({
   chunks,
   runner,
@@ -197,12 +251,20 @@ async function runLLMExtraction({
   }>;
   runner: StepRunner;
 }): Promise<BoardExtractionResult> {
+  // Filter out chunks with PDF artifacts before processing
+  const validChunks = filterValidChunks(chunks);
+
+  if (validChunks.length === 0) {
+    console.warn('[Board Population] No valid chunks after filtering PDF artifacts');
+    return { entities: [], events: [], connections: [], alibis: [] };
+  }
+
   const extractedEntities = await runner.run('extract-entities', async () => {
     const entities: ExtractedEntity[] = [];
     const batchSize = 5;
 
-    for (let i = 0; i < chunks.length; i += batchSize) {
-      const batch = chunks.slice(i, i + batchSize);
+    for (let i = 0; i < validChunks.length; i += batchSize) {
+      const batch = validChunks.slice(i, i + batchSize);
       const combinedText = batch
         .map((c) => `[Page ${c.chunk_index + 1}]\n${c.content ?? ''}`)
         .join('\n\n---\n\n');
@@ -260,8 +322,8 @@ Return ONLY a valid JSON array of entities. No markdown, no explanations.`,
     const events: ExtractedTimelineEvent[] = [];
     const batchSize = 5;
 
-    for (let i = 0; i < chunks.length; i += batchSize) {
-      const batch = chunks.slice(i, i + batchSize);
+    for (let i = 0; i < validChunks.length; i += batchSize) {
+      const batch = validChunks.slice(i, i + batchSize);
       const combinedText = batch
         .map((c) => `[Page ${c.chunk_index + 1}]\n${c.content ?? ''}`)
         .join('\n\n---\n\n');
@@ -324,7 +386,7 @@ Return ONLY a valid JSON array of events. No markdown, no explanations.`,
   const extractedConnections = await runner.run('extract-connections', async () => {
     const connections: ExtractedConnection[] = [];
 
-    const combinedText = chunks
+    const combinedText = validChunks
       .slice(0, 10)
       .map((c) => `[Page ${c.chunk_index + 1}]\n${c.content ?? ''}`)
       .join('\n\n---\n\n');
@@ -385,7 +447,7 @@ Return ONLY a valid JSON array of connections. No markdown, no explanations.`,
   const extractedAlibis = await runner.run('extract-alibis', async () => {
     const alibis: ExtractedAlibi[] = [];
 
-    const combinedText = chunks
+    const combinedText = validChunks
       .slice(0, 10)
       .map((c) => `[Page ${c.chunk_index + 1}]\n${c.content ?? ''}`)
       .join('\n\n---\n\n');
