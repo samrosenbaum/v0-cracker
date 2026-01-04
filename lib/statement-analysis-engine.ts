@@ -821,8 +821,11 @@ export async function compareStatements(
     investigativeNotes.push(`New details added in second interview. Ask why these weren't mentioned before.`);
   }
 
-  if (version1.suspiciousDetails.length > 0 || version2.suspiciousDetails.length > 0) {
-    const allSuspicious = [...version1.suspiciousDetails, ...version2.suspiciousDetails];
+  // Guard against undefined suspiciousDetails arrays
+  const susp1 = Array.isArray(version1.suspiciousDetails) ? version1.suspiciousDetails : [];
+  const susp2 = Array.isArray(version2.suspiciousDetails) ? version2.suspiciousDetails : [];
+  if (susp1.length > 0 || susp2.length > 0) {
+    const allSuspicious = [...susp1, ...susp2];
     const critical = allSuspicious.filter(d => d.severity === 'critical');
     if (critical.length > 0) {
       investigativeNotes.push(`CRITICAL: ${critical.length} suspicious detail(s) detected that may indicate guilty knowledge.`);
@@ -1153,7 +1156,15 @@ function parseTimeToHHMM(timeStr: string): string | undefined {
 }
 
 function timeToMinutes(hhmmTime: string): number {
-  const [hours, minutes] = hhmmTime.split(':').map(Number);
+  if (!hhmmTime || !hhmmTime.includes(':')) {
+    return NaN;
+  }
+  const parts = hhmmTime.split(':').map(Number);
+  const hours = parts[0];
+  const minutes = parts[1] ?? 0;
+  if (isNaN(hours) || isNaN(minutes)) {
+    return NaN;
+  }
   return hours * 60 + minutes;
 }
 

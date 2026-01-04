@@ -554,15 +554,15 @@ export function crossReferenceInsights(
       specificity: i.specificity,
     }));
 
-    // Check if publicly known
+    // Check if publicly known (with null safety)
     const publicFact = caseKnowledge?.publiclyKnownFacts?.find(f =>
-      detail.includes(f.fact.toLowerCase())
+      f?.fact && detail.includes(f.fact.toLowerCase())
     );
 
-    // Check for mentions before discovery
+    // Check for mentions before discovery (with null safety)
     const mentionedBeforeDiscovery = mentions.filter(m => {
       const discoveryEntry = caseKnowledge?.evidenceDiscoveryDates?.find(e =>
-        detail.includes(e.evidence.toLowerCase())
+        e?.evidence && detail.includes(e.evidence.toLowerCase())
       );
       return discoveryEntry && m.interviewDate < discoveryEntry.discoveryDate;
     });
@@ -609,6 +609,9 @@ export function crossReferenceInsights(
       }
     }
 
+    // Guard against empty insights array (should not happen but defensive)
+    if (insights.length === 0) continue;
+
     results.push({
       detail,
       insightType: insights[0].insightType,
@@ -616,7 +619,7 @@ export function crossReferenceInsights(
       publiclyKnown: !!publicFact,
       publiclyKnownSource: publicFact?.source,
       discoveryDate: caseKnowledge?.evidenceDiscoveryDates?.find(e =>
-        detail.includes(e.evidence.toLowerCase())
+        e?.evidence && detail.includes(e.evidence.toLowerCase())
       )?.discoveryDate,
       mentionedBeforeDiscovery,
       inconsistentMentions: inconsistencies,

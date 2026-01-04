@@ -400,7 +400,8 @@ function scoreEvidenceViability(evidence: EvidenceItem[]): number {
       unknown: 40,
       destroyed: 0,
     };
-    let itemScore = conditionScores[item.condition];
+    // Default to neutral score if condition is somehow invalid
+    let itemScore = conditionScores[item.condition] ?? 50;
 
     // Bonus for retesting opportunities
     if (item.canBeRetested && item.modernTestingOpportunities.length > 0) {
