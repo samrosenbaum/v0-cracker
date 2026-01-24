@@ -1,8 +1,7 @@
-import { NextRequest, NextResponse, after } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { hasSupabaseServiceConfig, hasPartialSupabaseConfig } from '@/lib/environment';
 import { processTimelineAnalysis } from '@/lib/workflows/timeline-analysis';
-import { runBackgroundTask } from '@/lib/background-tasks';
 import { extractMultipleDocuments, queueDocumentForReview } from '@/lib/document-parser';
 import {
   listCaseDocuments,
@@ -21,6 +20,9 @@ import {
   TimelineEvent,
 } from '@/lib/ai-analysis';
 import type { DocumentInput } from '@/lib/ai-fallback';
+
+// Allow up to 300s for AI analysis (document extraction + Anthropic API call)
+export const maxDuration = 300;
 
 type ExtractionResult = Awaited<ReturnType<typeof extractMultipleDocuments>> extends Map<string, infer R>
   ? R
@@ -1154,35 +1156,38 @@ export async function POST(
 
     createdJobId = job.id;
 
-    // Trigger workflow in background after response completes
-    // With Workflow DevKit installed, this will use durable execution
-    // Cron job acts as backup for any jobs that don't start
-    runBackgroundTask(
-      async () => {
-        await processTimelineAnalysis({
-          jobId: job.id,
-          caseId,
-        });
-      },
-      {
-        label: 'Timeline Analysis API',
-        scheduler: after,
-        onError: (error) => {
-          console.error('[Timeline Analysis API] Workflow failed:', error);
-          // Workflow will update job status to 'failed' internally
-        },
-      }
-    );
+    // Run the analysis inline (not in after()) so it completes before the response.
+    // Using after() caused the analysis to be killed by Vercel's function timeout
+    // before it could finish, leaving jobs stuck in "pending" forever.
+    console.log('[Timeline Analysis API] Running analysis inline for case:', caseId);
+    await processTimelineAnalysis({
+      jobId: job.id,
+      caseId,
+    });
+
+    // Fetch the saved analysis to return in the response
+    const { data: savedAnalysis } = await supabaseServer
+      .from('case_analysis')
+      .select('*')
+      .eq('case_id', caseId)
+      .eq('analysis_type', 'timeline_and_conflicts')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     return withCors(
       NextResponse.json(
         {
           success: true,
+          mode: 'instant',
+          analysisMode: 'ai',
           jobId: job.id,
-          status: 'pending',
-          message: 'Timeline analysis workflow has been triggered. Check processing job status for progress.',
+          status: 'completed',
+          analysis: savedAnalysis?.analysis_data || null,
+          analysisId: savedAnalysis?.id || null,
+          message: 'AI-powered timeline analysis completed successfully.',
         },
-        { status: 202 }
+        { status: 200 }
       )
     );
   } catch (error: any) {
