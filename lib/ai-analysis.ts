@@ -137,20 +137,52 @@ export async function analyzeCaseDocuments(
       throw new Error('Unexpected response type from Claude');
     }
 
-    // Extract JSON from the response
-    const jsonMatch = content.text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.error('Claude response text:', content.text.substring(0, 500));
-      throw new Error('Could not parse JSON from Claude response');
+    // Extract JSON from the response - try multiple strategies
+    let analysis: CaseAnalysis = undefined as unknown as CaseAnalysis;
+    const responseText = content.text.trim();
+
+    // Strategy 1: Try parsing the entire response as JSON (if Claude returned clean JSON)
+    let parsed = false;
+    if (responseText.startsWith('{')) {
+      try {
+        analysis = JSON.parse(responseText);
+        parsed = true;
+      } catch {
+        // Not clean JSON, try extraction
+      }
     }
 
-    let analysis: CaseAnalysis;
-    try {
-      analysis = JSON.parse(jsonMatch[0]);
-    } catch (parseError) {
-      console.error('JSON parse error:', parseError);
-      console.error('Attempted to parse:', jsonMatch[0].substring(0, 500));
-      throw new Error('Failed to parse JSON from Claude response');
+    if (!parsed) {
+      // Strategy 2: Find JSON between code fences
+      const fencedMatch = responseText.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+      if (fencedMatch) {
+        try {
+          analysis = JSON.parse(fencedMatch[1]);
+          parsed = true;
+        } catch {
+          // Try next strategy
+        }
+      }
+    }
+
+    if (!parsed) {
+      // Strategy 3: Find the outermost balanced braces
+      const firstBrace = responseText.indexOf('{');
+      const lastBrace = responseText.lastIndexOf('}');
+      if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+        console.error('Claude response text:', responseText.substring(0, 500));
+        throw new Error('Could not find JSON object in Claude response');
+      }
+
+      const jsonCandidate = responseText.substring(firstBrace, lastBrace + 1);
+      try {
+        analysis = JSON.parse(jsonCandidate);
+        parsed = true;
+      } catch (parseError) {
+        console.error('JSON parse error:', parseError);
+        console.error('Attempted to parse:', jsonCandidate.substring(0, 500));
+        throw new Error('Failed to parse JSON from Claude response');
+      }
     }
 
     // Validate and provide defaults for missing fields
