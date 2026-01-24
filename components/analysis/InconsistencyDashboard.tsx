@@ -241,6 +241,80 @@ export default function InconsistencyDashboard({
     }
   };
 
+  const exportReport = () => {
+    const report = {
+      caseId,
+      exportedAt: new Date().toISOString(),
+      summary,
+      inconsistencies: filteredInconsistencies.map(inc => ({
+        type: typeLabels[inc.inconsistencyType] || inc.inconsistencyType,
+        severity: inc.severity,
+        description: inc.description,
+        person1: inc.person1Name,
+        person2: inc.person2Name,
+        claim1: inc.claim1Summary,
+        claim2: inc.claim2Summary,
+        confidence: inc.confidence,
+        resolved: inc.resolved,
+        resolution: inc.resolution,
+      })),
+    };
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `inconsistency-report-${caseId}-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const markResolved = async (incId: string) => {
+    try {
+      const response = await fetch(`/api/cases/${caseId}/inconsistencies`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inconsistencyId: incId, resolved: true }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to mark as resolved');
+      }
+
+      setInconsistencies(prev =>
+        prev.map(inc => inc.id === incId ? { ...inc, resolved: true, resolvedAt: new Date().toISOString() } : inc)
+      );
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  const viewStatements = (inc: Inconsistency) => {
+    const person1Label = inc.person1Name || 'Person 1';
+    const person2Label = inc.person2Name || 'Person 2';
+    const date1 = inc.statement1Date ? new Date(inc.statement1Date).toLocaleDateString() : '';
+    const date2 = inc.statement2Date ? new Date(inc.statement2Date).toLocaleDateString() : '';
+
+    const details = [
+      `--- ${inc.inconsistencyType.replace(/_/g, ' ').toUpperCase()} (${inc.severity}) ---`,
+      '',
+      `${person1Label}${date1 ? ` (${date1})` : ''}:`,
+      `"${inc.claim1Summary || 'No statement summary available'}"`,
+      '',
+      `${person2Label}${date2 ? ` (${date2})` : ''}:`,
+      `"${inc.claim2Summary || 'No statement summary available'}"`,
+      '',
+      `Confidence: ${Math.round(inc.confidence * 100)}%`,
+      inc.timeDrift != null ? `Time difference: ${inc.timeDrift} minutes` : '',
+      inc.locationDrift ? `Location discrepancy: ${inc.locationDrift}` : '',
+      inc.investigativeNotes ? `\nNotes: ${inc.investigativeNotes}` : '',
+    ].filter(Boolean).join('\n');
+
+    alert(details);
+  };
+
   if (loading && inconsistencies.length === 0) {
     return (
       <Card>
@@ -276,7 +350,7 @@ export default function InconsistencyDashboard({
               <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
               Detect New
             </Button>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={exportReport}>
               <Download className="h-4 w-4 mr-1" />
               Export
             </Button>
@@ -518,12 +592,17 @@ export default function InconsistencyDashboard({
                             <Eye className="h-4 w-4 mr-1" />
                             View Details
                           </Button>
-                          <Button variant="outline" size="sm">
+                          <Button variant="outline" size="sm" onClick={() => viewStatements(inc)}>
                             <FileText className="h-4 w-4 mr-1" />
                             View Statements
                           </Button>
                           {!inc.resolved && (
-                            <Button variant="outline" size="sm" className="ml-auto">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="ml-auto"
+                              onClick={() => markResolved(inc.id)}
+                            >
                               Mark Resolved
                             </Button>
                           )}
