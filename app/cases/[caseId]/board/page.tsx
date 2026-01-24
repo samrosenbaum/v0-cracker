@@ -276,12 +276,14 @@ export default function InvestigationBoardPage() {
               events={boardData.timeline_events}
               entities={boardData.entities}
               onEventClick={(event) => {
-                console.log('Event clicked:', event);
-                // Could open a modal or detail panel
+                toast(
+                  `${event.title || 'Event'}: ${event.description || 'No details'}` +
+                  (event.location ? ` — ${event.location}` : ''),
+                  { duration: 4000 }
+                );
               }}
               onAddEvent={() => {
                 toast.success('Add event feature coming soon!');
-                // Navigate to add event form
               }}
             />
           </TabsContent>
@@ -294,20 +296,25 @@ export default function InvestigationBoardPage() {
               connections={boardData.connections}
               victimEntityId={victimEntity?.id}
               onEntityClick={(entity) => {
-                console.log('Entity clicked:', entity);
-                // Could open entity detail panel
+                toast(
+                  `${entity.name} (${entity.role || entity.entity_type})` +
+                  (entity.description ? `: ${entity.description}` : ''),
+                  { duration: 4000 }
+                );
               }}
               onConnectionClick={(connection) => {
-                console.log('Connection clicked:', connection);
-                // Could open connection detail panel
+                toast(
+                  `Connection: ${connection.label || connection.connection_type}` +
+                  ` (${connection.confidence || 'unverified'})` +
+                  (connection.description ? ` — ${connection.description}` : ''),
+                  { duration: 4000 }
+                );
               }}
               onAddEntity={() => {
                 toast.success('Add entity feature coming soon!');
-                // Navigate to add entity form
               }}
               onAddConnection={() => {
                 toast.success('Add connection feature coming soon!');
-                // Navigate to add connection form
               }}
             />
           </TabsContent>
@@ -319,13 +326,16 @@ export default function InvestigationBoardPage() {
               alibis={boardData.alibis}
               entities={boardData.entities}
               onAlibiClick={(alibi) => {
-                console.log('Alibi clicked:', alibi);
-                // Could open alibi detail panel
+                const entityName = boardData.entities.find(e => e.id === alibi.subject_entity_id)?.name || 'Unknown';
+                toast(
+                  `${entityName}'s alibi: ${alibi.activity_claimed || 'No activity described'}` +
+                  ` at ${alibi.location_claimed || 'unknown location'}` +
+                  ` (${alibi.verification_status || 'unverified'})`,
+                  { duration: 4000 }
+                );
               }}
               onAddAlibi={(subjectId) => {
-                console.log('Add alibi for:', subjectId);
                 toast.success('Add alibi feature coming soon!');
-                // Navigate to add alibi form
               }}
             />
           </TabsContent>

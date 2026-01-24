@@ -3,6 +3,7 @@
  *
  * GET - Get all detected inconsistencies for a case
  * POST - Run inconsistency detection
+ * PATCH - Update inconsistency status (mark resolved, etc.)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -14,6 +15,7 @@ import {
   Severity,
   ReviewStatus
 } from '@/lib/inconsistency-detector';
+import { supabaseServer } from '@/lib/supabase-server';
 
 export async function GET(
   request: NextRequest,
@@ -118,6 +120,61 @@ export async function POST(
     console.error('[Inconsistencies API] Error:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to run inconsistency detection' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ caseId: string }> }
+) {
+  try {
+    const { caseId } = await params;
+    const body = await request.json();
+
+    const { inconsistencyId, resolved, reviewStatus, resolution } = body;
+
+    if (!inconsistencyId) {
+      return NextResponse.json(
+        { error: 'inconsistencyId is required' },
+        { status: 400 }
+      );
+    }
+
+    const updateData: Record<string, any> = {};
+    if (resolved !== undefined) {
+      updateData.review_status = resolved ? 'resolved' : 'pending';
+    }
+    if (reviewStatus) {
+      updateData.review_status = reviewStatus;
+    }
+    if (resolution) {
+      updateData.resolution_notes = resolution;
+    }
+    updateData.updated_at = new Date().toISOString();
+
+    const { data, error } = await supabaseServer
+      .from('claim_inconsistencies')
+      .update(updateData)
+      .eq('id', inconsistencyId)
+      .eq('case_id', caseId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return NextResponse.json({
+      success: true,
+      inconsistency: data,
+    });
+
+  } catch (error: any) {
+    console.error('[Inconsistencies API] PATCH Error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to update inconsistency' },
       { status: 500 }
     );
   }
