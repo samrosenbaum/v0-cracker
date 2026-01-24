@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse, after } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { hasSupabaseServiceConfig, hasPartialSupabaseConfig } from '@/lib/environment';
 import { processTimelineAnalysis } from '@/lib/workflows/timeline-analysis';
-import { runBackgroundTask } from '@/lib/background-tasks';
+import { initChunkedAnalysis, continueChunkedAnalysis } from '@/lib/chunked-analysis';
 import { extractMultipleDocuments, queueDocumentForReview } from '@/lib/document-parser';
 import {
   listCaseDocuments,
@@ -21,6 +21,9 @@ import {
   TimelineEvent,
 } from '@/lib/ai-analysis';
 import type { DocumentInput } from '@/lib/ai-fallback';
+
+// Allow up to 300s for AI analysis (document extraction + Anthropic API call)
+export const maxDuration = 300;
 
 type ExtractionResult = Awaited<ReturnType<typeof extractMultipleDocuments>> extends Map<string, infer R>
   ? R
@@ -735,9 +738,10 @@ async function runFallbackAnalysis(
     reason?: string;
     useSupabase: boolean;
     existingJobId?: string | null;
+    warnings?: string[];
   }
 ) {
-  const { reason = 'fallback', useSupabase, existingJobId } = options;
+  const { reason = 'fallback', useSupabase, existingJobId, warnings = [] } = options;
   console.log('[Timeline Analysis API] Running fallback timeline analysis:', {
     caseId,
     reason,
@@ -759,10 +763,25 @@ async function runFallbackAnalysis(
   const documents = await gatherDocumentsForAnalysis(caseId, useSupabase);
 
   if (!documents.length) {
+    const noDocWarnings: string[] = [];
+    if (!useSupabase) {
+      noDocWarnings.push('SUPABASE_SERVICE_ROLE_KEY is not set - server cannot read uploaded documents.');
+    }
+    if (!process.env.ANTHROPIC_API_KEY && !process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY) {
+      noDocWarnings.push('ANTHROPIC_API_KEY is not set - AI analysis unavailable.');
+    }
     return withCors(
       NextResponse.json(
         {
-          error: 'No documents available for analysis. Upload files or configure Supabase connection.',
+          error: 'No documents with extractable text found for this case.',
+          details: useSupabase
+            ? 'Documents were found in the database but none contained extractable text. Try re-uploading as PDF or text files.'
+            : 'The server cannot access your uploaded documents because SUPABASE_SERVICE_ROLE_KEY is not configured.',
+          warnings: noDocWarnings.length > 0 ? noDocWarnings : undefined,
+          configStatus: {
+            supabaseServiceKey: useSupabase,
+            anthropicKey: Boolean(process.env.ANTHROPIC_API_KEY || process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY),
+          },
         },
         { status: 400 }
       )
@@ -975,15 +994,26 @@ async function runFallbackAnalysis(
     analysisRecordId = analysisRecord?.id || null;
   }
 
+  const responseWarnings = [...warnings];
+  if (reason === 'missing-anthropic-key') {
+    responseWarnings.push('Analysis used rule-based heuristics. Results are limited compared to AI analysis.');
+  }
+  if (reason === 'supabase-not-configured') {
+    responseWarnings.push('Could not access uploaded documents. Analysis was run on demo/local data only.');
+  }
+
   return withCors(
     NextResponse.json(
       {
         success: true,
         mode: 'instant',
+        analysisMode: 'heuristic',
+        fallbackReason: reason,
         jobId,
         analysis: finalAnalysis,
         analysisId: analysisRecordId,
-        message: 'Generated using local timeline analysis engine.',
+        message: 'Generated using local timeline analysis engine (heuristic mode).',
+        warnings: responseWarnings.length > 0 ? responseWarnings : undefined,
       },
       { status: 200 }
     )
@@ -1041,6 +1071,10 @@ export async function POST(
       return await runFallbackAnalysis(caseId, {
         reason: 'supabase-not-configured',
         useSupabase,
+        warnings: [
+          'SUPABASE_SERVICE_ROLE_KEY is not configured. The server cannot access your uploaded documents.',
+          'Set SUPABASE_SERVICE_ROLE_KEY in your environment variables to enable full analysis.',
+        ],
       });
     }
 
@@ -1052,6 +1086,10 @@ export async function POST(
       return await runFallbackAnalysis(caseId, {
         reason: 'missing-anthropic-key',
         useSupabase,
+        warnings: [
+          'ANTHROPIC_API_KEY is not configured. Using rule-based heuristic analysis instead of AI.',
+          'Set ANTHROPIC_API_KEY in your environment variables for full AI-powered analysis.',
+        ],
       });
     }
 
@@ -1067,6 +1105,7 @@ export async function POST(
       return await runFallbackAnalysis(caseId, {
         reason: 'case-lookup-failed',
         useSupabase,
+        warnings: [`Database error looking up case: ${caseCheckError.message}`],
       });
     }
 
@@ -1112,38 +1151,75 @@ export async function POST(
       return await runFallbackAnalysis(caseId, {
         reason: 'job-create-failed',
         useSupabase,
+        warnings: [`Failed to create processing job: ${jobError?.message || 'Unknown error'}. Running instant analysis instead.`],
       });
     }
 
     createdJobId = job.id;
 
-    // Trigger workflow in background after response completes
-    // With Workflow DevKit installed, this will use durable execution
-    // Cron job acts as backup for any jobs that don't start
-    runBackgroundTask(
-      async () => {
+    // Check document count to decide strategy
+    const { count: docCount } = await supabaseServer
+      .from('case_documents')
+      .select('id', { count: 'exact', head: true })
+      .eq('case_id', caseId);
+
+    const totalDocs = docCount || 0;
+
+    if (totalDocs <= 25) {
+      // Small case: run analysis inline for speed (fits in one batch)
+      console.log(`[Timeline Analysis API] Small case (${totalDocs} docs), running inline...`);
+      try {
         await processTimelineAnalysis({
           jobId: job.id,
           caseId,
         });
-      },
-      {
-        label: 'Timeline Analysis API',
-        scheduler: after,
-        onError: (error) => {
-          console.error('[Timeline Analysis API] Workflow failed:', error);
-          // Workflow will update job status to 'failed' internally
-        },
+
+        // Fetch the saved analysis to return in the response
+        const { data: savedAnalysis } = await supabaseServer
+          .from('case_analysis')
+          .select('*')
+          .eq('case_id', caseId)
+          .eq('analysis_type', 'timeline_and_conflicts')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        return withCors(
+          NextResponse.json(
+            {
+              success: true,
+              mode: 'instant',
+              analysisMode: 'ai',
+              jobId: job.id,
+              status: 'completed',
+              analysis: savedAnalysis?.analysis_data || null,
+              analysisId: savedAnalysis?.id || null,
+              message: 'AI-powered timeline analysis completed successfully.',
+            },
+            { status: 200 }
+          )
+        );
+      } catch (inlineError: any) {
+        console.error('[Timeline Analysis API] Inline analysis failed, falling back to chunked:', inlineError);
+        // Fall through to chunked approach
       }
-    );
+    }
+
+    // Large case or inline failed: use chunked processing
+    // The frontend will call /analyze/continue repeatedly to process each step
+    console.log(`[Timeline Analysis API] Starting chunked analysis for ${totalDocs} documents...`);
+    const initResult = await initChunkedAnalysis(caseId, job.id);
 
     return withCors(
       NextResponse.json(
         {
           success: true,
+          mode: 'chunked',
+          analysisMode: 'ai',
           jobId: job.id,
-          status: 'pending',
-          message: 'Timeline analysis workflow has been triggered. Check processing job status for progress.',
+          status: 'processing',
+          ...initResult,
+          message: initResult.message,
         },
         { status: 202 }
       )
@@ -1156,6 +1232,7 @@ export async function POST(
           reason: 'exception',
           useSupabase,
           existingJobId: createdJobId,
+          warnings: [`Analysis encountered an error: ${error?.message || 'Unknown error'}. Ran fallback analysis.`],
         });
       } catch (fallbackError) {
         console.error('[Timeline Analysis API] Fallback also failed:', fallbackError);

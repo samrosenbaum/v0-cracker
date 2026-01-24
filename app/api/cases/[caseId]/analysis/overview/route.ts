@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
-import { hasSupabaseServiceConfig } from '@/lib/environment';
+import { hasSupabaseServiceConfig, hasAnthropicConfig } from '@/lib/environment';
 import { getCaseById, listCaseDocuments, listCaseAnalyses } from '@/lib/demo-data';
 
 const CORS_HEADERS: Record<string, string> = {
@@ -28,6 +28,20 @@ export async function GET(
   const { caseId } = params;
   const useSupabase = hasSupabaseServiceConfig();
 
+  const configStatus = {
+    supabaseServiceKey: useSupabase,
+    anthropicKey: hasAnthropicConfig(),
+    openaiKey: Boolean(process.env.OPENAI_API_KEY),
+  };
+
+  const configWarnings: string[] = [];
+  if (!useSupabase) {
+    configWarnings.push('SUPABASE_SERVICE_ROLE_KEY is not set. The server cannot access uploaded documents for analysis.');
+  }
+  if (!configStatus.anthropicKey) {
+    configWarnings.push('ANTHROPIC_API_KEY is not set. AI-powered analysis is unavailable; only rule-based heuristics will be used.');
+  }
+
   if (!useSupabase) {
     const caseRecord = getCaseById(caseId);
     if (!caseRecord) {
@@ -48,6 +62,8 @@ export async function GET(
         case: caseRecord,
         documentCount: documents.length,
         analyses,
+        configStatus,
+        configWarnings: configWarnings.length > 0 ? configWarnings : undefined,
       })
     );
   }
@@ -91,6 +107,8 @@ export async function GET(
         case: caseRecord,
         documentCount: documents?.length || 0,
         analyses: analyses || [],
+        configStatus,
+        configWarnings: configWarnings.length > 0 ? configWarnings : undefined,
       })
     );
   } catch (error: any) {
@@ -112,6 +130,8 @@ export async function GET(
         case: caseRecord,
         documentCount: documents.length,
         analyses,
+        configStatus,
+        configWarnings: [...configWarnings, 'Database query failed, showing cached/demo data.'],
       })
     );
   }

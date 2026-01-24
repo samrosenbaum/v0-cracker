@@ -90,10 +90,17 @@ function isNonRecoverablePdfError(error: any): boolean {
   return /invalid pdf|missing pdf|password required|unexpected response/i.test(message);
 }
 
-// Initialize OpenAI client for Whisper transcription
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || '',
-});
+// Lazy-initialized OpenAI client for Whisper transcription
+let openaiInstance: OpenAI | null = null;
+function getOpenAIClient(): OpenAI | null {
+  if (!process.env.OPENAI_API_KEY) {
+    return null;
+  }
+  if (!openaiInstance) {
+    openaiInstance = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return openaiInstance;
+}
 
 export interface UncertainSegment {
   text: string;           // What OCR thinks it says
@@ -736,13 +743,14 @@ async function transcribeAudio(
 
   console.log('[Document Parser] Transcribing audio with Whisper...');
 
-  // Check if OpenAI API key is configured
-  if (!process.env.OPENAI_API_KEY) {
+  const openai = getOpenAIClient();
+  if (!openai) {
     return {
-      text: '[Audio transcription requires OPENAI_API_KEY in environment]',
+      text: '[Audio transcription requires OPENAI_API_KEY in environment variables]',
       method: 'whisper-transcription',
       confidence: 0,
-      error: 'OpenAI API key not configured',
+      error: 'OPENAI_API_KEY is not configured. Add it to your environment variables to enable audio transcription.',
+      needsReview: true,
     };
   }
 

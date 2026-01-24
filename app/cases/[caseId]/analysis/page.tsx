@@ -48,7 +48,13 @@ export default function AnalysisPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [runningAnalysis, setRunningAnalysis] = useState<string | null>(null);
   const [documentCount, setDocumentCount] = useState(0);
+  const [configWarnings, setConfigWarnings] = useState<string[]>([]);
   const [deletingAnalysis, setDeletingAnalysis] = useState<string | null>(null);
+  const [analysisProgress, setAnalysisProgress] = useState<{
+    phase: string;
+    message: string;
+    percentage: number;
+  } | null>(null);
 
   const parseAnalysisData = (analysisData: any) => {
     if (!analysisData) return null;
@@ -823,6 +829,7 @@ export default function AnalysisPage() {
       }));
       setAnalyses(normalizedAnalyses);
       setDocumentCount(payload.documentCount || 0);
+      setConfigWarnings(payload.configWarnings || []);
     } catch (error) {
       console.error('Failed to load analysis overview:', error);
     } finally {
@@ -831,10 +838,18 @@ export default function AnalysisPage() {
   };
 
   const runAnalysis = async (analysisType: string) => {
-    if (documentCount === 0) {
+    if (documentCount === 0 && configWarnings.length === 0) {
       alert('Please upload case documents before running analysis.');
       router.push(`/cases/${caseId}/files`);
       return;
+    }
+    if (documentCount === 0 && configWarnings.length > 0) {
+      const proceed = confirm(
+        'Document count shows 0, which may be due to missing server configuration.\n\n' +
+        'Warnings:\n' + configWarnings.map(w => '- ' + w).join('\n') + '\n\n' +
+        'Would you like to try running the analysis anyway?'
+      );
+      if (!proceed) return;
     }
 
     setRunningAnalysis(analysisType);
@@ -891,12 +906,20 @@ export default function AnalysisPage() {
           // Instant analysis completed - provide clear feedback and navigation
           await loadOverview();
 
+          // Build warning text if analysis ran in fallback mode
+          const warningText = result.warnings?.length
+            ? '\n\nWarnings:\n' + result.warnings.map((w: string) => '- ' + w).join('\n')
+            : '';
+          const modeNote = result.analysisMode === 'heuristic'
+            ? ' (heuristic mode - limited results)'
+            : '';
+
           // Show helpful message based on analysis type
           if (analysisType === 'timeline') {
             const eventCount = result.analysis?.timeline?.length || 0;
             const viewBoard = confirm(
-              'Timeline analysis completed successfully!\n\n' +
-              `${eventCount} timeline events have been extracted and saved.\n\n` +
+              `Timeline analysis completed${modeNote}!\n\n` +
+              `${eventCount} timeline events have been extracted and saved.${warningText}\n\n` +
               'Click OK to view the timeline on the Investigation Board, or Cancel to stay here and see results below.'
             );
             if (viewBoard) {
@@ -905,7 +928,7 @@ export default function AnalysisPage() {
             }
           } else if (analysisType === 'victim-timeline') {
             const viewBoard = confirm(
-              'Victim timeline reconstruction completed successfully!\n\n' +
+              `Victim timeline reconstruction completed${modeNote}!${warningText}\n\n` +
               'Click OK to view the timeline on the Investigation Board, or Cancel to stay here and see results below.'
             );
             if (viewBoard) {
@@ -914,8 +937,8 @@ export default function AnalysisPage() {
             }
           } else {
             alert(
-              `${getAnalysisTitle(analysisType)} completed successfully!\n\n` +
-              'Results are now available in the Analysis History section below.'
+              `${getAnalysisTitle(analysisType)} completed${modeNote}!\n\n` +
+              `Results are now available in the Analysis History section below.${warningText}`
             );
           }
 
@@ -929,6 +952,70 @@ export default function AnalysisPage() {
 
           return;
         }
+
+        // Chunked mode: drive multi-step analysis with auto-continue
+        if (result.mode === 'chunked' && result.jobId) {
+          setAnalysisProgress({
+            phase: result.phase || 'starting',
+            message: result.message || 'Starting analysis...',
+            percentage: result.progress?.percentage || 0,
+          });
+
+          // Auto-continue loop
+          let continueResult = result;
+          while (!continueResult.done) {
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Brief pause between steps
+            try {
+              const contResponse = await fetch(`/api/cases/${caseId}/analyze/continue`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jobId: result.jobId }),
+              });
+
+              if (!contResponse.ok) {
+                const errData = await contResponse.json().catch(() => ({}));
+                throw new Error(errData.error || `Step failed with status ${contResponse.status}`);
+              }
+
+              continueResult = await contResponse.json();
+              setAnalysisProgress({
+                phase: continueResult.phase || 'processing',
+                message: continueResult.message || 'Processing...',
+                percentage: continueResult.progress?.percentage || 0,
+              });
+            } catch (contError: any) {
+              setAnalysisProgress(null);
+              alert(`Analysis failed during processing: ${contError.message}`);
+              return;
+            }
+          }
+
+          // Chunked analysis complete
+          setAnalysisProgress(null);
+          await loadOverview();
+
+          if (continueResult.analysis) {
+            const eventCount = continueResult.analysis.timeline?.length || 0;
+            const personCount = continueResult.analysis.personMentions?.length || 0;
+            const conflictCount = continueResult.analysis.conflicts?.length || 0;
+            const viewBoard = confirm(
+              `Analysis complete!\n\n` +
+              `Processed ${documentCount} documents and found:\n` +
+              `- ${eventCount} timeline events\n` +
+              `- ${personCount} persons of interest\n` +
+              `- ${conflictCount} conflicts/contradictions\n\n` +
+              'Click OK to view on the Investigation Board, or Cancel to stay here.'
+            );
+            if (viewBoard) {
+              router.push(`/cases/${caseId}/board`);
+              return;
+            }
+          } else {
+            alert(continueResult.message || 'Analysis complete. Check results below.');
+          }
+          return;
+        }
+
         // Show different messages based on analysis type
         if (analysisType === 'timeline') {
           if (result.jobId) {
@@ -1000,6 +1087,7 @@ export default function AnalysisPage() {
       alert('Analysis failed. Check console for details.');
     } finally {
       setRunningAnalysis(null);
+      setAnalysisProgress(null);
     }
   };
 
@@ -1209,8 +1297,28 @@ export default function AnalysisPage() {
           </div>
         </div>
 
+        {/* Configuration warnings */}
+        {configWarnings.length > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-8">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-red-900 mb-1">Configuration Required</h3>
+                <p className="text-red-800 mb-2">
+                  Analysis cannot fully function without the following configuration:
+                </p>
+                <ul className="list-disc list-inside text-red-700 text-sm space-y-1">
+                  {configWarnings.map((warning, idx) => (
+                    <li key={idx}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Warning if no documents */}
-        {documentCount === 0 && (
+        {documentCount === 0 && configWarnings.length === 0 && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-8">
             <div className="flex items-start gap-3">
               <AlertTriangle className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" />
@@ -1227,6 +1335,26 @@ export default function AnalysisPage() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Analysis Progress */}
+        {analysisProgress && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-8">
+            <div className="flex items-center gap-3 mb-3">
+              <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+              <h3 className="font-semibold text-blue-900">
+                Analysis in Progress — {analysisProgress.phase}
+              </h3>
+            </div>
+            <p className="text-blue-800 text-sm mb-3">{analysisProgress.message}</p>
+            <div className="w-full bg-blue-200 rounded-full h-3">
+              <div
+                className="bg-blue-600 h-3 rounded-full transition-all duration-500"
+                style={{ width: `${Math.max(analysisProgress.percentage, 2)}%` }}
+              />
+            </div>
+            <p className="text-blue-600 text-xs mt-1 text-right">{analysisProgress.percentage}%</p>
           </div>
         )}
 
