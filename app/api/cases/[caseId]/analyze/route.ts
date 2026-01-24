@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { hasSupabaseServiceConfig, hasPartialSupabaseConfig } from '@/lib/environment';
 import { processTimelineAnalysis } from '@/lib/workflows/timeline-analysis';
+import { initChunkedAnalysis, continueChunkedAnalysis } from '@/lib/chunked-analysis';
 import { extractMultipleDocuments, queueDocumentForReview } from '@/lib/document-parser';
 import {
   listCaseDocuments,
@@ -1156,38 +1157,71 @@ export async function POST(
 
     createdJobId = job.id;
 
-    // Run the analysis inline (not in after()) so it completes before the response.
-    // Using after() caused the analysis to be killed by Vercel's function timeout
-    // before it could finish, leaving jobs stuck in "pending" forever.
-    console.log('[Timeline Analysis API] Running analysis inline for case:', caseId);
-    await processTimelineAnalysis({
-      jobId: job.id,
-      caseId,
-    });
+    // Check document count to decide strategy
+    const { count: docCount } = await supabaseServer
+      .from('case_documents')
+      .select('id', { count: 'exact', head: true })
+      .eq('case_id', caseId);
 
-    // Fetch the saved analysis to return in the response
-    const { data: savedAnalysis } = await supabaseServer
-      .from('case_analysis')
-      .select('*')
-      .eq('case_id', caseId)
-      .eq('analysis_type', 'timeline_and_conflicts')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const totalDocs = docCount || 0;
+
+    if (totalDocs <= 25) {
+      // Small case: run analysis inline for speed (fits in one batch)
+      console.log(`[Timeline Analysis API] Small case (${totalDocs} docs), running inline...`);
+      try {
+        await processTimelineAnalysis({
+          jobId: job.id,
+          caseId,
+        });
+
+        // Fetch the saved analysis to return in the response
+        const { data: savedAnalysis } = await supabaseServer
+          .from('case_analysis')
+          .select('*')
+          .eq('case_id', caseId)
+          .eq('analysis_type', 'timeline_and_conflicts')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        return withCors(
+          NextResponse.json(
+            {
+              success: true,
+              mode: 'instant',
+              analysisMode: 'ai',
+              jobId: job.id,
+              status: 'completed',
+              analysis: savedAnalysis?.analysis_data || null,
+              analysisId: savedAnalysis?.id || null,
+              message: 'AI-powered timeline analysis completed successfully.',
+            },
+            { status: 200 }
+          )
+        );
+      } catch (inlineError: any) {
+        console.error('[Timeline Analysis API] Inline analysis failed, falling back to chunked:', inlineError);
+        // Fall through to chunked approach
+      }
+    }
+
+    // Large case or inline failed: use chunked processing
+    // The frontend will call /analyze/continue repeatedly to process each step
+    console.log(`[Timeline Analysis API] Starting chunked analysis for ${totalDocs} documents...`);
+    const initResult = await initChunkedAnalysis(caseId, job.id);
 
     return withCors(
       NextResponse.json(
         {
           success: true,
-          mode: 'instant',
+          mode: 'chunked',
           analysisMode: 'ai',
           jobId: job.id,
-          status: 'completed',
-          analysis: savedAnalysis?.analysis_data || null,
-          analysisId: savedAnalysis?.id || null,
-          message: 'AI-powered timeline analysis completed successfully.',
+          status: 'processing',
+          ...initResult,
+          message: initResult.message,
         },
-        { status: 200 }
+        { status: 202 }
       )
     );
   } catch (error: any) {

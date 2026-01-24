@@ -50,6 +50,11 @@ export default function AnalysisPage() {
   const [documentCount, setDocumentCount] = useState(0);
   const [configWarnings, setConfigWarnings] = useState<string[]>([]);
   const [deletingAnalysis, setDeletingAnalysis] = useState<string | null>(null);
+  const [analysisProgress, setAnalysisProgress] = useState<{
+    phase: string;
+    message: string;
+    percentage: number;
+  } | null>(null);
 
   const parseAnalysisData = (analysisData: any) => {
     if (!analysisData) return null;
@@ -947,6 +952,70 @@ export default function AnalysisPage() {
 
           return;
         }
+
+        // Chunked mode: drive multi-step analysis with auto-continue
+        if (result.mode === 'chunked' && result.jobId) {
+          setAnalysisProgress({
+            phase: result.phase || 'starting',
+            message: result.message || 'Starting analysis...',
+            percentage: result.progress?.percentage || 0,
+          });
+
+          // Auto-continue loop
+          let continueResult = result;
+          while (!continueResult.done) {
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Brief pause between steps
+            try {
+              const contResponse = await fetch(`/api/cases/${caseId}/analyze/continue`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jobId: result.jobId }),
+              });
+
+              if (!contResponse.ok) {
+                const errData = await contResponse.json().catch(() => ({}));
+                throw new Error(errData.error || `Step failed with status ${contResponse.status}`);
+              }
+
+              continueResult = await contResponse.json();
+              setAnalysisProgress({
+                phase: continueResult.phase || 'processing',
+                message: continueResult.message || 'Processing...',
+                percentage: continueResult.progress?.percentage || 0,
+              });
+            } catch (contError: any) {
+              setAnalysisProgress(null);
+              alert(`Analysis failed during processing: ${contError.message}`);
+              return;
+            }
+          }
+
+          // Chunked analysis complete
+          setAnalysisProgress(null);
+          await loadOverview();
+
+          if (continueResult.analysis) {
+            const eventCount = continueResult.analysis.timeline?.length || 0;
+            const personCount = continueResult.analysis.personMentions?.length || 0;
+            const conflictCount = continueResult.analysis.conflicts?.length || 0;
+            const viewBoard = confirm(
+              `Analysis complete!\n\n` +
+              `Processed ${documentCount} documents and found:\n` +
+              `- ${eventCount} timeline events\n` +
+              `- ${personCount} persons of interest\n` +
+              `- ${conflictCount} conflicts/contradictions\n\n` +
+              'Click OK to view on the Investigation Board, or Cancel to stay here.'
+            );
+            if (viewBoard) {
+              router.push(`/cases/${caseId}/board`);
+              return;
+            }
+          } else {
+            alert(continueResult.message || 'Analysis complete. Check results below.');
+          }
+          return;
+        }
+
         // Show different messages based on analysis type
         if (analysisType === 'timeline') {
           if (result.jobId) {
@@ -1018,6 +1087,7 @@ export default function AnalysisPage() {
       alert('Analysis failed. Check console for details.');
     } finally {
       setRunningAnalysis(null);
+      setAnalysisProgress(null);
     }
   };
 
@@ -1265,6 +1335,26 @@ export default function AnalysisPage() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Analysis Progress */}
+        {analysisProgress && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-8">
+            <div className="flex items-center gap-3 mb-3">
+              <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+              <h3 className="font-semibold text-blue-900">
+                Analysis in Progress — {analysisProgress.phase}
+              </h3>
+            </div>
+            <p className="text-blue-800 text-sm mb-3">{analysisProgress.message}</p>
+            <div className="w-full bg-blue-200 rounded-full h-3">
+              <div
+                className="bg-blue-600 h-3 rounded-full transition-all duration-500"
+                style={{ width: `${Math.max(analysisProgress.percentage, 2)}%` }}
+              />
+            </div>
+            <p className="text-blue-600 text-xs mt-1 text-right">{analysisProgress.percentage}%</p>
           </div>
         )}
 
