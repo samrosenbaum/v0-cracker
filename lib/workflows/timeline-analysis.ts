@@ -16,6 +16,7 @@ import {
   generateConflictSummary,
 } from '@/lib/ai-analysis';
 import { extractMultipleDocuments, queueDocumentForReview } from '@/lib/document-parser';
+import { toISODateString, toISODateTime } from '@/lib/datetime-utils';
 
 interface TimelineAnalysisParams {
   jobId: string;
@@ -156,6 +157,22 @@ export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
     // Step 5: Save timeline events
     async function saveTimelineEvents() {
 
+      const looksLikeAbsoluteTime = (value?: string | null) => {
+        if (!value) return false;
+        return /\d{4}-\d{2}-\d{2}/.test(value) || value.includes('T');
+      };
+
+      const parseTimeValue = (value?: string | null, fallbackDate?: string | null) => {
+        if (!value) return null;
+        if (looksLikeAbsoluteTime(value)) {
+          return toISODateTime(value);
+        }
+        if (!fallbackDate) {
+          return null;
+        }
+        return toISODateTime(fallbackDate, value);
+      };
+
       // Map AI analysis timeline events to the timeline_events table schema
       const eventTypeMap: Record<string, string> = {
         interview: 'witness_account',
@@ -166,29 +183,38 @@ export async function processTimelineAnalysis(params: TimelineAnalysisParams) {
         other: 'other',
       };
 
-      const timelineInserts = analysis.timeline.map((event) => ({
-        case_id: caseId,
-        event_type: eventTypeMap[event.sourceType] || 'other',
-        title: event.description?.substring(0, 100) || 'Timeline Event',
-        description: event.description || null,
-        event_time: event.time || event.startTime || null,
-        event_date: event.date || null,
-        time_precision:
-          event.startTime && event.endTime
-            ? ('approximate' as const)
-            : event.time
-            ? ('exact' as const)
-            : ('estimated' as const),
-        time_range_start: event.startTime || null,
-        time_range_end: event.endTime || null,
-        location: event.location || null,
-        primary_entity_id: null, // Will be linked later if entities are created
-        verification_status: 'unverified' as const,
-        confidence_score: event.confidence || 0.5,
-        source_type: event.sourceType,
-        source_notes: event.source || null,
-        metadata: event.metadata || {},
-      }));
+      const timelineInserts = analysis.timeline.map((event) => {
+        const normalizedStart = parseTimeValue(event.startTime, event.date);
+        const normalizedEnd = parseTimeValue(event.endTime, event.date);
+        const normalizedEventTime = parseTimeValue(event.time, event.date) || normalizedStart || null;
+        const normalizedDate =
+          toISODateString(event.date) ||
+          (normalizedEventTime ? normalizedEventTime.split('T')[0] : null);
+
+        return {
+          case_id: caseId,
+          event_type: eventTypeMap[event.sourceType] || 'other',
+          title: event.description?.substring(0, 100) || 'Timeline Event',
+          description: event.description || null,
+          event_time: normalizedEventTime,
+          event_date: normalizedDate,
+          time_precision:
+            event.startTime && event.endTime
+              ? ('approximate' as const)
+              : event.time
+              ? ('exact' as const)
+              : ('estimated' as const),
+          time_range_start: normalizedStart,
+          time_range_end: normalizedEnd,
+          location: event.location || null,
+          primary_entity_id: null, // Will be linked later if entities are created
+          verification_status: 'unverified' as const,
+          confidence_score: event.confidence || 0.5,
+          source_type: event.sourceType,
+          source_notes: event.source || null,
+          metadata: event.metadata || {},
+        };
+      });
 
       if (timelineInserts.length > 0) {
         const { error: timelineError } = await supabaseServer
